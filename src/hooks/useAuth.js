@@ -7,11 +7,12 @@ import {
   setPersistence,
   browserSessionPersistence,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export const useAuth = () => {
   const [user, setUser]               = useState(undefined); // undefined = 확인 중
+  const [userData, setUserData]       = useState(null);      // DB 사용자 문서 (groupId 등)
   const [role, setRole]               = useState(null);      // 'student' | 'admin'
   const [loading, setLoading]         = useState(true);
   const [loginLoading, setLoginLoading] = useState(false);
@@ -22,44 +23,84 @@ export const useAuth = () => {
   }, []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubDoc = null;
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // 인증 확인이 시작되면 loading을 먼저 체크 (새로고침 시 loading은 이미 true임)
+
+      // 기존 리스너 클린업
+      if (unsubDoc) {
+        unsubDoc();
+        unsubDoc = null;
+      }
+
       if (firebaseUser) {
         try {
           const userRef = doc(db, 'users', firebaseUser.uid);
-          const snap = await getDoc(userRef);
           
-          if (snap.exists()) {
-            setRole(snap.data().role || 'student');
-            // 기존 유저는 접속 시간만 업데이트
-            await setDoc(userRef, { lastStudiedAt: serverTimestamp() }, { merge: true });
-          } else {
-            // 프로젝트 제출용 이메일 하드코딩
-            const isAdmin = firebaseUser.email === 'dla0625@koreaedugroup.com';
-            
-            // 최초 가입자: 초기 데이터 생성
-            const newUser = {
-              role: isAdmin ? 'admin' : 'student',
-              currentLevel: 1,
-              likedMetaphors: [],
-              lastStudiedAt: serverTimestamp(),
-              email: firebaseUser.email,
-              displayName: firebaseUser.displayName || '이름 없음',
-            };
-            await setDoc(userRef, newUser);
-            setRole(newUser.role);
-          }
+          // 실시간 리스너 설정
+          unsubDoc = onSnapshot(userRef, async (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              // 개발자 계정 무조건 관리자 승격 (리스너 안에서 중복 처리 방지 겸 저장)
+              if (firebaseUser.email?.toLowerCase() === 'gurwns369@naver.com' && data.role !== 'admin') {
+                await setDoc(userRef, { role: 'admin' }, { merge: true });
+              }
+              setUserData(data);
+              setRole(data.role || 'student');
+            } else {
+              // 최초 가입자 처리 (리스너 밖에서 최초 한 번만 실행되도록도 가능나, 여기서는 snapshot 기반 생성 처리)
+              // 중복 생성을 막기 위해 snap.exists()가 false일 때만 실행
+              let initialRole = firebaseUser.email === 'gurwns369@naver.com' ? 'admin' : 'student';
+              
+              const inviteRef = doc(db, 'invited_students', firebaseUser.email.toLowerCase());
+              const inviteSnap = await getDoc(inviteRef);
+              let initialGroups = [];
+              let inviteName = null;
+              let invitePhone = null;
+
+              if (inviteSnap.exists()) {
+                const inviteData = inviteSnap.data();
+                initialGroups = inviteData.groupIDs || [];
+                inviteName = inviteData.name || null;
+                invitePhone = inviteData.phone || null;
+              }
+
+              const newUser = {
+                role: initialRole,
+                currentLevel: 1,
+                groupIDs: initialGroups,
+                likedMetaphors: [],
+                lastStudiedAt: serverTimestamp(),
+                email: firebaseUser.email,
+                displayName: inviteName || firebaseUser.displayName || '이름 없음',
+                phone: invitePhone || '',
+              };
+              await setDoc(userRef, newUser);
+              // setDoc 이후 리스너가 다시 돌면서 setUserData가 호출될 것이므로 명시적 set은 생략 가능하나 안정성 위해 유지
+            }
+            setLoading(false);
+          });
+
+          // 접속 시간 기록 (별도로 한 번만)
+          await setDoc(userRef, { lastStudiedAt: serverTimestamp() }, { merge: true });
+
         } catch (error) {
-          console.error("User data fetch/creation failed:", error);
-          setRole('student'); // 에러 시 폴백
+          console.error("User data sync failed:", error);
+          setRole('student');
+          setLoading(false);
         }
       } else {
+        setUserData(null);
         setRole(null);
+        setLoading(false);
       }
       setUser(firebaseUser);
-      setLoading(false);
-      setLoginLoading(false);
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (unsubDoc) unsubDoc();
+    };
   }, []);
 
   const loginWithGoogle = async () => {
@@ -81,5 +122,5 @@ export const useAuth = () => {
 
   const logout = () => signOut(auth);
 
-  return { user, role, loading, loginLoading, loginError, loginWithGoogle, logout };
+  return { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, logout };
 };

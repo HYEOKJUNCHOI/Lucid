@@ -194,19 +194,16 @@ const Login = ({ loginLoading, loginError, onLogin }) => {
   const delays = useRandomDelays(positions.length);
 
   return (
-    <div className="relative flex items-center justify-center min-h-svh bg-[#050505] overflow-hidden text-gray-200">
+    <div className="relative flex items-center justify-center min-h-svh bg-theme-bg overflow-hidden text-gray-200">
       
-      {/* 백그라운드 디자인 - 심연(Deep Space)과 빛번짐(Aurora) 효과 */}
+      {/* 백그라운드 디자인 - GPT 계열 다크그린/그레이 베이스 (채도를 확 낮춤) */}
       <div className="absolute inset-0 z-0">
 
-        {/* 빛번짐 배경 효과 */}
-        <div className="absolute inset-0 flex justify-center items-center pointer-events-none">
-          {/* Cyan Glow */}
-          <div className="absolute w-[600px] h-[600px] bg-[#4ec9b0]/10 rounded-full blur-[120px] animate-aurora -top-20 -left-20 mix-blend-screen" />
-          {/* Blue Glow */}
-          <div className="absolute w-[500px] h-[500px] bg-[#569cd6]/10 rounded-full blur-[100px] animate-aurora top-20 right-0 mix-blend-screen" style={{ animationDelay: '2s' }} />
-          {/* Purple Glow */}
-          <div className="absolute w-[400px] h-[400px] bg-purple-500/10 rounded-full blur-[120px] animate-aurora -bottom-10 right-20 mix-blend-screen" style={{ animationDelay: '5s' }} />
+        {/* 은은한 모노톤 빛번짐 효과 (GPT 스러운 절제) */}
+        <div className="absolute inset-0 flex justify-center items-center pointer-events-none opacity-50">
+          <div className="absolute w-[600px] h-[600px] bg-theme-sidebar/50 rounded-full blur-[120px] animate-aurora -top-20 -left-20 mix-blend-screen" />
+          <div className="absolute w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px] animate-aurora top-20 right-0 mix-blend-screen" style={{ animationDelay: '2s' }} />
+          <div className="absolute w-[400px] h-[400px] bg-theme-sidebar/50 rounded-full blur-[120px] animate-aurora -bottom-10 right-20 mix-blend-screen" style={{ animationDelay: '5s' }} />
         </div>
 
         {/* 타이핑되는 코드들 - 화면 전체 분포 */}
@@ -222,28 +219,22 @@ const Login = ({ loginLoading, loginError, onLogin }) => {
       </div>
 
       {/* 메인 로그인 카드 */}
-      <div className="relative z-10 flex flex-col items-center w-[90%] max-w-sm px-8 py-12 rounded-[2rem] bg-white/[0.03] backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+      <div className="relative z-10 flex flex-col items-center w-[90%] max-w-sm px-8 py-12 rounded-[2rem] bg-theme-card/90 backdrop-blur-xl border border-theme-border shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
         
         <div className="flex flex-col items-center gap-3 mb-10">
-          <div className="p-3 bg-gradient-to-br from-[#4ec9b0]/20 to-[#569cd6]/20 rounded-2xl mb-2 backdrop-blur-md border border-white/10 ring-1 ring-[#4ec9b0]/30 shadow-[0_0_20px_rgba(78,201,176,0.2)]">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="url(#gradient)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <defs>
-                <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#4ec9b0" />
-                  <stop offset="100%" stopColor="#569cd6" />
-                </linearGradient>
-              </defs>
+          <div className="p-4 bg-[#1a1a1a] rounded-3xl mb-2 border border-[#2a2a2a] shadow-[0_0_30px_rgba(78,201,176,0.15)] flex items-center justify-center">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#4ec9b0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m18 16 4-4-4-4"/>
               <path d="m6 8-4 4 4 4"/>
               <path d="m14.5 4-5 16"/>
             </svg>
           </div>
           
-          <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-br from-white to-gray-400 bg-clip-text text-transparent">
+          <h1 className="text-5xl font-black tracking-tight text-white mb-2 pb-1">
             Lucid
           </h1>
-          <p className="text-sm text-gray-400 font-medium text-center leading-relaxed">
-            어려운 코드를, <span className="text-[#4ec9b0] font-semibold">내 언어로</span> 해석하다
+          <p className="text-base text-gray-400 font-medium text-center">
+            어려운 코드를, <span className="text-[#4ec9b0] font-bold">내 언어로</span> 해석하다
           </p>
         </div>
 
@@ -251,7 +242,7 @@ const Login = ({ loginLoading, loginError, onLogin }) => {
           <button
             onClick={onLogin}
             disabled={loginLoading}
-            className="group relative overflow-hidden w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3.5 px-4 rounded-xl shadow-lg hover:-translate-y-0.5 hover:shadow-xl hover:shadow-white/10 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            className="group relative overflow-hidden w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3.5 px-4 rounded-xl shadow-lg hover:-translate-y-0.5 hover:shadow-xl hover:shadow-white/10 transition-all duration-300 disabled:cursor-wait disabled:transform-none"
           >
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
             <GoogleIcon />
