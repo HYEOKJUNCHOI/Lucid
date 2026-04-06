@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-04-07
+
+### [AG] feat: 학생 그룹 배정 시스템 전면 개편 및 UI 고도화
+- **커밋 해시:** `d9943b2`
+- **지시:** 그룹 배정 시 데이터 유실 버그(1+1=0) 수정 및 학생 화면 동기화, RepoSelect UI 개선
+- **내용:**
+  - ❗ `single` 모드에서 체크 해제 시 그룹이 제거되지 않던 핵심 버그 수정 (merge → replace)
+  - `groupIDs`에 이름(name)으로 저장된 오염 데이터를 Firebase 문서 ID로 정규화하는 `normalizeToIds()` 헬퍼 추가
+  - 이메일 대소문자 불일치(case mismatch)로 인한 유저 중복 인식 문제 수정 (`.toLowerCase()` 전역 적용)
+  - 관리자 수정 후 학생 홈 화면에 미반영되던 문제 해결 (`users` + `invited_students` 이중 동기화)
+  - 모달 오픈 시 기존 `groupIDs`를 Firebase 문서 ID로 정규화하여 체크박스 초기 상태 보장
+  - batch 모드: 병합(Merge), single 모드: 교체(Replace) 정책 명확히 분리
+  - 공통 로딩 컴포넌트 `LucidLoader` 생성 → 전 관리자 페이지(`Group/Teacher/Student`) 일괄 적용
+  - `LucidSelect` 커스텀 드롭다운 컴포넌트 신규 추가
+  - `RepoSelect` 반응형 2단 그리드 도입 및 카드 디자인 슬림화
+  - 학생 관리 목록 그룹 뱃지 UI 적용
+- **수정 파일:**
+  - `src/pages/Admin/StudentManagement.jsx` — 배정 로직 전면 개편 (핵심)
+  - `src/pages/Student/RepoSelect.jsx` — 2단 그리드 및 슬림 카드 UI
+  - `src/components/common/LucidLoader.jsx` — 신규 공통 로더 컴포넌트
+  - `src/components/common/LucidSelect.jsx` — 신규 커스텀 드롭다운
+  - `src/pages/Admin/GroupManagement.jsx`, `TeacherManagement.jsx` — LucidLoader 적용
+  - `src/hooks/useAuth.js` — 실시간 동기화 보강
+
+---
+
 ## 2026-04-06
 
 ### [AG] feat: 로그인 UI 고도화 및 첫 커밋 완료

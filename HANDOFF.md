@@ -37,70 +37,60 @@
 ## 인수인계 내용
 
 ### 작성 정보
-- **작성자:** Claude Code (CC)
-- **작성 시각:** 2026-04-07
+- **작성자:** Antigravity (AG)
+- **작성 시각:** 2026-04-07 04:48 KST
+- **커밋 해시:** `d9943b2`
 - **빌드 상태:** 컴파일 에러 없음 ✅
 
 ---
 
 ### 현재 상태 요약
-로그인 화면 완성 + 전체 뼈대(StudentPage 5단계 흐름 + AdminPage) 구현 완료.
-학생 화면 내부 로직(GPT 연동, GitHub API 연동)은 미착수.
+학생 그룹 배정 시스템 전면 개편 완료. 관리자 → 학생 화면 실시간 동기화 정상 작동.
+`groupIDs` 데이터 정합성 및 UI 일관성 확보. 핵심 기능 안정화 단계.
 
 ---
 
 ### 이번 세션에서 한 일
 
-**CLAUDE.md / GEMINI.md 업데이트**
-- 섹션 3: 목업·뼈대 파일 생성 전 상의 규칙 추가
-- 섹션 7 [기획]: PROJECT.md 먼저 읽기 규칙 추가
+**그룹 배정 로직 전면 개편** (`StudentManagement.jsx`)
+- `single` 모드: 체크 상태 그대로 저장(Replace). 체크 해제 = 그룹 제거 정상 작동
+- `batch` 모드: 기존 그룹 + 새 그룹 병합(Merge). 여러 학생에 과목 일괄 추가용
+- `invite` 모드: 신규 등록 시 이미 가입 유저면 기존 그룹 보존하며 병합
+- `normalizeToIds()` 헬퍼 추가: `groupIDs`에 이름(name)으로 오염된 데이터 → Firebase 문서 ID로 자동 변환
+- 모달 오픈 시(`openSingleAssign`) 기존 `groupIDs`를 ID로 정규화하여 체크박스 초기 상태 정확히 반영
+- 이메일 대소문자 불일치 문제 수정: `combinedList` 필터에 `.toLowerCase()` 전역 적용
+- 가입 유저 수정 시 `users` + `invited_students` 양쪽 컬렉션 동시 동기화 (이중 저장으로 유실 방지)
+- 학생 목록 소속 그룹을 plain text에서 **뱃지(Badge) UI**로 교체
 
-**PROJECT.md 업데이트**
-- `teachers/{id}` 데이터 모델 변경: `repoUrl` → `githubUsername`
-- 레포명 파싱 규칙 명시: `korit_9_gov_java` → `_gov_` 뒤 추출 → 라벨
-
-**뼈대 파일 신규 생성**
-- `src/pages/Student/StudentPage.jsx` — step 상태(1~5)로 단계 관리
-- `src/pages/Student/TeacherSelect.jsx` — Firestore 강사 목록 + GitHub API 레포 조회
-- `src/pages/Student/ModeSelect.jsx` — 챕터/날짜 모드 선택
-- `src/pages/Student/ConceptSelect.jsx` — 챕터(폴더) 또는 날짜별 커밋 목록
-- `src/pages/Student/ChatView.jsx` — 코드 패널 + GPT 채팅 (PC 2단 / 모바일 탭)
-- `src/pages/Student/ResultView.jsx` — 레벨 결과 화면
-- `src/pages/Admin/AdminPage.jsx` — 플레이스홀더
-
-**App.jsx 업데이트**
-- 플레이스홀더 제거 → 실제 StudentPage / AdminPage 연결
-- `logout` prop 전달
-
-**로그인 화면 완성** (`src/pages/Login/Login.jsx`)
-- 디자인: VS Code 다크 테마 + 배경 타이핑 애니메이션
-- 태그라인: "어려운 코드를, 익숙한 언어로 해석하다"
-- 버튼: Google(실제 로그인) / 카카오(개발 중 알림) / GitHub(개발 중 알림)
-- 배경: 6개 코드 블록이 랜덤 위치에서 타이핑 애니메이션 (일부 prefilled)
+**UI 고도화**
+- `LucidLoader` 공통 로딩 컴포넌트 신규 생성 → `GroupManagement`, `TeacherManagement`, `StudentManagement` 전 적용
+- `LucidSelect` 커스텀 드롭다운 컴포넌트 신규 생성 (GroupManagement 강사 선택용)
+- `RepoSelect` 반응형 2단 그리드 도입 (과목 2개 이상 시 자동 전환)
+- 카드 슬림화 및 레포 목록 컴팩트 리스트 전환
 
 ---
 
 ### 아직 안 한 일 / 이어서 해야 할 일
 
-**Day 1 남은 작업 (오늘 마감)**
-- `ChatView.jsx`: GPT API 실제 연동 (`VITE_OPENAI_API_KEY` .env에 있음)
-  - Agent 1: 코드 분석 → 개념 추출
-  - Agent 2: 메타포 생성 (게임 + 생활)
-  - Agent 3: 레벨 진단
-- `TeacherSelect.jsx`: Firestore `teachers` 컬렉션에 테스트 데이터 필요
-  - `{ name: "김준일", githubUsername: "code1218" }` 수동 등록 필요
-- `ResultView.jsx`: 레벨 시각화 (클래시오브클랜 스타일 별/트로피) 미구현
+1. **`groupIDs` 기존 오염 데이터 마이그레이션**
+   - Firebase 콘솔에서 현재 `users` 컬렉션의 `groupIDs` 필드를 직접 확인
+   - 이름(name)으로 저장된 값이 있다면 Firebase Admin SDK 또는 콘솔에서 수동으로 ID로 교체 필요
+   - `normalizeToIds()`가 저장 시 자동 변환하므로, 수정 버튼 한 번 눌러 저장하면 자동 정리됨
 
-**Day 2 예정**
-- 메타포 좋아요 버튼 → Firebase 저장
-- 동기부여 시스템 (나 vs 어제의 나, 함께 공부 중 N명)
+2. **학생 대시보드(`StudentPage.jsx`) 내부 기능**
+   - GPT / Gemini API 연동 (ChatView, ConceptSelect 등)
+   - ResultView 레벨 시각화
+
+3. **`invited_students` → `users` 자동 마이그레이션 로직**
+   - 학생이 처음 로그인할 때 `invited_students` 데이터를 `users`로 이관하는 로직은 `useAuth.js`에 구현되어 있음
+   - 단, `invited_students` 문서 ID가 소문자 이메일이어야 정상 매칭됨 (현재 보장됨)
 
 ---
 
 ### 주의사항 / 알려둘 것
 
-- `.env`에 `VITE_OPENAI_API_KEY` 있음 — GPT API 바로 사용 가능
-- `.env`에 `VITE_ANTHROPIC_API_KEY`도 있으나 현재 사용 안 함 (GPT 사용 예정)
-- GitHub API는 인증 없이 public 레포 사용 (rate limit: 60req/h)
-- Firestore `teachers` 컬렉션이 비어있으면 TeacherSelect에서 목록이 안 뜸 → 테스트 전 수동 등록 필요
-- git 저장소 미설정 상태 — 인수 후 `git init` 또는 기존 레포 연결 필요
+- **데이터 구조**: `groupIDs`는 반드시 Firestore `groups` 컬렉션의 **문서 ID(Firebase auto-generated)**여야 함. 이름(name)이 들어가면 `RepoSelect`에서 `doc(db, 'groups', gId)` 조회 실패 → 학생 화면 빈 화면
+- **모드 정책**: `single`=Replace, `batch`=Merge. 이 정책은 의도적으로 분리된 것이므로 변경 시 주의
+- **이메일 정규화**: 관리자가 입력하는 모든 이메일은 저장 전 `.toLowerCase()` 변환됨. 구글 로그인 이메일도 동일하게 소문자이므로 매칭 보장
+- **GitHub API**: 인증 없이 public 레포 사용 중 (rate limit: 60req/h). `teacher.githubUsername` 필드 기반으로 레포 조회
+- **환경변수**: `.env`에 `VITE_OPENAI_API_KEY` 존재. Gemini API도 준비 중
