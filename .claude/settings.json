@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /c/Users/gurwn/Desktop/Project/Lucid/.env*)",
+      "Bash(npx vite:*)",
+      "Bash(ls /c/Users/gurwn/Desktop/Project/Lucid/*.md)"
+    ]
+  }
+}

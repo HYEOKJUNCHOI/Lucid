@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Pretendard', system-ui, sans-serif;
+  background-color: #050505;
+  color: #f0f0f0;
+  min-height: 100svh;
+  overflow-x: hidden;
+}
+
+@layer utilities {
+  .animate-waterfall-slow {
+    animation: waterfall 40s linear infinite;
+  }
+  .animate-waterfall-medium {
+    animation: waterfall 25s linear infinite;
+  }
+  .animate-waterfall-fast {
+    animation: waterfall 15s linear infinite;
+  }
+  .animate-aurora {
+    animation: aurora 10s ease infinite alternate;
+  }
+}
+
+@keyframes waterfall {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@keyframes aurora {
+  0% { transform: scale(1) translate(0px, 0px); opacity: 0.4; }
+  50% { transform: scale(1.2) translate(20px, 30px); opacity: 0.6; }
+  100% { transform: scale(0.9) translate(-20px, -20px); opacity: 0.4; }
+}
