@@ -139,7 +139,11 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
         setLearningPhase('metaphor');
         
         // Agent 2: 🌿 메타포 해석 (감각적/비유 설명)
-        const prompt2 = `위 기능 설명을 기반으로 메타포를 만들어라.
+        const prompt2 = `위 기능 설명을 기반으로 서로 다른 두 가지 메타포를 만들어라.
+
+[구성]
+1. 🎮 게임 비유
+2. 🏠 일상(생활) 비유
 
 [필수 조건]
 - 코드와 1:1 대응되는 비유만 사용
@@ -149,9 +153,9 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
 - 감성/성장/자연 비유 금지
 
 [출력 규칙]
-- '### 🌿 메타포 해석'으로 시작
+- 각각 '### 🎮 게임 비유', '### 🏠 생활 비유'로 시작
 - 핵심 개념은 **굵게 + \`백틱\` 표시
-- 3~5문장 이내
+- 각 2~4문장 이내
 `;
 
         const res2 = await callOpenAI([
@@ -188,20 +192,23 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     setLoading(true);
 
     try {
-      const promptShuffle = `다음 기능 설명을 기반으로 완전히 다른 메타포를 만들어라:
+      const promptShuffle = `다음 기능 설명을 기반으로 새로운 두 가지 메타포를 만들어라:
 
 ${funcAnalysis}
 
+[구성]
+1. 🎮 게임 비유 (이전과 다른 컨셉)
+2. 🏠 생활 비유 (이전과 다른 컨셉)
+
 [필수 조건]
-- 이전 비유와 겹치지 말 것
 - 코드와 1:1 대응
 - 크기/구조 차이 포함
 - 값 이동 포함
 - 감성 비유 금지
 
 [출력 규칙]
-- '### 🌿 메타포 해석'으로 시작
-- 3~5문장 이내
+- 각각 '### 🎮 게임 비유', '### 🏠 생활 비유'로 시작
+- 각 2~4문장 이내
 `;
 
       const newMetaRes = await callOpenAI([
