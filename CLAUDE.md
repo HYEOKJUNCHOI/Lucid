@@ -110,7 +110,7 @@
   4. `git add` → `commit` → `push` 수행한다.
 
 ### 인수 규칙 (AG에게서 인수받을 때)
-- CLAUDE.md + HANDOFF.md를 읽고 시작한다.
+- CLAUDE.md + HANDOFF.md + PROJECT.md + COMMIT_LOG.md를 읽고 시작한다.
 - 첫 진입이면 전체 코드를 훑으며 CLAUDE.md와 대조해 업무를 파악한 후 작업을 시작한다.
 
 ### 브랜치 전략

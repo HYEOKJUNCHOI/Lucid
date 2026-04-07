@@ -91,7 +91,7 @@
   4. `git add` → `commit` → `push` 수행한다.
 
 ### 6-3. 인수 및 운영 규칙
-- **인수(Takeover):** CC로부터 작업을 넘겨받을 때 GEMINI.md와 HANDOFF.md를 필독한다. 첫 진입 시 전체 코드를 훑으며 문서와 대조해 업무를 완벽히 파악한 후 시작한다.
+- **인수(Takeover):** CC로부터 작업을 넘겨받을 때 GEMINI.md + HANDOFF.md + PROJECT.md + COMMIT_LOG.md를 필독한다. 첫 진입 시 전체 코드를 훑으며 문서와 대조해 업무를 완벽히 파악한 후 시작한다.
 - **브랜치:** `feature/ag-기능명` 또는 `fix/ag-버그명` 전략을 따른다.
 - **커밋 메시지:** `[AG] 타입: 설명` (예: `[AG] feat: 구글 로그인 연동`)
 
