@@ -95,12 +95,19 @@ const StudentManagement = () => {
   };
 
   /* ------------------- 모달 오픈 ------------------- */
-  const openSingleAssign = (userObj) => {
+  const openSingleAssign = async (userObj) => {
     setAssignMode('single');
     setSelectedUser(userObj);
-    // 저장 시 normalizeToIds()가 이름→ID 변환을 처리하므로
-    // 모달 오픈 시에는 원본 groupIDs를 그대로 사용 (타이밍 이슈로 groups 상태가 비어있으면 normalizedIds = [] 가 되는 버그 방지)
-    setSelectedGroupIds(userObj.groupIDs || []);
+
+    // React 상태가 stale할 수 있으므로 Firestore에서 직접 최신 groupIDs 읽기
+    let freshGroupIDs = userObj.groupIDs || [];
+    if (userObj.isRegistered) {
+      try {
+        const snap = await getDoc(doc(db, 'users', userObj.id));
+        if (snap.exists()) freshGroupIDs = snap.data().groupIDs || [];
+      } catch {}
+    }
+    setSelectedGroupIds(freshGroupIDs);
     // 인적사항 정보 동기화
     setInviteName(userObj.displayName || '');
     setInvitePhone(userObj.phone || '');

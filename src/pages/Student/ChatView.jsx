@@ -15,7 +15,11 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
       setCodeLoading(true);
       try {
         let url;
-        if (concept.type === 'chapter') {
+        if (concept.type === 'file') {
+          // 직접 파일 URL로 코드 로드
+          const fileRes = await fetch(concept.downloadUrl);
+          setCode(await fileRes.text());
+        } else if (concept.type === 'chapter') {
           // 챕터 모드: 해당 폴더의 파일 목록 → 첫 번째 파일 내용
           const res = await fetch(
             `https://api.github.com/repos/${teacher.githubUsername}/${repo.name}/contents/${concept.path}`
