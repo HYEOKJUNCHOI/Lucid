@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import Editor from '@monaco-editor/react';
 import useLearningStore from '../../store/useLearningStore';
 
 // GPT 응답 텍스트의 단일 줄바꿈(\n)을 마크다운 문단 구분(\n\n)으로 변환하는 전처리 함수
@@ -476,10 +475,10 @@ OPTIONS_END
 
       {/* PC: 2단 레이아웃 / 모바일: 탭 */}
       <div className="flex-1 flex gap-2 md:gap-3 overflow-hidden">
-        {/* 코드 패널 */}
+        {/* 코드 패널 (더 넓게) */}
         <div
-          className={`flex-1 flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
-            activeTab !== 'code' ? 'hidden md:block' : ''
+          className={`flex-[1.4] flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
+            activeTab !== 'code' ? 'hidden md:flex' : ''
           }`}
         >
           {/* 상단 파일명 + 편집/미리보기 토글 */}
@@ -497,10 +496,9 @@ OPTIONS_END
               {isEditMode ? (
                 <>
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  미리보기
+                  읽기 전용
                 </>
               ) : (
                 <>
@@ -513,28 +511,30 @@ OPTIONS_END
             </button>
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden bg-[#1e1e1e]">
+          <div className="flex-1 overflow-hidden">
             {codeLoading ? (
               <p className="text-gray-400 text-sm p-4">코드 불러오는 중...</p>
-            ) : isEditMode ? (
-              <textarea
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                spellCheck={false}
-                className="flex-1 w-full bg-transparent text-[#d4d4d4] font-mono text-[13px] leading-relaxed p-4 resize-none focus:outline-none overflow-auto"
-                style={{ tabSize: 4 }}
-              />
             ) : (
-              <div className="flex-1 overflow-auto">
-                <SyntaxHighlighter
-                  language="java"
-                  style={vscDarkPlus}
-                  customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '13px', minHeight: '100%' }}
-                  showLineNumbers={true}
-                >
-                  {code}
-                </SyntaxHighlighter>
-              </div>
+              <Editor
+                height="100%"
+                language="java"
+                value={code}
+                onChange={(val) => setCode(val ?? '')}
+                theme="vs-dark"
+                options={{
+                  readOnly: !isEditMode,
+                  fontSize: 13,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'on',
+                  lineNumbers: 'on',
+                  renderLineHighlight: isEditMode ? 'line' : 'none',
+                  cursorStyle: isEditMode ? 'line' : 'block',
+                  tabSize: 4,
+                  padding: { top: 12, bottom: 12 },
+                  scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+                }}
+              />
             )}
           </div>
         </div>
