@@ -38,14 +38,17 @@ const RepoSelect = ({ groupIDs, onSelect }) => {
                 repos = data
                   .filter((r) => !r.fork)
                   .map((r) => {
-                    const match = r.name.match(/_gov_(.+)$/);
-                    const label = match ? match[1].toUpperCase() : r.name;
+                    const match = r.name.match(/^korit_(\d+)_gov_(.+)$/);
+                    if (!match) return null; // 패턴 불일치 제외
+                    const generation = match[1];
+                    const subject = match[2].replace(/_/g, ' ').toUpperCase();
                     return {
                       name: r.name,
-                      label,
+                      label: `${generation}기 · ${subject}`,
                       description: r.description || '레포지토리 설명이 없습니다.',
                     };
-                  });
+                  })
+                  .filter(Boolean);
               }
 
               return { id: gId, group, teacher, repos };

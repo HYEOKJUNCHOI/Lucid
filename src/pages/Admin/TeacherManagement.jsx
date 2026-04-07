@@ -56,7 +56,7 @@ const TeacherManagement = () => {
       const newRef = doc(collection(db, 'teachers'));
       await setDoc(newRef, {
         name: newName.trim(),
-        githubRepo: newUsername.trim()
+        githubUsername: newUsername.trim()
       });
       setNewName('');
       setNewUsername('');
@@ -105,7 +105,7 @@ const TeacherManagement = () => {
     try {
       await updateDoc(doc(db, 'teachers', id), {
         name: editName.trim(),
-        githubRepo: editRepo.trim()
+        githubUsername: editRepo.trim()
       });
       setEditingId(null);
     } catch (err) {
@@ -139,10 +139,10 @@ const TeacherManagement = () => {
           />
         </div>
         <div className="flex-1 flex flex-col gap-1.5">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">GitHub 레포지토리 URL</label>
-          <input 
-            type="text" 
-            placeholder="https://github.com/..." 
+          <label className="text-[11px] font-bold text-gray-500 uppercase ml-1">GitHub 유저네임</label>
+          <input
+            type="text"
+            placeholder="예: code1218"
             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0] focus:ring-1 focus:ring-[#4ec9b0] transition-all"
             value={newUsername}
             onChange={(e) => setNewUsername(e.target.value)}
@@ -187,7 +187,7 @@ const TeacherManagement = () => {
                       type="text"
                       value={editRepo}
                       onChange={(e) => setEditRepo(e.target.value)}
-                      placeholder="GitHub 레포지토리 URL"
+                      placeholder="예: code1218"
                       className="w-full bg-black/60 border border-white/10 rounded-lg px-4 py-2.5 text-white shadow-inner focus:outline-none focus:border-[#4ec9b0] focus:ring-1 focus:ring-[#4ec9b0] transition-all"
                     />
                   </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LucidSelect from '../../components/common/LucidSelect';
 import LucidLoader from '../../components/common/LucidLoader';
@@ -13,6 +13,11 @@ const GroupManagement = () => {
   const [newGroupName, setNewGroupName] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // 그룹 편집 상태
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [editTeacherId, setEditTeacherId] = useState('');
+  const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   // 그룹 데이터 및 강사 목록 실시간 모니터링
   useEffect(() => {
@@ -66,6 +71,25 @@ const GroupManagement = () => {
       alert('추가 실패');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const startEditGroup = (g) => {
+    setEditingGroupId(g.id);
+    setEditTeacherId(g.teacherId || '');
+  };
+
+  const handleUpdateGroup = async (id) => {
+    if (!editTeacherId) return;
+    setIsUpdatingGroup(true);
+    try {
+      await updateDoc(doc(db, 'groups', id), { teacherId: editTeacherId });
+      setEditingGroupId(null);
+    } catch (err) {
+      console.error('그룹 수정 실패:', err);
+      alert('수정 실패');
+    } finally {
+      setIsUpdatingGroup(false);
     }
   };
 
@@ -133,29 +157,67 @@ const GroupManagement = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 p-4">
             {groups.map(g => {
               const matchedTeacher = teachers.find(t => t.id === g.teacherId);
+              const isEditing = editingGroupId === g.id;
               return (
-                <div key={g.id} className="relative flex flex-col p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-[#4ec9b0]/30 transition-all duration-300 group shadow-sm min-h-[140px]">
+                <div key={g.id} className={`relative flex flex-col p-4 rounded-xl border transition-all duration-300 group shadow-sm min-h-[140px] ${isEditing ? 'border-[#4ec9b0]/40 bg-white/[0.05]' : 'border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-[#4ec9b0]/30'}`}>
                   <div className="flex items-start justify-between mb-3">
                     <div className="p-2 bg-[#4ec9b0]/10 rounded-lg border border-[#4ec9b0]/20 text-[#4ec9b0]">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                       </svg>
                     </div>
-                    <button 
-                      onClick={() => handleDelete(g.id, g.name)}
-                      className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {!isEditing && (
+                        <button
+                          onClick={() => startEditGroup(g)}
+                          className="text-gray-600 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all p-1"
+                          title="강사 변경"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(g.id, g.name)}
+                        className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  
+
                   <h3 className="text-[15px] font-bold text-white mb-2 group-hover:text-[#4ec9b0] transition-colors truncate" title={g.name}>{g.name}</h3>
-                  
+
                   <div className="flex flex-col gap-0.5 mt-auto pt-3 border-t border-white/5">
                     <span className="text-[9px] uppercase font-bold text-gray-500 tracking-widest">담당 강사</span>
-                    {matchedTeacher ? (
+                    {isEditing ? (
+                      <div className="flex flex-col gap-2 mt-1">
+                        <LucidSelect
+                          options={teachers.map(t => ({ value: t.id, label: t.name, sublabel: t.githubUsername || t.githubRepo || '' }))}
+                          value={editTeacherId}
+                          onChange={(val) => setEditTeacherId(val)}
+                          placeholder="강사 선택"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingGroupId(null)}
+                            className="flex-1 text-xs text-gray-400 hover:text-white py-1.5 rounded-lg border border-white/10 transition"
+                          >
+                            취소
+                          </button>
+                          <button
+                            onClick={() => handleUpdateGroup(g.id)}
+                            disabled={isUpdatingGroup || !editTeacherId}
+                            className="flex-1 text-xs bg-[#4ec9b0] hover:bg-[#3db79e] text-black font-bold py-1.5 rounded-lg transition disabled:opacity-50"
+                          >
+                            {isUpdatingGroup ? '저장 중...' : '저장'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : matchedTeacher ? (
                       <span className="text-gray-300 font-medium text-[13px]">{matchedTeacher.name}</span>
                     ) : (
                       <span className="text-red-400 text-[13px] font-medium">강사 정보 없음</span>
