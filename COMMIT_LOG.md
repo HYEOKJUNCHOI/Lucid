@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-04-07 (세션 2)
+
+### [CC] fix: 강사 GitHub 유저네임 필드 통일 및 그룹 강사 수정 기능 추가
+- **커밋 해시:** `7065dc2`
+- **지시:** githubRepo → githubUsername 통일, 그룹 카드에서 강사 수정 가능하도록
+- **내용:**
+  - `TeacherManagement`: 저장 필드 `githubRepo` → `githubUsername` 통일, 라벨/placeholder를 유저네임 형식으로 변경
+  - `GroupManagement`: 그룹 카드 hover 시 연필 아이콘 → 인라인 강사 드롭다운 → 저장 기능 추가 (`updateDoc`)
+  - `RepoSelect`: `korit_(\d+)_gov_(.+)` 정규식으로 기수+과목 파싱, 비매칭 레포 자동 제외
+- **수정 파일:**
+  - `src/pages/Admin/TeacherManagement.jsx`
+  - `src/pages/Admin/GroupManagement.jsx`
+  - `src/pages/Student/RepoSelect.jsx`
+
+---
+
 ## 2026-04-07
 
 ### [AG] feat: 학생 그룹 배정 시스템 전면 개편 및 UI 고도화
