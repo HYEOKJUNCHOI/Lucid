@@ -42,10 +42,12 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   // 키보드 연동 (1~4번 선택, Tab 포커스 트랩)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // 1. 단축키 1~4번 처리 (퀴즈 모드일 때만, 입력창 포커스가 아닐 때)
-      if (learningPhase === 'quiz' && !loading && ['1', '2', '3', '4'].includes(e.key)) {
-        if (document.activeElement.tagName !== 'INPUT') {
+      // 1. 단축키 1~4번 처리 (퀴즈 모달이 열려 있으면 포커스 위치 무관하게 작동)
+      if (learningPhase === 'quiz' && !loading && quizOptions.length > 0 && ['1', '2', '3', '4'].includes(e.key)) {
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= quizOptions.length) {
           e.preventDefault();
+          document.activeElement?.blur();
           sendMessage(`${e.key}번`);
           return;
         }
@@ -407,7 +409,15 @@ OPTIONS_END
           <div className="w-full max-w-lg bg-[#1a1a1a] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
             <div className="px-5 py-4 border-b border-[#2a2a2a] flex items-center justify-between">
               <span className="text-sm font-bold text-white">선택지</span>
-              <span className="text-xs text-gray-500">{quizCount} / 5</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-gray-600 flex items-center gap-1">
+                  <kbd className="px-1.5 py-0.5 rounded bg-[#2a2a2a] border border-[#3a3a3a] font-mono text-[10px] text-gray-400">1</kbd>
+                  <span>~</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-[#2a2a2a] border border-[#3a3a3a] font-mono text-[10px] text-gray-400">4</kbd>
+                  <span>키보드로 선택</span>
+                </span>
+                <span className="text-xs text-gray-500">{quizCount} / 5</span>
+              </div>
             </div>
             <div className="p-3 flex flex-col gap-2">
               {quizOptions.map((opt, idx) => (
