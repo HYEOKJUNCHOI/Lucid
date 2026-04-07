@@ -50,7 +50,16 @@ const useLearningStore = create(
       setChaptersLoading: (chaptersLoading) => set({ chaptersLoading }),
       setFunctionalAnalysis: (functionalAnalysis) => set({ functionalAnalysis }),
 
-      // 초기화 (학습 종료/로그아웃 시)
+      // 채팅 세션만 초기화 (파일 변경 시 - 사이드바 상태는 유지)
+      resetSession: () => set({
+        messages: [],
+        learningPhase: 'idle',
+        quizCount: 0,
+        result: null,
+        functionalAnalysis: '',
+      }),
+
+      // 전체 초기화 (학습 종료/로그아웃 시)
       reset: () => set({
         teacher: null,
         repo: null,

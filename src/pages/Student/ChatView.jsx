@@ -20,7 +20,8 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     messages, setMessages,
     learningPhase, setLearningPhase,
     quizCount, setQuizCount,
-    functionalAnalysis, setFunctionalAnalysis
+    functionalAnalysis, setFunctionalAnalysis,
+    resetSession,
   } = useLearningStore();
 
   const [code, setCode] = useState('');
@@ -234,6 +235,12 @@ ${funcAnalysis}
     }
   };
 
+
+  // concept 변경 시 채팅 세션 초기화
+  useEffect(() => {
+    resetSession();
+    setQuizOptions([]);
+  }, [concept?.path, concept?.name]);
 
   // GitHub에서 코드 불러오기
   useEffect(() => {
