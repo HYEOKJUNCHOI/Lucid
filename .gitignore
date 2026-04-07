@@ -49,3 +49,8 @@ desktop.ini
 .claude/
 .gemini/
 
+# Project-specific exclusions
+Lucid_AI리포트/
+Lucid_AI리포트
+
+
