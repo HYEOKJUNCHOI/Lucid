@@ -21,6 +21,7 @@ const StudentManagement = () => {
   const [invitePhone, setInvitePhone] = useState('');
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [originalGroupIds, setOriginalGroupIds] = useState([]); // 모달 열 때 Firestore에서 읽은 원본
 
   useEffect(() => {
     let usersLoaded = false;
@@ -108,6 +109,7 @@ const StudentManagement = () => {
       } catch {}
     }
     setSelectedGroupIds(freshGroupIDs);
+    setOriginalGroupIds(freshGroupIDs);
     // 인적사항 정보 동기화
     setInviteName(userObj.displayName || '');
     setInvitePhone(userObj.phone || '');
@@ -138,6 +140,7 @@ const StudentManagement = () => {
     setInviteName('');
     setInvitePhone('');
     setSelectedGroupIds([]);
+    setOriginalGroupIds([]);
   };
 
   /* ------------------- 체크박스 토글 등 ------------------- */
@@ -147,75 +150,45 @@ const StudentManagement = () => {
     );
   };
 
-  // groupIDs 배열을 항상 Firebase 문서 ID로 정규화하는 헬퍼
-  // 이름(name)으로 저장된 오염 데이터도 안전하게 ID로 변환
-  const normalizeToIds = (rawIds) => {
-    return rawIds.map(raw => {
-      // 이미 유효한 ID인지 확인
-      const byId = groups.find(g => g.id === raw);
-      if (byId) return byId.id;
-      // 이름으로 저장되어 있는 경우 → ID로 변환
-      const byName = groups.find(g => g.name === raw);
-      if (byName) return byName.id;
-      return raw; // 알 수 없는 값은 그대로
-    }).filter(Boolean);
-  };
-
   // 실제 데이터 저장 분기
   const handleSaveGroups = async () => {
     setSaving(true);
     try {
       if (assignMode === 'single') {
-        // 모달에서 선택한 상태를 그대로 저장 (체크 해제 = 제거)
-        // 단, 저장 전 반드시 Firebase 문서 ID로 정규화
-        const mergedGroups = [...new Set(normalizeToIds(selectedGroupIds))];
+        const newGroupIds = [...new Set(selectedGroupIds)];
 
-        // 안전장치: 기존에 그룹이 있었는데 전부 해제하면 확인 요청
-        const hadGroups = (selectedUser.groupIDs || []).length > 0;
-        if (hadGroups && mergedGroups.length === 0) {
+        // 안전장치: Firestore에서 읽은 원본 기준으로 전부 해제 시 확인
+        if (originalGroupIds.length > 0 && newGroupIds.length === 0) {
           if (!window.confirm('소속 그룹을 전부 제거합니다. 계속할까요?')) {
             setSaving(false);
             return;
           }
         }
-        const lowerEmail = (selectedUser.email || '').toLowerCase();
 
         if (selectedUser.isRegistered) {
-          // 가입 유저: users 문서 업데이트
-          const userRef = doc(db, 'users', selectedUser.id);
-          await updateDoc(userRef, { 
-            groupIDs: mergedGroups,
+          // 가입 유저: users 문서만 업데이트 (invited_students 동기화 제거 - 덮어쓰기 버그 방지)
+          await updateDoc(doc(db, 'users', selectedUser.id), {
+            groupIDs: newGroupIds,
             displayName: inviteName.trim(),
             phone: invitePhone.trim()
           });
-          // invited_students에도 동기화 (양쪽 컬렉션 일관성 유지)
-          const inviteRef = doc(db, 'invited_students', lowerEmail);
-          await setDoc(inviteRef, {
-            email: lowerEmail,
-            groupIDs: mergedGroups,
-            name: inviteName.trim(),
-            phone: invitePhone.trim()
-          }, { merge: true });
         } else {
           // 미가입 유저: invited_students 문서 업데이트
-          const inviteRef = doc(db, 'invited_students', lowerEmail);
-          await setDoc(inviteRef, { 
-            email: lowerEmail, 
-            groupIDs: mergedGroups,
+          const lowerEmail = (selectedUser.email || '').toLowerCase();
+          await setDoc(doc(db, 'invited_students', lowerEmail), {
+            email: lowerEmail,
+            groupIDs: newGroupIds,
             name: inviteName.trim(),
             phone: invitePhone.trim()
           }, { merge: true });
         }
-      } 
+      }
       else if (assignMode === 'batch') {
         const promises = checkedIds.map(async (sid) => {
           const target = combinedList.find(c => c.id === sid);
           if (!target) return;
-          
-          // 기존 그룹과 새 그룹 병합 (중복 제거)
-          const currentGroups = normalizeToIds(target.groupIDs || []);
-          const newGroups = normalizeToIds(selectedGroupIds);
-          const mergedGroups = [...new Set([...currentGroups, ...newGroups])];
+
+          const mergedGroups = [...new Set([...(target.groupIDs || []), ...selectedGroupIds])];
 
           if (target.isRegistered) {
             await updateDoc(doc(db, 'users', target.id), { groupIDs: mergedGroups });
@@ -226,7 +199,7 @@ const StudentManagement = () => {
         await Promise.all(promises);
         setCheckedIds([]);
         closeAssignModal();
-      } 
+      }
       else if (assignMode === 'invite') {
         if (!inviteEmail.trim() || !inviteName.trim()) {
            alert("학생 이름과 이메일은 필수입니다.");
@@ -234,32 +207,22 @@ const StudentManagement = () => {
            return;
         }
         const lowerEmail = inviteEmail.trim().toLowerCase();
-        
-        const payload = {
-          email: lowerEmail,
-          name: inviteName.trim(),
-          phone: invitePhone.trim(),
-          groupIDs: selectedGroupIds
-        };
 
         // 이미 가입한 유저인지 확인 (모든 유저 대상)
         const q = query(collection(db, 'users'), where('email', '==', lowerEmail));
         const userSnap = await getDocs(q);
-        
+
         if (!userSnap.empty) {
           const userDoc = userSnap.docs[0];
-          const userData = userDoc.data();
-          const currentGroups = normalizeToIds(userData.groupIDs || []);
-          const newGroups = normalizeToIds(selectedGroupIds);
-          const mergedGroups = [...new Set([...currentGroups, ...newGroups])];
+          const currentGroups = userDoc.data().groupIDs || [];
+          const mergedGroups = [...new Set([...currentGroups, ...selectedGroupIds])];
 
-          await updateDoc(doc(db, 'users', userDoc.id), { 
+          await updateDoc(doc(db, 'users', userDoc.id), {
             groupIDs: mergedGroups,
-            displayName: inviteName.trim(), 
-            phone: invitePhone.trim() 
+            displayName: inviteName.trim(),
+            phone: invitePhone.trim()
           });
         } else {
-          // 미가입 초대의 경우에도 기존 초대 정보가 있는지 확인 후 병합
           const inviteRef = doc(db, 'invited_students', lowerEmail);
           const inviteSnap = await getDoc(inviteRef);
           let finalGroups = selectedGroupIds;
@@ -269,11 +232,11 @@ const StudentManagement = () => {
             finalGroups = [...new Set([...currentInviteGroups, ...selectedGroupIds])];
           }
 
-          await setDoc(inviteRef, { 
+          await setDoc(inviteRef, {
             email: lowerEmail,
             name: inviteName.trim(),
             phone: invitePhone.trim(),
-            groupIDs: finalGroups 
+            groupIDs: finalGroups
           }, { merge: true });
         }
       }

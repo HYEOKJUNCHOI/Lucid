@@ -35,23 +35,22 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const groupIDs = userData?.groupIDs || [];
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // 사이드바 레벨: 1=레포, 2=챕터, 3=파일
-  const [sidebarLevel, setSidebarLevel] = useState(1);
-
-  // 레벨 1: 레포 목록
+  // 레포 목록
   const [classData, setClassData] = useState([]);
   const [classLoading, setClassLoading] = useState(true);
 
-  // 레벨 2: 챕터 목록
+  // 선택된 레포 컨텍스트
   const [teacher, setTeacher] = useState(null);
   const [repo, setRepo] = useState(null);
+
+  // 챕터 목록 (GPT 라벨 포함)
   const [chapters, setChapters] = useState([]);
   const [chaptersLoading, setChaptersLoading] = useState(false);
 
-  // 레벨 3: 파일 목록
-  const [selectedChapter, setSelectedChapter] = useState(null);
-  const [chapterFiles, setChapterFiles] = useState([]);
-  const [chapterFilesLoading, setChapterFilesLoading] = useState(false);
+  // 아코디언 상태: 챕터명 → 확장 여부 / 파일 목록 / 로딩
+  const [expandedChapters, setExpandedChapters] = useState({});
+  const [chapterFilesMap, setChapterFilesMap] = useState({});
+  const [chapterFilesLoadingMap, setChapterFilesLoadingMap] = useState({});
 
   // 메인 영역
   const [step, setStep] = useState(1); // 1: idle, 2: ChatView, 3: ResultView
@@ -99,8 +98,10 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const handleRepoSelect = async (t, r) => {
     setTeacher(t);
     setRepo(r);
-    setSidebarLevel(2);
     setChapters([]);
+    setExpandedChapters({});
+    setChapterFilesMap({});
+    setChapterFilesLoadingMap({});
     setChaptersLoading(true);
     setStep(1);
     setConcept(null);
@@ -196,50 +197,54 @@ const StudentPage = ({ user, userData, onLogout }) => {
     }
   };
 
-  // 챕터 선택 → 파일 목록 로드
-  const handleChapterSelect = async (chapter) => {
-    setSelectedChapter(chapter);
-    setSidebarLevel(3);
-    setChapterFiles([]);
-    setChapterFilesLoading(true);
-    setStep(1);
-    setConcept(null);
+  // 챕터 클릭 → 아코디언 토글 + 파일 지연 로드
+  const handleChapterToggle = async (ch) => {
+    const isExpanded = expandedChapters[ch.name];
+    setExpandedChapters(prev => ({ ...prev, [ch.name]: !isExpanded }));
 
+    // 접을 때 또는 이미 파일이 로드된 경우 추가 fetch 불필요
+    if (isExpanded || chapterFilesMap[ch.name]) return;
+
+    setChapterFilesLoadingMap(prev => ({ ...prev, [ch.name]: true }));
     try {
       const res = await fetch(
-        `https://api.github.com/repos/${teacher.githubUsername}/${repo.name}/contents/${chapter.fullPath}`
+        `https://api.github.com/repos/${teacher.githubUsername}/${repo.name}/contents/${ch.fullPath}`
       );
       const files = await res.json();
       const codeFiles = Array.isArray(files)
         ? files.filter(f => f.type === 'file' && /\.(java|js|jsx|ts|tsx|py)$/.test(f.name))
         : [];
-      setChapterFiles(codeFiles.map(f => ({ name: f.name, downloadUrl: f.download_url, path: f.path })));
+      setChapterFilesMap(prev => ({
+        ...prev,
+        [ch.name]: codeFiles.map(f => ({ name: f.name, downloadUrl: f.download_url, path: f.path }))
+      }));
     } catch (e) {
       console.error('파일 로드 실패:', e);
+      setChapterFilesMap(prev => ({ ...prev, [ch.name]: [] }));
     } finally {
-      setChapterFilesLoading(false);
+      setChapterFilesLoadingMap(prev => ({ ...prev, [ch.name]: false }));
     }
   };
 
   // 파일 선택 → ChatView
-  const handleFileSelect = (file) => {
+  const handleFileSelect = (file, ch) => {
     setConcept({
       type: 'file',
       downloadUrl: file.downloadUrl,
       name: file.name,
       path: file.path,
-      chapterLabel: selectedChapter?.label || selectedChapter?.name,
+      chapterLabel: ch.label || ch.name,
     });
     setStep(2);
   };
 
   const reset = () => {
-    setSidebarLevel(1);
     setTeacher(null);
     setRepo(null);
     setChapters([]);
-    setSelectedChapter(null);
-    setChapterFiles([]);
+    setExpandedChapters({});
+    setChapterFilesMap({});
+    setChapterFilesLoadingMap({});
     setStep(1);
     setConcept(null);
     setResult(null);
@@ -247,8 +252,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   // 사이드바 콘텐츠
   const renderSidebar = () => {
-    // 레벨 1: 레포 목록
-    if (sidebarLevel === 1) {
+    // 레포 미선택: 레포 목록
+    if (!repo) {
       return (
         <div className="flex-1 overflow-y-auto px-3 py-2">
           {groupIDs.length === 0 ? null : classLoading ? (
@@ -284,119 +289,103 @@ const StudentPage = ({ user, userData, onLogout }) => {
       );
     }
 
-    // 레벨 2: 챕터 목록
-    if (sidebarLevel === 2) {
-      return (
-        <div className="flex-1 overflow-y-auto px-3 py-2">
-          {/* 뒤로 + 레포명 */}
-          <button
-            onClick={() => { setSidebarLevel(1); setTeacher(null); setRepo(null); setStep(1); setConcept(null); }}
-            className="flex items-center gap-1.5 text-gray-500 hover:text-white text-[11px] px-2 py-1.5 mb-2 transition"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            레포 목록
-          </button>
-          <p className="text-[10px] font-bold text-gray-500 px-2 mb-2 truncate">{repo?.label}</p>
+    // 레포 선택됨: 아코디언 트리뷰
+    return (
+      <div className="flex-1 overflow-y-auto px-3 py-2">
+        {/* 뒤로가기 */}
+        <button
+          onClick={() => { setTeacher(null); setRepo(null); setChapters([]); setExpandedChapters({}); setChapterFilesMap({}); setChapterFilesLoadingMap({}); setStep(1); setConcept(null); }}
+          className="flex items-center gap-1.5 text-gray-500 hover:text-white text-[11px] px-2 py-1.5 mb-1 transition"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          레포 목록
+        </button>
+        <p className="text-[10px] font-bold text-gray-500 px-2 mb-2 truncate">{repo.label}</p>
 
-          {chaptersLoading ? (
-            <div className="flex items-center gap-2 px-2 py-3">
-              <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
-              <span className="text-gray-500 text-xs">챕터 로딩 중...</span>
-            </div>
-          ) : chapters.length === 0 ? (
-            <p className="text-gray-600 text-xs px-2">챕터 없음</p>
-          ) : (
-            chapters.map((ch) => (
-              <button
-                key={ch.name}
-                onClick={() => handleChapterSelect(ch)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-200 flex items-center gap-2 mb-1.5 group ${
-                  selectedChapter?.name === ch.name && sidebarLevel === 3
-                    ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/40 shadow-[0_0_10px_rgba(78,201,176,0.1)]'
-                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-[#4ec9b0]/20 hover:shadow-[0_0_8px_rgba(78,201,176,0.08)]'
-                }`}
-              >
-                {/* ch 번호 */}
-                <span className="text-[11px] font-bold shrink-0" style={{ color: '#569cd6' }}>
-                  {ch.name.replace('ch', 'ch.')}
-                </span>
-                {/* GPT 라벨 */}
-                <span className="text-[11px] shrink-0" style={{ color: '#8a8a8a' }}>·</span>
-                {ch.labelLoading ? (
-                  <div className="w-3 h-3 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                ) : (
-                  <span className="text-[11px] font-medium truncate" style={{ color: '#ce9178' }}>
-                    {ch.label || ch.name}
-                  </span>
-                )}
-              </button>
-            ))
-          )}
-        </div>
-      );
-    }
-
-    // 레벨 3: 파일 목록
-    if (sidebarLevel === 3) {
-      return (
-        <div className="flex-1 overflow-y-auto px-3 py-2">
-          {/* 뒤로 */}
-          <button
-            onClick={() => { setSidebarLevel(2); setSelectedChapter(null); setChapterFiles([]); setStep(1); setConcept(null); }}
-            className="flex items-center gap-1.5 text-gray-500 hover:text-white text-[11px] px-2 py-1.5 mb-2 transition"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            챕터 목록
-          </button>
-
-          {/* 챕터 헤더 */}
-          <div className="px-2 mb-2 flex items-center gap-1.5">
-            <span className="text-[11px] font-bold" style={{ color: '#569cd6' }}>
-              {selectedChapter?.name?.replace('ch', 'ch.')}
-            </span>
-            <span className="text-gray-600 text-[11px]">·</span>
-            <span className="text-[11px]" style={{ color: '#ce9178' }}>
-              {selectedChapter?.label || ''}
-            </span>
+        {chaptersLoading ? (
+          <div className="flex items-center gap-2 px-2 py-3">
+            <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-gray-500 text-xs">챕터 로딩 중...</span>
           </div>
+        ) : chapters.length === 0 ? (
+          <p className="text-gray-600 text-xs px-2">챕터 없음</p>
+        ) : (
+          chapters.map((ch) => {
+            const isExpanded = expandedChapters[ch.name];
+            const files = chapterFilesMap[ch.name] || [];
+            const isLoadingFiles = chapterFilesLoadingMap[ch.name];
 
-          {chapterFilesLoading ? (
-            <div className="flex items-center gap-2 px-2 py-3">
-              <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
-              <span className="text-gray-500 text-xs">파일 로딩 중...</span>
-            </div>
-          ) : chapterFiles.length === 0 ? (
-            <p className="text-gray-600 text-xs px-2">파일 없음</p>
-          ) : (
-            chapterFiles.map((file) => (
-              <button
-                key={file.name}
-                onClick={() => handleFileSelect(file)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-200 flex items-center gap-2 mb-1.5 group ${
-                  concept?.name === file.name
-                    ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/40 shadow-[0_0_10px_rgba(78,201,176,0.1)]'
-                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-[#4ec9b0]/20 hover:shadow-[0_0_8px_rgba(78,201,176,0.08)]'
-                }`}
-              >
-                <svg className="w-3 h-3 shrink-0 text-gray-600 group-hover:text-[#dcdcaa] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span
-                  className="text-[11px] font-medium truncate"
-                  style={{ color: concept?.name === file.name ? '#4ec9b0' : '#dcdcaa' }}
+            return (
+              <div key={ch.name} className="mb-0.5">
+                {/* 챕터 행 */}
+                <button
+                  onClick={() => handleChapterToggle(ch)}
+                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/[0.04] transition-all group"
                 >
-                  {file.name}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      );
-    }
+                  <svg
+                    className={`w-2.5 h-2.5 text-gray-600 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                    fill="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path d="M8 5l8 7-8 7V5z" />
+                  </svg>
+                  <svg className="w-3.5 h-3.5 shrink-0 text-gray-500 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                  </svg>
+                  <span className="text-[11px] font-bold shrink-0" style={{ color: '#569cd6' }}>
+                    {ch.name.replace('ch', 'ch.')}
+                  </span>
+                  {ch.labelLoading ? (
+                    <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0 ml-0.5" />
+                  ) : (
+                    <span className="text-[11px] truncate min-w-0" style={{ color: '#ce9178' }}>
+                      {ch.label || ''}
+                    </span>
+                  )}
+                </button>
+
+                {/* 파일 목록 (확장 시) */}
+                {isExpanded && (
+                  <div className="ml-5 border-l border-white/[0.06] pl-2 mt-0.5 mb-1">
+                    {isLoadingFiles ? (
+                      <div className="flex items-center gap-1.5 px-2 py-1.5">
+                        <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                        <span className="text-gray-600 text-[10px]">로딩 중...</span>
+                      </div>
+                    ) : files.length === 0 ? (
+                      <p className="text-gray-600 text-[10px] px-2 py-1">파일 없음</p>
+                    ) : (
+                      files.map((file) => (
+                        <button
+                          key={file.name}
+                          onClick={() => handleFileSelect(file, ch)}
+                          className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md transition-all group mb-0.5 ${
+                            concept?.name === file.name
+                              ? 'bg-[#4ec9b0]/10'
+                              : 'hover:bg-white/[0.04]'
+                          }`}
+                        >
+                          <svg className="w-3 h-3 shrink-0 text-gray-600 group-hover:text-[#dcdcaa] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span
+                            className="text-[11px] truncate"
+                            style={{ color: concept?.name === file.name ? '#4ec9b0' : '#dcdcaa' }}
+                          >
+                            {file.name}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
   };
 
   return (
@@ -533,9 +522,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
               </div>
               <h2 className="text-xl font-bold text-white mb-2">오늘 배운 파일을 선택해주세요</h2>
               <p className="text-gray-500 text-sm">
-                {sidebarLevel === 1 && '왼쪽에서 과목을 선택하면 챕터 목록이 나타납니다.'}
-                {sidebarLevel === 2 && '챕터를 선택하면 파일 목록이 나타납니다.'}
-                {sidebarLevel === 3 && '파일을 선택하면 AI 학습이 시작됩니다.'}
+                {!repo ? '왼쪽에서 과목을 선택하면 챕터 목록이 나타납니다.' : '챕터를 펼쳐 파일을 선택하면 AI 학습이 시작됩니다.'}
               </p>
             </div>
 
