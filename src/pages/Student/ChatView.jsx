@@ -29,6 +29,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [codeLoading, setCodeLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('chat'); // 모바일 탭: "code" | "chat"
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
+  const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지 (모달용)
   
   const messagesEndRef = useRef(null);
   const chatPanelRef = useRef(null);
@@ -282,6 +283,7 @@ ${funcAnalysis}
   // GPT에게 메시지 보내기 (자유 채팅 & 퀴즈)
   const sendMessage = async (text, isQuizTrigger = false) => {
     if ((!text.trim() && !isQuizTrigger) || loading) return;
+    setQuizOptions([]); // 선택 즉시 모달 닫기
 
     let userContent = text;
     let isHidden = false;
@@ -343,10 +345,24 @@ OPTIONS_END
       }
 
       const res = await callOpenAI(apiMessages, systemPrompt);
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: res }]);
 
-      // 퀴즈 카운트 및 종료 상태 파싱
+      // OPTIONS 파싱 → 모달 state에 저장, 채팅 메시지에서는 제거
+      if ((learningPhase === 'quiz' || isQuizTrigger) && res.includes('OPTIONS_START') && res.includes('OPTIONS_END')) {
+        const optionsPart = res.split('OPTIONS_START')[1].split('OPTIONS_END')[0];
+        const parsed = optionsPart
+          .split('\n')
+          .filter((l) => l.trim().match(/^[1-4][\.\)]/))
+          .map((l) => l.trim().replace(/^[1-4][\.\)]\s*/, ''));
+        setQuizOptions(parsed);
+        // 채팅에는 OPTIONS 블록 제거된 텍스트만 저장
+        const cleanRes = res.replace(/OPTIONS_START[\s\S]*?OPTIONS_END/g, '').trim();
+        setMessages(prev => [...prev, { role: 'assistant', content: cleanRes }]);
+      } else {
+        setQuizOptions([]);
+        setMessages(prev => [...prev, { role: 'assistant', content: res }]);
+      }
+
+      // 퀴즈 카운트 및 종료 상태 파싱 (OPTIONS는 위에서 이미 처리됨)
       if (learningPhase === 'quiz' || isQuizTrigger) {
         if (res.includes("완료되었습니다")) {
           setLearningPhase('completed');
@@ -370,46 +386,7 @@ OPTIONS_END
       return msg.content;
     }
 
-    if (msg.content.includes('OPTIONS_START') && msg.content.includes('OPTIONS_END')) {
-      const parts = msg.content.split('OPTIONS_START');
-      const textPart = parts[0];
-      const optionsPart = parts[1].split('OPTIONS_END')[0];
-      const postText = parts[1].split('OPTIONS_END')[1] || '';
-
-      const options = optionsPart
-        .split('\n')
-        .filter((l) => l.trim().match(/^[1-4][\.\)]/))
-        .map((l) => l.trim().replace(/^[1-4][\.\)]\s*/, ''));
-
-      return (
-        <>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            className="prose prose-invert prose-base max-w-none prose-p:leading-relaxed prose-p:my-4 prose-headings:text-cyan-400 prose-li:my-1 prose-strong:text-cyan-300 prose-a:text-[#4ec9b0] prose-pre:bg-[#050505] prose-pre:border prose-pre:border-black/40 prose-code:text-[#ce9178] prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
-          >
-            {preprocessMarkdown(textPart + postText)}
-          </ReactMarkdown>
-          {index === messages.length - 1 && options.length > 0 && learningPhase === 'quiz' && (
-            <div className="mt-4 flex flex-col gap-2">
-              {options.map((opt, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => sendMessage(`${idx + 1}번`)}
-                  disabled={loading}
-                  tabIndex="0"
-                  className="quiz-option text-left px-4 py-3 rounded-xl bg-[#111111] hover:bg-cyan-900/40 border border-[#333333] hover:border-cyan-500/50 transition-all text-gray-200 text-sm flex gap-3 items-center focus:outline-none focus:ring-2 focus:ring-cyan-400 group"
-                >
-                  <div className="w-6 h-6 rounded bg-[#222222] group-hover:bg-cyan-500/20 group-hover:text-cyan-400 flex justify-center items-center font-bold text-xs shrink-0 transition-colors border border-[#444444] group-hover:border-cyan-500/30 shadow-sm">
-                    {idx + 1}
-                  </div>
-                  {opt}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
-      );
-    }
+    // OPTIONS는 모달로 처리되므로 채팅 렌더러에서는 일반 마크다운으로만 표시
 
     return (
       <ReactMarkdown
@@ -422,7 +399,34 @@ OPTIONS_END
   };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-7xl mx-auto">
+    <div className="flex flex-col h-full w-full max-w-7xl mx-auto relative">
+
+      {/* 퀴즈 선택지 모달 오버레이 */}
+      {quizOptions.length > 0 && learningPhase === 'quiz' && (
+        <div className="absolute inset-0 z-20 flex items-end justify-center pb-24 px-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-[#1a1a1a] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
+            <div className="px-5 py-4 border-b border-[#2a2a2a] flex items-center justify-between">
+              <span className="text-sm font-bold text-white">선택지</span>
+              <span className="text-xs text-gray-500">{quizCount} / 5</span>
+            </div>
+            <div className="p-3 flex flex-col gap-2">
+              {quizOptions.map((opt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => sendMessage(`${idx + 1}번`)}
+                  disabled={loading}
+                  className="w-full text-left flex items-center gap-4 px-4 py-3.5 rounded-xl bg-[#111] hover:bg-[#1e2a2a] border border-[#2a2a2a] hover:border-cyan-500/40 transition-all group"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-[#222] border border-[#3a3a3a] group-hover:bg-cyan-500/15 group-hover:border-cyan-500/40 flex items-center justify-center font-bold text-sm text-gray-400 group-hover:text-cyan-400 shrink-0 transition-all">
+                    {idx + 1}
+                  </div>
+                  <span className="text-gray-200 text-sm group-hover:text-white transition-colors">{opt}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* 모바일 탭 전환 */}
       <div className="flex gap-2 md:hidden mb-4">
         <button
