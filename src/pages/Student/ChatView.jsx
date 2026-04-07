@@ -122,8 +122,15 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
         const codeContext = `[오늘 배운 코드]\n${code.substring(0, 3000)}`;
 
         // Agent 1: 🧩 기능적 해석 (실제 동작 로직)
-        const prompt1 = `${codeContext}\n\n위 코드가 어떤 데이터를 받아서 어떤 순서로 처리하는지, 실제 동작 원리를 초보자도 이해할 수 있게 3~4문장으로 상세히 설명해 줘. **핵심적인 클래스명이나 변수명은 반드시 백틱(\`)으로 감싸서 강조해.** 
-결과는 반드시 '### 🧩 기능적 해석' 이라는 제목으로 시작해.`;
+        const prompt1 = `${codeContext}\n\n위 코드의 실행 흐름을 설명해라.
+
+[규칙]
+- "값이 어떻게 변하는지"만 설명
+- 불필요한 일반 설명 금지 (프로그램 시작점 등)
+- 최대 3문장
+- 변수명 반드시 포함
+- 결과는 '### 🧩 기능적 해석'으로 시작
+`;
         const res1 = await callOpenAI([{ role: 'user', content: prompt1 }]);
         
         // 기능 분석 결과 저장 (나중에 셔플 시 사용)
@@ -132,13 +139,20 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
         setLearningPhase('metaphor');
         
         // Agent 2: 🌿 메타포 해석 (감각적/비유 설명)
-        const prompt2 = `앞서 네가 분석한 기능을 바탕으로, 초보자도 바로 직관적으로 이해할 수 있는 적절한 비유(메타포)를 만들어 줘. 
-일상생활이나 게임 등 친숙한 개념을 사용하여 '느낌'을 전달해 줘.
+        const prompt2 = `위 기능 설명을 기반으로 메타포를 만들어라.
 
-**[포맷 지침]**
-- 결과는 반드시 '### 🌿 메타포 해석' 이라는 제목으로 시작해.
-- 핵심 기술 개념이 비유의 어디에 해당되는지 **굵게 표시하고 백틱(\`)을 활용**해.
-- 존댓말로 친절하게 설명해.`;
+[필수 조건]
+- 코드와 1:1 대응되는 비유만 사용
+- 크기 또는 구조 차이 반드시 포함
+- 값 이동 과정 포함
+- 손실 가능성 표현 (있다면)
+- 감성/성장/자연 비유 금지
+
+[출력 규칙]
+- '### 🌿 메타포 해석'으로 시작
+- 핵심 개념은 **굵게 + \`백틱\` 표시
+- 3~5문장 이내
+`;
 
         const res2 = await callOpenAI([
           { role: 'user', content: prompt1 }, 
@@ -174,13 +188,21 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     setLoading(true);
 
     try {
-      const promptShuffle = `너는 앞서 이 코드의 기능을 다음과 같이 분석했어:\n${funcAnalysis}\n\n이제 이 기능을 설명하기 위한 **완전히 다른 컨셉의 새로운 🌿 메타포 해석**을 하나 더 만들어 줘. 
-이전 비유와 겹치지 않는 신선한 비유여야 해.
+      const promptShuffle = `다음 기능 설명을 기반으로 완전히 다른 메타포를 만들어라:
 
-**[포맷 지침]**
-- 결과는 반드시 '### 🌿 메타포 해석' 이라는 제목으로 시작해.
-- 핵심 기술 개념이 비유의 어디에 해당되는지 **굵게 표시하고 백틱(\`)을 활용**해.
-- 존댓말로 친절하게 설명해.`;
+${funcAnalysis}
+
+[필수 조건]
+- 이전 비유와 겹치지 말 것
+- 코드와 1:1 대응
+- 크기/구조 차이 포함
+- 값 이동 포함
+- 감성 비유 금지
+
+[출력 규칙]
+- '### 🌿 메타포 해석'으로 시작
+- 3~5문장 이내
+`;
 
       const newMetaRes = await callOpenAI([
         { role: 'user', content: '코드를 분석해줘.' },
