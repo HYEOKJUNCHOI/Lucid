@@ -44,12 +44,11 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   // 키보드 연동 (1~4번 선택, Tab 포커스 트랩)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // 1. 단축키 1~4번 처리 (퀴즈 모달이 열려 있으면 포커스 위치 무관하게 작동)
+      // 1. 퀴즈 선택지가 있으면 1~4 키 항상 작동 (input 포커스 여부 무관)
       if (learningPhase === 'quiz' && !loading && quizOptions.length > 0 && ['1', '2', '3', '4'].includes(e.key)) {
         const num = parseInt(e.key);
         if (num >= 1 && num <= quizOptions.length) {
           e.preventDefault();
-          document.activeElement?.blur();
           sendMessage(`${e.key}번`);
           return;
         }
@@ -413,42 +412,8 @@ OPTIONS_END
   };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-7xl mx-auto relative">
+    <div className="flex flex-col h-full w-full max-w-7xl mx-auto">
 
-      {/* 퀴즈 선택지 모달 오버레이 */}
-      {quizOptions.length > 0 && learningPhase === 'quiz' && (
-        <div className="absolute inset-0 z-20 flex items-end justify-center pb-24 px-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-[#1a1a1a] border border-[#333] rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up">
-            <div className="px-5 py-4 border-b border-[#2a2a2a] flex items-center justify-between">
-              <span className="text-sm font-bold text-white">선택지</span>
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] text-gray-600 flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 rounded bg-[#2a2a2a] border border-[#3a3a3a] font-mono text-[10px] text-gray-400">1</kbd>
-                  <span>~</span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-[#2a2a2a] border border-[#3a3a3a] font-mono text-[10px] text-gray-400">4</kbd>
-                  <span>키보드로 선택</span>
-                </span>
-                <span className="text-xs text-gray-500">{quizCount} / 5</span>
-              </div>
-            </div>
-            <div className="p-3 flex flex-col gap-2">
-              {quizOptions.map((opt, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => sendMessage(`${idx + 1}번`)}
-                  disabled={loading}
-                  className="w-full text-left flex items-center gap-4 px-4 py-3.5 rounded-xl bg-[#111] hover:bg-[#1e2a2a] border border-[#2a2a2a] hover:border-cyan-500/40 transition-all group"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-[#222] border border-[#3a3a3a] group-hover:bg-cyan-500/15 group-hover:border-cyan-500/40 flex items-center justify-center font-bold text-sm text-gray-400 group-hover:text-cyan-400 shrink-0 transition-all">
-                    {idx + 1}
-                  </div>
-                  <span className="text-gray-200 text-sm group-hover:text-white transition-colors">{opt}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
       {/* 모바일 탭 전환 */}
       <div className="flex gap-2 md:hidden mb-4">
         <button
@@ -637,7 +602,30 @@ OPTIONS_END
 
           {/* 입력창 + 퀴즈 버튼 */}
           <div className="border-t border-[#333333] p-2 md:p-3 flex flex-col gap-2 bg-[#050505]">
-            
+
+            {/* 퀴즈 선택지 - 입력창 바로 위 인라인 */}
+            {quizOptions.length > 0 && learningPhase === 'quiz' && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between px-1 mb-0.5">
+                  <span className="text-[10px] text-gray-600">선택지 — 키보드 숫자로도 선택 가능</span>
+                  <span className="text-[10px] text-gray-600">{quizCount} / 5</span>
+                </div>
+                {quizOptions.map((opt, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => sendMessage(`${idx + 1}번`)}
+                    disabled={loading}
+                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#111] hover:bg-[#1a2a2a] border border-[#2a2a2a] hover:border-cyan-500/40 transition-all group"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-[#1e1e1e] border border-[#3a3a3a] group-hover:bg-cyan-500/15 group-hover:border-cyan-500/40 flex items-center justify-center font-bold text-xs text-gray-500 group-hover:text-cyan-400 shrink-0 transition-all">
+                      {idx + 1}
+                    </div>
+                    <span className="text-gray-300 text-sm group-hover:text-white transition-colors">{opt}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* 퀴즈 시작 버튼은 일반 채팅 모드일 때만 노출 */}
             {learningPhase === 'chat' && (
               <div className="flex justify-end">
