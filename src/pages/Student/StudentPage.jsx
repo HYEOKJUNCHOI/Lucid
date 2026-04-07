@@ -6,6 +6,7 @@ import ChatView from './ChatView';
 import ResultView from './ResultView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
+import TypingPractice from './TypingPractice';
 import { getApiKey } from '../../lib/apiKey';
 
 // GPT로 코드 분석 → 주제 라벨 반환
@@ -54,6 +55,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [streak, setStreak] = useState(0);
+  const [mode, setMode] = useState(null); // 'chapter' | 'levelup' | null
 
   // 연속 출석 streak 계산 (하루에 한 번만 갱신)
   useEffect(() => {
@@ -303,8 +305,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
             classData.map(({ id, group, teacher: t, repos }) => (
               <div key={id} className="mb-4">
                 <div className="px-2 mb-1.5">
-                  <p className="text-[11px] font-bold text-gray-400 truncate">{group.name}</p>
-                  <p className="text-[10px] text-gray-600">@{t.githubUsername}</p>
+                  <p className="text-[13px] font-extrabold text-white/90 truncate">{group.name}</p>
                 </div>
                 {repos.map(r => (
                   <button
@@ -467,6 +468,36 @@ const StudentPage = ({ user, userData, onLogout }) => {
           </div>
         </div>
 
+        {/* 콤팩트 스테이터스 */}
+        {(() => {
+          const xp = visitedFiles.length * 100;
+          const level = Math.floor(visitedFiles.length / 5) + 1;
+          const xpInLevel = (visitedFiles.length % 5) * 100;
+          const xpForNext = 500;
+          const xpPercent = Math.min((xpInLevel / xpForNext) * 100, 100);
+          return (
+            <div className="px-3 py-3 border-b border-white/[0.06]">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4ec9b0] to-[#569cd6] flex items-center justify-center shadow-sm shrink-0">
+                  <span className="text-xs font-black text-black">{level}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] font-bold text-white truncate">{userData?.displayName || user?.displayName || '학생'}</div>
+                  <div className="text-[10px] text-gray-500">{xpInLevel}/{xpForNext} XP</div>
+                </div>
+              </div>
+              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-gradient-to-r from-[#4ec9b0] to-[#569cd6] rounded-full transition-all duration-700" style={{ width: `${xpPercent}%` }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-600">
+                <span>🔥 {streak}일 연속</span>
+                <span>📚 {visitedFiles.length}파일</span>
+                <span>⚡ {xp} XP</span>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* 사이드바 콘텐츠 */}
         {renderSidebar()}
 
@@ -566,7 +597,10 @@ const StudentPage = ({ user, userData, onLogout }) => {
       <main className="flex-1 overflow-hidden p-2 pt-16 md:pt-2 md:p-2 flex justify-center bg-theme-bg">
         <div className="w-full max-w-[95%] xl:max-w-[1400px] h-full flex flex-col justify-center pb-2">
 
-          {groupIDs.length === 0 ? (
+          {mode === 'typing' ? (
+            <TypingPractice onBack={() => setMode(null)} />
+
+          ) : groupIDs.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-6 text-center animate-fade-in-up mt-20 md:mt-0">
               <div className="bg-theme-card/90 border border-theme-border rounded-[2rem] p-10 max-w-md w-full shadow-2xl backdrop-blur-xl">
                 <div className="w-16 h-16 mx-auto mb-6 bg-theme-primary/10 rounded-full flex items-center justify-center">
@@ -580,66 +614,65 @@ const StudentPage = ({ user, userData, onLogout }) => {
             </div>
 
           ) : step === 1 && !repo ? (
-            // ─── 듀오링고 스타일 스테이터스 화면 ───────────────────────────
-            (() => {
-              const xp = visitedFiles.length * 100;
-              const level = Math.floor(visitedFiles.length / 5) + 1;
-              const xpInLevel = (visitedFiles.length % 5) * 100;
-              const xpForNext = 500;
-              const xpPercent = Math.min((xpInLevel / xpForNext) * 100, 100);
-              const name = userData?.displayName || user?.displayName || '학생';
-              return (
-                <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in-up px-4">
-                  {/* 레벨 배지 */}
-                  <div className="mb-8">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#4ec9b0] to-[#569cd6] flex items-center justify-center shadow-[0_0_40px_rgba(78,201,176,0.25)] mb-4 mx-auto">
-                      <div className="text-center">
-                        <div className="text-[10px] font-bold text-black/60 uppercase tracking-widest leading-none">LEVEL</div>
-                        <div className="text-3xl font-black text-black leading-none mt-0.5">{level}</div>
-                      </div>
-                    </div>
-                    <h2 className="text-xl font-bold text-white">안녕하세요, {name}님 👋</h2>
-                    <p className="text-gray-500 text-sm mt-1">오늘도 한 단계 성장해봐요</p>
-                  </div>
+            // ─── 모드 선택 카드 2장 ───────────────────────────
+            <div className="flex flex-col items-center justify-center h-full animate-fade-in-up px-4">
+              <h2 className="text-xl font-bold text-white mb-2">오늘은 뭘 할까요?</h2>
+              <p className="text-gray-500 text-sm mb-8">왼쪽에서 과목을 선택한 뒤 모드를 골라주세요</p>
 
-                  {/* 스탯 카드 3개 */}
-                  <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-6">
-                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 flex flex-col items-center gap-1">
-                      <span className="text-2xl">🔥</span>
-                      <span className="text-xl font-black text-[#fbbf24]">{streak}</span>
-                      <span className="text-[11px] text-gray-500">연속 출석</span>
-                    </div>
-                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 flex flex-col items-center gap-1">
-                      <span className="text-2xl">⚡</span>
-                      <span className="text-xl font-black text-[#4ec9b0]">{xp}</span>
-                      <span className="text-[11px] text-gray-500">총 XP</span>
-                    </div>
-                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 flex flex-col items-center gap-1">
-                      <span className="text-2xl">📚</span>
-                      <span className="text-xl font-black text-[#569cd6]">{visitedFiles.length}</span>
-                      <span className="text-[11px] text-gray-500">학습 파일</span>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+                {/* 챕터별 학습 카드 */}
+                <button
+                  onClick={() => setMode('chapter')}
+                  className="group relative bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 text-left hover:border-[#4ec9b0]/40 hover:bg-[#4ec9b0]/5 transition-all duration-300 hover:shadow-[0_0_30px_rgba(78,201,176,0.1)]"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4ec9b0]/20 to-[#569cd6]/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                    <svg className="w-7 h-7 text-[#4ec9b0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                    </svg>
                   </div>
-
-                  {/* XP 진행 바 */}
-                  <div className="w-full max-w-sm mb-8">
-                    <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1.5">
-                      <span>Lv.{level}</span>
-                      <span>{xpInLevel} / {xpForNext} XP</span>
-                      <span>Lv.{level + 1}</span>
-                    </div>
-                    <div className="h-2.5 bg-white/[0.06] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-[#4ec9b0] to-[#569cd6] rounded-full transition-all duration-1000 ease-out"
-                        style={{ width: `${xpPercent}%` }}
-                      />
-                    </div>
+                  <h3 className="text-lg font-bold text-white mb-2">챕터별 학습</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">강사의 코드를 챕터 순서대로 학습합니다. AI가 코드를 분석하고 비유로 설명해줍니다.</p>
+                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#4ec9b0] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span>과목 먼저 선택하세요</span>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
+                </button>
 
-                  <p className="text-gray-500 text-sm">왼쪽에서 오늘 배운 과목을 선택하세요</p>
+                {/* 레벨업 문제지옥 카드 */}
+                <button
+                  onClick={() => setMode('levelup')}
+                  className="group relative bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 text-left hover:border-[#f59e0b]/40 hover:bg-[#f59e0b]/5 transition-all duration-300 hover:shadow-[0_0_30px_rgba(245,158,11,0.1)]"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f59e0b]/20 to-[#ef4444]/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                    <svg className="w-7 h-7 text-[#f59e0b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2">레벨업 문제지옥</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">프로그래밍 핵심 키워드를 퀴즈로 마스터합니다. 틀릴수록 강해집니다.</p>
+                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#f59e0b] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span>바로 시작</span>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </div>
+                </button>
+              </div>
+
+              {/* 타자연습 카드 (하단 전체폭) */}
+              <button
+                onClick={() => setMode('typing')}
+                className="group w-full max-w-2xl mt-4 bg-white/[0.03] border border-white/[0.08] rounded-2xl p-6 text-left hover:border-[#a78bfa]/40 hover:bg-[#a78bfa]/5 transition-all duration-300 hover:shadow-[0_0_30px_rgba(167,139,250,0.1)] flex items-center gap-5"
+              >
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#a78bfa]/20 to-[#818cf8]/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                  <span className="text-2xl">⌨️</span>
                 </div>
-              );
-            })()
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-white mb-0.5">코드 타자연습</h3>
+                  <p className="text-sm text-gray-400">실제 코드를 보고 직접 타이핑하며 손에 익혀보세요</p>
+                </div>
+                <svg className="w-4 h-4 text-gray-600 group-hover:text-[#a78bfa] transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </div>
 
           ) : step === 1 ? (
             <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in-up">

@@ -35,6 +35,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [loading, setLoading] = useState(false);
   const [codeLoading, setCodeLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(true); // 기본값: 편집 모드
+  const [editorFontSize, setEditorFontSize] = useState(13); // Ctrl+Wheel 줌
   const [activeTab, setActiveTab] = useState('chat'); // 모바일 탭: "code" | "chat"
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
   const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지
@@ -58,6 +59,9 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const editorRef = useRef(null);
   const monacoRef = useRef(null);
   const highlightDecorRef = useRef([]);
+  const splitContainerRef = useRef(null);
+  const [splitRatio, setSplitRatio] = useState(0.45); // 코드 패널 비율 (0~1)
+  const isDraggingRef = useRef(false);
 
   // 코드 토큰 Ctrl+Click → Monaco 에디터에서 해당 위치 하이라이트
   const highlightCodeToken = (token) => {
@@ -105,6 +109,32 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     }, 1500);
   };
 
+  // 패널 스플리터 드래그
+  const handleSplitMouseDown = (e) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const container = splitContainerRef.current;
+    if (!container) return;
+
+    const onMouseMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const ratio = (e.clientX - rect.left) / rect.width;
+      setSplitRatio(Math.max(0.2, Math.min(0.8, ratio)));
+    };
+    const onMouseUp = () => {
+      isDraggingRef.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
   // Monaco onMount: editorRef 저장 + Ctrl+Click으로 선언부 점프
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -115,6 +145,16 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     editor.onKeyDown((e) => { if (e.ctrlKey || e.metaKey) editorDom?.classList.add('ctrl-held'); });
     editor.onKeyUp(() => editorDom?.classList.remove('ctrl-held'));
     editorDom?.addEventListener('mouseleave', () => editorDom?.classList.remove('ctrl-held'));
+
+    // Ctrl+Wheel 줌
+    editorDom?.addEventListener('wheel', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      setEditorFontSize(prev => {
+        const next = e.deltaY < 0 ? prev + 1 : prev - 1;
+        return Math.max(10, Math.min(28, next));
+      });
+    }, { passive: false });
 
     editor.onMouseDown((e) => {
       if (!(e.event.ctrlKey || e.event.metaKey)) return;
@@ -832,10 +872,11 @@ OPTIONS_END
       </div>
 
       {/* PC: 2단 레이아웃 / 모바일: 탭 */}
-      <div className="flex-1 flex gap-2 md:gap-3 overflow-hidden">
+      <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
         {/* 코드 패널 */}
         <div
-          className={`flex-[0.82] flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
+          style={{ width: `${splitRatio * 100}%` }}
+          className={`flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg shrink-0 ${
             activeTab !== 'code' ? 'hidden md:flex' : ''
           }`}
         >
@@ -882,7 +923,7 @@ OPTIONS_END
                 onMount={handleEditorMount}
                 options={{
                   readOnly: !isEditMode,
-                  fontSize: 13,
+                  fontSize: editorFontSize,
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,
                   wordWrap: 'on',
@@ -898,11 +939,19 @@ OPTIONS_END
           </div>
         </div>
 
+        {/* 스플리터 (드래그 핸들) */}
+        <div
+          onMouseDown={handleSplitMouseDown}
+          className="hidden md:flex w-1.5 cursor-col-resize items-center justify-center group hover:bg-cyan-500/20 transition-colors rounded-full mx-0.5 shrink-0"
+        >
+          <div className="w-0.5 h-8 bg-gray-600 group-hover:bg-cyan-400 rounded-full transition-colors" />
+        </div>
+
         {/* 채팅 패널 */}
         <div
           ref={chatPanelRef}
           id="chat-panel-container"
-          className={`flex-1 flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
+          className={`flex-1 min-w-0 flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
             activeTab !== 'chat' ? 'hidden md:flex' : ''
           }`}
         >
