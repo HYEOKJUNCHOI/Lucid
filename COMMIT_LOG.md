@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-04-07 (세션 4)
+
+### [AG] feat: ChatView GPT 연동 및 Zustand 상태관리 전면 도입
+- **지시:** ChatView GPT 연동(에이전트 3단계), Zustand를 이용한 학습 상태 유지, UI 전면 고도화
+- **내용:**
+  - `ChatView`: OpenAI GPT API 연동 및 3단계 에이전트(기능 분석 → 메타포 생성 → 퀴즈 생성) 로직 구현
+  - `useLearningStore` (신규): Zustand + Persist 미들웨어 도입으로 새로고침 시에도 학습 데이터(채팅, 선택된 레포, 현재 단계 등) 자동 복구
+  - `StudentPage`: 로컬 state(useState)를 Zustand store로 전면 교체하여 데이터 흐름 단일화
+  - `StudentPage`: GitHub API 호출 시 인증 헤더(`VITE_GITHUB_TOKEN`) 지원 및 Rate Limit 에러 핸들링 보강
+  - `tailwind.config.js`: `@tailwindcss/typography` 플러그인 추가 → GPT 응답의 마크다운 서식 렌더링 최적화
+  - UI/UX: 메인 레이아웃을 더 넓게(VScode 스타일) 조정하고, 사이드바 아코디언 챕터 라벨의 시각적 질감 개선
+  - `useAuth.js`: 유저 동기화 로직 가독성 및 안정성 개선
+- **수정 파일:**
+  - `src/pages/Student/ChatView.jsx` — GPT 연동 및 퀴즈 시스템
+  - `src/store/useLearningStore.js` — 신규 Zustand 스토어 (Persistence)
+  - `src/pages/Student/StudentPage.jsx` — 상태관리 리팩토링 및 UI 고도화
+  - `package.json`, `tailwind.config.js` — 의존성 및 플러그인 추가
+  - `src/hooks/useAuth.js` — 유저 세션 동기화 보강
+
+---
+
 ## 2026-04-07 (세션 3)
 
 ### [CC] refactor: groupIDs 버그 수정 + 사이드바 아코디언 트리 UI

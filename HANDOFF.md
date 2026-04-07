@@ -37,6 +37,61 @@
 ## 인수인계 내용
 
 ### 작성 정보
+- **작성자:** Antigravity (AG)
+- **작성 시각:** 2026-04-07 KST (세션 4)
+- **빌드 상태:** 컴파일 에러 없음 (Vite build success) ✅
+
+---
+
+### 현재 상태 요약
+`ChatView.jsx` GPT 연동 및 3단계 학습 에이전트(분석-메타포-퀴즈) 구현 완료. Zustand 도입으로 모든 학습 상태(채팅, 선택 기록 등)가 새로고침 시에도 유지됨.
+**다음 최우선 작업: `ResultView.jsx` 결과 페이지 고도화 및 레벨 시각화**
+
+---
+
+### 이번 세션에서 한 일
+
+**GPT 에이전트 시스템 (`ChatView.jsx`)**
+- OpenAI GPT-1.5-Pro(또는 4o-mini) 연동 완료 (Direct Fetch).
+- 3단계 학습 시나리오 자동 연동:
+  1. **개념 분석**: 코드에서 핵심 로직 추출.
+  2. **메타포 생성**: 게임/생활 비유로 개념 설명.
+  3. **레벨 테스트**: 4지선다 퀴즈 생성 및 정답 체크.
+- `@tailwindcss/typography` 도입으로 챗봇 응답의 마크다운 서식(코드 블록, 표 등) 고화질 렌더링.
+
+**Zustand 상태관리 전면 도입 (`src/store/useLearningStore.js`)**
+- `useLearningStore` 신규 생성.
+- `persist` 미들웨어 적용 → `lucid-learning-storage` (localStorage)에 세션 데이터 저장.
+- 새로고침 시에도 `repo`, `teacher`, `messages`, `step`, `concept` 등이 그대로 복구됨.
+
+**UI 레이아웃 고도화 (`StudentPage.jsx`)**
+- 메인 학습 영역의 `max-width`를 1400px로 확장하여 코드 및 채팅 가독성 확보.
+- GitHub API 호출 시 `VITE_GITHUB_TOKEN` 인증 헤더 지원 (Rate Limit 5000req/h 확보 가능).
+- 사이드바 아코디언 챕터의 GPT 라벨 질감(Padding, Font weight, Color) 개선.
+
+---
+
+### 아직 안 한 일 / 이어서 해야 할 일
+
+1. **⭐ `ResultView.jsx` UI 고도화 (최우선)**
+   - 학습 완료 후 결과를 요약하고 레벨(별/트로피)을 시각화하는 UI 구현 필요.
+   - 현재 뼈대만 있는 상태.
+
+2. **파일 정리 (Cleanup)**
+   - `ModeSelect.jsx`, `ConceptSelect.jsx`는 이제 사용되지 않으므로 삭제 필요 (상태 점검 후).
+
+3. **퀴즈 결과 피드백**
+   - 퀴즈를 풀었을 때 단순히 정답/오답 표시를 넘어, 왜 틀렸는지 GPT에게 물어보는 "오답 노트" 기능 추가 고민.
+
+---
+
+### 주의사항 / 알려둘 것
+
+- **환경변수**: `.env`에 `VITE_OPENAI_API_KEY`와 `VITE_GITHUB_TOKEN`이 설정되어 있어야 원활한 동작이 가능함.
+- **상태 초기화**: 학습 도중 리포지토리를 바꾸거나 "뒤로가기"를 누르면 `reset()` 함수가 실행되어 스토어가 초기화됨.
+- **GitHub Rate Limit**: 토큰 없이 사용 시 60회/시간 제한이 있으므로 반드시 토큰 설정을 권장.
+
+### 작성 정보
 - **작성자:** Claude Code (CC)
 - **작성 시각:** 2026-04-07 KST (세션 3)
 - **커밋 해시:** `6851dc8`

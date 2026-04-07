@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import ChatView from './ChatView';
 import ResultView from './ResultView';
+import useLearningStore from '../../store/useLearningStore';
 
 // GPT로 코드 분석 → 주제 라벨 반환
 const analyzeChapterLabel = async (code) => {
@@ -18,11 +19,11 @@ const analyzeChapterLabel = async (code) => {
       messages: [
         {
           role: 'system',
-          content: '너는 코드를 보고 오늘 배운 핵심 개념을 한국어 1~3단어로만 답하는 AI야. 예: 배열, for문, 클래스, 상속, 제네릭. 단어만 답해. 설명 금지.',
+          content: '너는 개발자들의 코드를 분석하여 핵심 학습 주제를 파악하는 AI야. 제공되는 소스 코드를 읽고, 해당 코드에서 배우는 중심 기술 개념(예: 클래스 기초, 인스턴스 변수, 생성자, 메서드 오버라이딩 등)을 한국어 1~3단어 명사형으로만 답해. 만약 핵심 개념을 파악하기 어렵거나 폴더명과 차이가 없다면 빈 문자열("")을 반환해. 절대로 부연 설명이나 마침표를 넣지 마.',
         },
-        { role: 'user', content: code.slice(0, 2000) },
+        { role: 'user', content: code.slice(0, 3000) }, // 코드 분석 범위를 3000자로 확대
       ],
-      max_tokens: 20,
+      max_tokens: 30,
       temperature: 0,
     }),
   });
@@ -33,29 +34,25 @@ const analyzeChapterLabel = async (code) => {
 const StudentPage = ({ user, userData, onLogout }) => {
   const navigate = useNavigate();
   const groupIDs = userData?.groupIDs || [];
+  const {
+    teacher, setTeacher,
+    repo, setRepo,
+    chapters, setChapters,
+    chaptersLoading, setChaptersLoading,
+    expandedChapters, setExpandedChapters,
+    chapterFilesMap, setChapterFilesMap,
+    chapterFilesLoadingMap, setChapterFilesLoadingMap,
+    step, setStep,
+    concept, setConcept,
+    result, setResult,
+    reset: storeReset
+  } = useLearningStore();
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // 레포 목록
   const [classData, setClassData] = useState([]);
   const [classLoading, setClassLoading] = useState(true);
-
-  // 선택된 레포 컨텍스트
-  const [teacher, setTeacher] = useState(null);
-  const [repo, setRepo] = useState(null);
-
-  // 챕터 목록 (GPT 라벨 포함)
-  const [chapters, setChapters] = useState([]);
-  const [chaptersLoading, setChaptersLoading] = useState(false);
-
-  // 아코디언 상태: 챕터명 → 확장 여부 / 파일 목록 / 로딩
-  const [expandedChapters, setExpandedChapters] = useState({});
-  const [chapterFilesMap, setChapterFilesMap] = useState({});
-  const [chapterFilesLoadingMap, setChapterFilesLoadingMap] = useState({});
-
-  // 메인 영역
-  const [step, setStep] = useState(1); // 1: idle, 2: ChatView, 3: ResultView
-  const [concept, setConcept] = useState(null);
-  const [result, setResult] = useState(null);
 
   // 레포 목록 로드
   useEffect(() => {
@@ -94,6 +91,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
     fetchData();
   }, [groupIDs]);
 
+  // 챕터 로딩 로직 (선점/복원용)
+  useEffect(() => {
+    if (repo && teacher && chapters.length === 0 && !chaptersLoading) {
+      handleRepoSelect(teacher, repo);
+    }
+  }, [repo, teacher, chapters, chaptersLoading]);
+
   // 레포 선택 → 챕터 목록 로드
   const handleRepoSelect = async (t, r) => {
     setTeacher(t);
@@ -107,8 +111,14 @@ const StudentPage = ({ user, userData, onLogout }) => {
     setConcept(null);
 
     try {
+      const headers = {};
+      if (import.meta.env.VITE_GITHUB_TOKEN) {
+        headers['Authorization'] = `token ${import.meta.env.VITE_GITHUB_TOKEN}`;
+      }
+
       const treeRes = await fetch(
-        `https://api.github.com/repos/${t.githubUsername}/${r.name}/git/trees/HEAD?recursive=1`
+        `https://api.github.com/repos/${t.githubUsername}/${r.name}/git/trees/HEAD?recursive=1`,
+        { headers }
       );
       const treeData = await treeRes.json();
       const tree = treeData.tree || [];
@@ -147,12 +157,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
         try {
           const cacheId = `${t.githubUsername}_${r.name}_${ch.name}`;
 
-          // 커밋 해시 확인
+          // 커밋 해시 확인 (헤더 추가)
           const commitRes = await fetch(
-            `https://api.github.com/repos/${t.githubUsername}/${r.name}/commits?path=${ch.fullPath}&per_page=1`
+            `https://api.github.com/repos/${t.githubUsername}/${r.name}/commits?path=${ch.fullPath}&per_page=1`,
+            { headers }
           );
           const commits = await commitRes.json();
-          const commitHash = commits[0]?.sha?.slice(0, 7) || '';
+          const commitHash = Array.isArray(commits) ? (commits[0]?.sha?.slice(0, 7) || '') : '';
 
           // Firebase 캐시 확인
           const cacheSnap = await getDoc(doc(db, 'chapterLabels', cacheId));
@@ -203,24 +214,38 @@ const StudentPage = ({ user, userData, onLogout }) => {
     setExpandedChapters(prev => ({ ...prev, [ch.name]: !isExpanded }));
 
     // 접을 때 또는 이미 파일이 로드된 경우 추가 fetch 불필요
-    if (isExpanded || chapterFilesMap[ch.name]) return;
+    // (단, 파일 목록이 비어있다면 에러 상황일 수 있으므로 재요청 허용)
+    if (isExpanded || (chapterFilesMap[ch.name] && chapterFilesMap[ch.name].length > 0)) return;
 
     setChapterFilesLoadingMap(prev => ({ ...prev, [ch.name]: true }));
     try {
+      const headers = {};
+      if (import.meta.env.VITE_GITHUB_TOKEN) {
+        headers['Authorization'] = `token ${import.meta.env.VITE_GITHUB_TOKEN}`;
+      }
+
       const res = await fetch(
-        `https://api.github.com/repos/${teacher.githubUsername}/${repo.name}/contents/${ch.fullPath}`
+        `https://api.github.com/repos/${teacher.githubUsername}/${repo.name}/contents/${ch.fullPath}`,
+        { headers }
       );
+      
+      if (!res.ok) {
+        if (res.status === 403) console.warn('GitHub API Rate Limit 초과');
+        throw new Error(`GitHub API Error: ${res.status}`);
+      }
+
       const files = await res.json();
       const codeFiles = Array.isArray(files)
         ? files.filter(f => f.type === 'file' && /\.(java|js|jsx|ts|tsx|py)$/.test(f.name))
         : [];
+
       setChapterFilesMap(prev => ({
         ...prev,
         [ch.name]: codeFiles.map(f => ({ name: f.name, downloadUrl: f.download_url, path: f.path }))
       }));
     } catch (e) {
       console.error('파일 로드 실패:', e);
-      setChapterFilesMap(prev => ({ ...prev, [ch.name]: [] }));
+      // 실패 시 빈 배열을 넣지 않고 undefined로 두어 다음 클릭 시 재시도하게 함
     } finally {
       setChapterFilesLoadingMap(prev => ({ ...prev, [ch.name]: false }));
     }
@@ -239,15 +264,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
   };
 
   const reset = () => {
-    setTeacher(null);
-    setRepo(null);
-    setChapters([]);
-    setExpandedChapters({});
-    setChapterFilesMap({});
-    setChapterFilesLoadingMap({});
-    setStep(1);
-    setConcept(null);
-    setResult(null);
+    storeReset();
   };
 
   // 사이드바 콘텐츠
@@ -294,7 +311,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
       <div className="flex-1 overflow-y-auto px-3 py-2">
         {/* 뒤로가기 */}
         <button
-          onClick={() => { setTeacher(null); setRepo(null); setChapters([]); setExpandedChapters({}); setChapterFilesMap({}); setChapterFilesLoadingMap({}); setStep(1); setConcept(null); }}
+          onClick={() => { reset(); }}
           className="flex items-center gap-1.5 text-gray-500 hover:text-white text-[11px] px-2 py-1.5 mb-1 transition"
         >
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -337,11 +354,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     {ch.name.replace('ch', 'ch.')}
                   </span>
                   {ch.labelLoading ? (
-                    <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0 ml-0.5" />
+                    <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0 ml-1" />
                   ) : (
-                    <span className="text-[11px] truncate min-w-0" style={{ color: '#ce9178' }}>
-                      {ch.label || ''}
-                    </span>
+                    ch.label && ch.label !== ch.name && (
+                      <span className="text-[10px] truncate min-w-0 opacity-80 font-medium ml-1.5 px-1.5 py-0.5 rounded bg-white/5 border border-white/5" style={{ color: '#ce9178' }}>
+                        {ch.label}
+                      </span>
+                    )
                   )}
                 </button>
 
@@ -491,8 +510,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className="flex-1 overflow-y-auto p-4 pt-16 md:pt-4 md:p-8 flex justify-center bg-theme-bg">
-        <div className="w-full max-w-4xl h-full flex flex-col justify-center pb-12">
+      <main className="flex-1 overflow-hidden p-2 pt-16 md:pt-2 md:p-2 flex justify-center bg-theme-bg">
+        <div className="w-full max-w-[95%] xl:max-w-[1400px] h-full flex flex-col justify-center pb-2">
 
           {groupIDs.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-6 text-center animate-fade-in-up mt-20 md:mt-0">

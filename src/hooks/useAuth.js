@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import useLearningStore from '../store/useLearningStore';
 
 export const useAuth = () => {
   const [user, setUser]               = useState(undefined); // undefined = 확인 중
@@ -45,6 +46,23 @@ export const useAuth = () => {
               if (firebaseUser.email?.toLowerCase() === 'gurwns369@naver.com' && data.role !== 'admin') {
                 await setDoc(userRef, { role: 'admin' }, { merge: true });
               }
+
+              // groupIDs가 비어있을 때 invited_students에서 자동 동기화
+              // 이유: 학생이 먼저 로그인(users 문서 생성) 후 어드민이 반 배정했을 경우,
+              //       invited_students에는 groupIDs가 있지만 users 문서에는 반영이 안 되는 케이스 커버
+              if (!data.groupIDs || data.groupIDs.length === 0) {
+                const inviteRef = doc(db, 'invited_students', firebaseUser.email.toLowerCase());
+                const inviteSnap = await getDoc(inviteRef);
+                if (inviteSnap.exists()) {
+                  const inviteGroups = inviteSnap.data().groupIDs || [];
+                  if (inviteGroups.length > 0) {
+                    // users 문서에 groupIDs 업데이트 → onSnapshot 재발동으로 자동 반영
+                    await setDoc(userRef, { groupIDs: inviteGroups }, { merge: true });
+                    return; // 다음 onSnapshot 콜백에서 최신 data로 setUserData 호출됨
+                  }
+                }
+              }
+
               setUserData(data);
               setRole(data.role || 'student');
             } else {
@@ -110,6 +128,8 @@ export const useAuth = () => {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
+      // 로그인 성공 후 로딩 해제 (페이지 이동 전 상태 커버)
+      setLoginLoading(false);
     } catch (e) {
       if (e.code === 'auth/popup-closed-by-user') {
         setLoginError('로그인이 취소되었습니다.');
@@ -120,7 +140,13 @@ export const useAuth = () => {
     }
   };
 
-  const logout = () => signOut(auth);
+  const logout = () => {
+    // 로그아웃 시 로그인 상태 초기화 및 Zustand 스토어 리셋 (Persistence 해제)
+    useLearningStore.getState().reset();
+    setLoginLoading(false);
+    setLoginError(null);
+    signOut(auth);
+  };
 
   return { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, logout };
 };
