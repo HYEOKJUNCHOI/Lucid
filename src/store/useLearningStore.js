@@ -23,6 +23,7 @@ const useLearningStore = create(
       result: null,
       chaptersLoading: false,
       functionalAnalysis: '',
+      visitedFiles: [], // 방문한 파일 path 목록
 
       // 액션 정의
       setTeacher: (teacher) => set({ teacher }),
@@ -49,6 +50,9 @@ const useLearningStore = create(
       setResult: (result) => set({ result }),
       setChaptersLoading: (chaptersLoading) => set({ chaptersLoading }),
       setFunctionalAnalysis: (functionalAnalysis) => set({ functionalAnalysis }),
+      markFileVisited: (path) => set((state) => ({
+        visitedFiles: state.visitedFiles.includes(path) ? state.visitedFiles : [...state.visitedFiles, path]
+      })),
 
       // 채팅 세션만 초기화 (파일 변경 시 - 사이드바 상태는 유지)
       resetSession: () => set({
@@ -75,6 +79,7 @@ const useLearningStore = create(
         result: null,
         chaptersLoading: false,
         functionalAnalysis: '',
+        visitedFiles: [],
       }),
     }),
     {

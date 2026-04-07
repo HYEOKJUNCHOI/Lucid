@@ -28,6 +28,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [codeLoading, setCodeLoading] = useState(true);
+  const [isEditMode, setIsEditMode] = useState(true); // 기본값: 편집 모드
   const [activeTab, setActiveTab] = useState('chat'); // 모바일 탭: "code" | "chat"
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
   const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지 (모달용)
@@ -476,17 +477,48 @@ OPTIONS_END
             activeTab !== 'code' ? 'hidden md:block' : ''
           }`}
         >
-          {/* 상단 파일명 */}
-          <div className="px-4 py-2 border-b border-[#333333] bg-[#050505] flex items-center gap-2">
-            <svg className="w-4 h-4 text-[#dcdcaa]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span className="text-xs font-mono text-[#dcdcaa]">{concept?.name}</span>
+          {/* 상단 파일명 + 편집/미리보기 토글 */}
+          <div className="px-4 py-2 border-b border-[#333333] bg-[#050505] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-[#dcdcaa]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="text-xs font-mono text-[#dcdcaa]">{concept?.name}</span>
+            </div>
+            <button
+              onClick={() => setIsEditMode(v => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold transition-all text-gray-400 hover:text-white"
+            >
+              {isEditMode ? (
+                <>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  미리보기
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  편집
+                </>
+              )}
+            </button>
           </div>
 
           <div className="flex-1 overflow-auto bg-[#1e1e1e]">
             {codeLoading ? (
               <p className="text-gray-400 text-sm p-4">코드 불러오는 중...</p>
+            ) : isEditMode ? (
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                spellCheck={false}
+                className="w-full h-full min-h-full bg-transparent text-[#d4d4d4] font-mono text-[13px] leading-relaxed p-4 resize-none focus:outline-none"
+                style={{ tabSize: 4 }}
+              />
             ) : (
               <SyntaxHighlighter
                 language="java"

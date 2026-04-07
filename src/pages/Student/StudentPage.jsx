@@ -45,6 +45,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
     step, setStep,
     concept, setConcept,
     result, setResult,
+    visitedFiles, markFileVisited,
     reset: storeReset
   } = useLearningStore();
 
@@ -253,6 +254,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   // 파일 선택 → ChatView
   const handleFileSelect = (file, ch) => {
+    markFileVisited(file.path);
     setConcept({
       type: 'file',
       downloadUrl: file.downloadUrl,
@@ -375,27 +377,37 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     ) : files.length === 0 ? (
                       <p className="text-gray-600 text-[10px] px-2 py-1">파일 없음</p>
                     ) : (
-                      files.map((file) => (
-                        <button
-                          key={file.name}
-                          onClick={() => handleFileSelect(file, ch)}
-                          className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md transition-all group mb-0.5 ${
-                            concept?.name === file.name
-                              ? 'bg-[#4ec9b0]/10'
-                              : 'hover:bg-white/[0.04]'
-                          }`}
-                        >
-                          <svg className="w-3 h-3 shrink-0 text-gray-600 group-hover:text-[#dcdcaa] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          <span
-                            className="text-[11px] truncate"
-                            style={{ color: concept?.name === file.name ? '#4ec9b0' : '#dcdcaa' }}
+                      files.map((file) => {
+                        const isActive = concept?.path === file.path;
+                        const isVisited = visitedFiles.includes(file.path);
+                        return (
+                          <button
+                            key={file.name}
+                            onClick={() => handleFileSelect(file, ch)}
+                            className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md transition-all group mb-0.5 ${
+                              isActive
+                                ? 'bg-[#4ec9b0]/10'
+                                : isVisited
+                                ? 'bg-[#569cd6]/5'
+                                : 'hover:bg-white/[0.04]'
+                            }`}
                           >
-                            {file.name}
-                          </span>
-                        </button>
-                      ))
+                            <svg
+                              className="w-3 h-3 shrink-0 transition-colors"
+                              style={{ color: isActive ? '#4ec9b0' : isVisited ? '#569cd6' : '#555' }}
+                              fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <span
+                              className="text-[11px] truncate"
+                              style={{ color: isActive ? '#4ec9b0' : isVisited ? '#569cd6' : '#dcdcaa' }}
+                            >
+                              {file.name}
+                            </span>
+                          </button>
+                        );
+                      })
                     )}
                   </div>
                 )}
