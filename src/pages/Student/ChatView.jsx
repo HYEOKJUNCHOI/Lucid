@@ -41,6 +41,8 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지
   const [quizQuestion, setQuizQuestion] = useState(''); // 현재 퀴즈 문제 텍스트
   const [showHint, setShowHint] = useState(false); // 기능적 해석 힌트 on/off
+  const [isTypingMode, setIsTypingMode] = useState(false); // 타자연습 모드
+  const [typingCode, setTypingCode] = useState(''); // 타자연습 입력 내용
 
   // 비유 Firebase 연동 (섹션별)
   const [metaphorDocId, setMetaphorDocId] = useState(null);
@@ -48,8 +50,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   // 섹션별 투표: { likes, dislikes, userVote }
   const [votes, setVotes] = useState({
     functional: { likes: 0, dislikes: 0, userVote: null },
-    metaphor1:  { likes: 0, dislikes: 0, userVote: null },
-    metaphor2:  { likes: 0, dislikes: 0, userVote: null },
+    metaphor:   { likes: 0, dislikes: 0, userVote: null },
   });
   
   const messagesEndRef = useRef(null);
@@ -108,6 +109,16 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
       highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, []);
     }, 1500);
   };
+
+  // Ctrl 키 감지 → body 클래스 토글 (해석 패널 밑줄용)
+  useEffect(() => {
+    const onDown = (e) => { if (e.ctrlKey || e.metaKey) document.body.classList.add('ctrl-held'); };
+    const onUp = () => document.body.classList.remove('ctrl-held');
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', onUp);
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); window.removeEventListener('blur', onUp); document.body.classList.remove('ctrl-held'); };
+  }, []);
 
   // 패널 스플리터 드래그
   const handleSplitMouseDown = (e) => {
@@ -287,14 +298,15 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
         const codeContext = `[오늘 배운 코드]\n${code.substring(0, 3000)}`;
 
         // Agent 1: 🧩 기능적 해석 (항상 새로 생성)
-        const prompt1 = `${codeContext}\n\n위 코드의 실행 흐름을 설명해라.
+        const prompt1 = `${codeContext}\n\n위 코드를 마이크로 단위로 해석해라.
 
 [규칙]
-- "값이 어떻게 변하는지"만 설명
-- 불필요한 일반 설명 금지 (프로그램 시작점 등)
-- 최대 3문장
-- 변수명 반드시 포함
+- 코드의 각 핵심 라인이 무슨 일을 하는지 구체적으로 설명
+- 변수명, 메서드명, 타입명을 반드시 백틱으로 감싸서 포함
+- "값이 어디서 생기고, 어디로 가고, 어떻게 변하는지" 흐름을 짚어라
+- 불필요한 일반 설명 금지 (프로그램 시작점, import 설명 등)
 - 결과는 '### 🧩 기능적 해석'으로 시작
+- 번호 매겨서 단계별로 작성 (예: 1. 2. 3.)
 `;
         const res1 = await callOpenAI([{ role: 'user', content: prompt1 }]);
         useLearningStore.getState().setFunctionalAnalysis(res1);
@@ -307,8 +319,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
 
         const totalLikes =
           (cached?.functional?.likes || 0) +
-          (cached?.metaphor1?.likes || 0) +
-          (cached?.metaphor2?.likes || 0);
+          (cached?.metaphor?.likes || 0);
 
         if (cached && totalLikes >= 1) {
           // 다른 학생들이 좋아요 누른 비유 재사용
@@ -318,8 +329,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
           const uid = auth.currentUser?.uid;
           setVotes({
             functional: { likes: cached.functional?.likes || 0, dislikes: cached.functional?.dislikes || 0, userVote: uid ? (cached.functional?.voters?.[uid] || null) : null },
-            metaphor1:  { likes: cached.metaphor1?.likes || 0,  dislikes: cached.metaphor1?.dislikes || 0,  userVote: uid ? (cached.metaphor1?.voters?.[uid] || null) : null },
-            metaphor2:  { likes: cached.metaphor2?.likes || 0,  dislikes: cached.metaphor2?.dislikes || 0,  userVote: uid ? (cached.metaphor2?.voters?.[uid] || null) : null },
+            metaphor:   { likes: cached.metaphor?.likes || 0,   dislikes: cached.metaphor?.dislikes || 0,   userVote: uid ? (cached.metaphor?.voters?.[uid] || null) : null },
           });
         } else {
           // GPT로 새 비유 생성
@@ -327,24 +337,21 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
 어떤 코드든 읽으면 "아, 이건 현실에서 이거랑 똑같네"가 바로 떠오르는 사람이다.
 학생이 "아~!" 하고 무릎을 치게 만드는 게 너의 특기다.
 
-위 기능 설명을 기반으로 서로 다른 두 가지 비유를 만들어라.
-
-코드의 각 요소(클래스, 메서드, 변수, 흐름)가 현실에서 어떤 역할과 가장 비슷한지 파악하고,
-그 역할 구조가 현실에서 가장 자연스럽게 대응되는 시스템을 찾아서 비유해라.
+위 코드와 기능 설명을 기반으로, 코드의 각 요소를 현실 세계의 무언가에 1:1로 매핑하는 메타포 설명을 만들어라.
 
 [핵심 원칙]
-- 소재는 네가 자유롭게 골라라. 제한 없다.
-- 단, 코드의 구조/역할과 진짜 비슷한 것을 골라라. 억지로 끼워넣지 마라.
-- 하나의 비유 안에서 세계관을 일관되게 유지해라 (자동차면 끝까지 자동차)
-- 누구나 경험해봤을 법한 것으로 해라
-- 두 비유는 서로 다른 소재/관점을 사용해라
+- 소재는 자유롭게 골라라. 단, 코드 구조/역할과 진짜 비슷한 것으로.
+- 하나의 세계관 안에서 일관되게 (전화면 끝까지 전화)
+- 코드의 주요 요소(클래스, 변수, 메서드)마다 현실에서 정확히 뭐에 해당하는지 매핑해라.
+- 매핑 후, 전체 흐름을 그 세계관으로 자연스럽게 설명해라.
 - 코드를 다른 단어로 번역하지 마라. 진짜 비유를 해라.
 
-[출력 규칙]
-- 각각 '### 💡 비유 1', '### 💡 비유 2'로 시작
-- 각 비유 제목 옆에 어떤 소재인지 한 단어로 태그 (예: '### 💡 비유 1 — 택배')
-- 핵심 개념 단어만 **굵게** 표시
-- 각 3~5문장
+[출력 형식]
+- '### 🎯 메타포 설명 — 소재' 로 시작 (예: '### 🎯 메타포 설명 — 전화')
+- 먼저 요소별 매핑을 나열:
+  \`코드요소\` = **현실 대응물** (한 줄 설명)
+  예: \`Socket\` = **전화기** (서버와 연결을 만드는 장치)
+- 매핑 후, 전체 실행 흐름을 그 비유 세계관으로 3~5문장 설명
 `;
           res2 = await callOpenAI([
             { role: 'user', content: prompt1 },
@@ -355,7 +362,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
           // Firebase에 저장 (새 비유)
           docId = await saveOrUpdateMetaphor(repo.name, concept.path, res2, res1);
           setUsingCachedMetaphor(false);
-          setVotes({ functional: { likes: 0, dislikes: 0, userVote: null }, metaphor1: { likes: 0, dislikes: 0, userVote: null }, metaphor2: { likes: 0, dislikes: 0, userVote: null } });
+          setVotes({ functional: { likes: 0, dislikes: 0, userVote: null }, metaphor: { likes: 0, dislikes: 0, userVote: null } });
         }
 
         setMetaphorDocId(docId || null);
@@ -389,27 +396,22 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     try {
       const promptShuffle = `너는 10년차 코딩 강사이자, 비유의 천재다.
 어떤 코드든 읽으면 "아, 이건 현실에서 이거랑 똑같네"가 바로 떠오르는 사람이다.
-학생이 "아~!" 하고 무릎을 치게 만드는 게 너의 특기다.
 
-다음 기능 설명을 기반으로 완전히 새로운 두 가지 비유를 만들어라:
+다음 기능 설명을 기반으로 이전과 완전히 다른 소재로 메타포 설명을 만들어라:
 
 ${funcAnalysis}
 
-이전 비유와 다른 소재/관점을 사용해라.
-코드의 각 요소가 현실에서 어떤 역할과 가장 비슷한지 파악하고,
-그 역할 구조가 가장 자연스럽게 대응되는 시스템을 골라서 비유해라.
-
 [핵심 원칙]
-- 소재는 자유롭게. 단, 역할이 진짜 비슷한 것만. 억지로 끼워넣지 마라.
-- 하나의 비유 안에서 세계관 일관되게 유지
-- 누구나 경험해봤을 법한 것으로
+- 이전과 다른 소재를 사용해라. 단, 코드 구조/역할과 진짜 비슷한 것으로.
+- 하나의 세계관 안에서 일관되게 유지
+- 코드의 주요 요소마다 현실에서 정확히 뭐에 해당하는지 1:1 매핑
 - 코드를 다른 단어로 번역하지 마라. 진짜 비유를 해라.
 
-[출력 규칙]
-- 각각 '### 💡 비유 1', '### 💡 비유 2'로 시작
-- 각 비유 제목 옆에 소재 태그 (예: '### 💡 비유 1 — 병원')
-- 핵심 개념 단어만 **굵게** 표시
-- 각 3~5문장
+[출력 형식]
+- '### 🎯 메타포 설명 — 소재' 로 시작
+- 먼저 요소별 매핑을 나열:
+  \`코드요소\` = **현실 대응물** (한 줄 설명)
+- 매핑 후, 전체 실행 흐름을 그 비유 세계관으로 3~5문장 설명
 `;
 
       const newMetaRes = await callOpenAI([
@@ -429,7 +431,7 @@ ${funcAnalysis}
       const newDocId = await saveOrUpdateMetaphor(repo.name, concept.path, newMetaRes, funcAnalysis);
       setMetaphorDocId(newDocId);
       setUsingCachedMetaphor(false);
-      setVotes({ functional: { likes: 0, dislikes: 0, userVote: null }, metaphor1: { likes: 0, dislikes: 0, userVote: null }, metaphor2: { likes: 0, dislikes: 0, userVote: null } });
+      setVotes({ functional: { likes: 0, dislikes: 0, userVote: null }, metaphor: { likes: 0, dislikes: 0, userVote: null } });
     } catch (e) {
       console.error('셔플 실패:', e);
     } finally {
@@ -760,27 +762,22 @@ OPTIONS_END
     };
 
     const content = msg.content;
-    const m1Marker = '### 💡 비유 1';
-    const m2Marker = '### 💡 비유 2';
-    const m1Idx = content.indexOf(m1Marker);
-    const m2Idx = content.indexOf(m2Marker);
+    const metaMarker = '### 🎯 메타포 설명';
+    const metaIdx = content.indexOf(metaMarker);
 
-    // 기능적 해석 / 비유1 / 비유2 3분할 렌더링
-    if (m1Idx !== -1 && m2Idx !== -1) {
-      const analysisPart = preprocessMarkdown(content.substring(0, m1Idx))
+    // 기능적 해석 + 메타포 설명 2분할 렌더링
+    if (metaIdx !== -1) {
+      const analysisPart = preprocessMarkdown(content.substring(0, metaIdx))
         .replace(/(?<!`)\b(\d+(?:\.\d+)?)\b(?!`)/g, '`$1`');
-      const metaphor1Part = preprocessMarkdown(content.substring(m1Idx, m2Idx))
-        .replace(/(?<!`)\b(\d+(?:\.\d+)?)\b(?!`)/g, '`$1`');
-      const metaphor2Part = preprocessMarkdown(content.substring(m2Idx))
+      const metaphorPart = preprocessMarkdown(content.substring(metaIdx))
         .replace(/(?<!`)\b(\d+(?:\.\d+)?)\b(?!`)/g, '`$1`');
 
-      // 기능적 해석용 code 색상: VS Code 하늘색 (#9cdcfe)
       const analysisCode = "prose prose-invert prose-base max-w-none prose-p:leading-relaxed prose-p:my-4 prose-li:my-1 prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none";
 
       return (
         <>
           {/* 🧩 기능적 해석 */}
-          <div className="group relative rounded-xl border border-transparent hover:border-sky-500/20 hover:bg-sky-500/5 px-3 py-2 -mx-3 transition-all duration-200">
+          <div className="group relative rounded-xl border border-white/[0.06] hover:border-sky-500/30 bg-white/[0.02] hover:bg-sky-500/5 px-3 py-2 -mx-3 transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(56,189,248,0.08)]">
             <ReactMarkdown remarkPlugins={[remarkGfm]} className={analysisCode}
               components={{ ...headingComponents,
                 code: ({ children }) => {
@@ -790,8 +787,8 @@ OPTIONS_END
                   }
                   return (
                     <code
-                      style={{ color: '#9cdcfe', cursor: 'pointer', borderBottom: '1px dashed rgba(156,220,254,0.3)' }}
-                      title="Ctrl+Click으로 코드에서 찾기"
+                      className="code-token-clickable"
+                      style={{ color: '#9cdcfe' }}
                       onClick={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); highlightCodeToken(txt); } }}
                     >{children}</code>
                   );
@@ -801,34 +798,26 @@ OPTIONS_END
             <SectionVoteBar section="functional" />
           </div>
 
-          {/* 💡 비유 1 */}
-          <div className="group relative rounded-xl border border-transparent hover:border-emerald-500/20 hover:bg-emerald-500/5 px-3 py-2 -mx-3 transition-all duration-200">
+          {/* 🎯 메타포 설명 */}
+          <div className="group relative rounded-xl border border-white/[0.06] hover:border-emerald-500/30 bg-white/[0.02] hover:bg-emerald-500/5 px-3 py-2 -mx-3 transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.08)]">
             <ReactMarkdown remarkPlugins={[remarkGfm]} className={proseBase}
               components={{ ...headingComponents,
                 code: ({ children }) => {
                   const txt = String(children).trim();
-                  return /^\d+(?:\.\d+)?$/.test(txt)
-                    ? <code style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</code>
-                    : <code style={{ color: '#ce9178' }}>{children}</code>;
+                  if (/^\d+(?:\.\d+)?$/.test(txt)) {
+                    return <code style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</code>;
+                  }
+                  return (
+                    <code
+                      className="code-token-clickable"
+                      style={{ color: '#ce9178' }}
+                      onClick={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); highlightCodeToken(txt); } }}
+                    >{children}</code>
+                  );
                 },
                 strong: ({ children }) => <span className="text-emerald-400 font-medium">{children}</span> }}
-            >{metaphor1Part}</ReactMarkdown>
-            <SectionVoteBar section="metaphor1" />
-          </div>
-
-          {/* 💡 비유 2 */}
-          <div className="group relative rounded-xl border border-transparent hover:border-violet-500/20 hover:bg-violet-500/5 px-3 py-2 -mx-3 transition-all duration-200">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} className={proseBase}
-              components={{ ...headingComponents,
-                code: ({ children }) => {
-                  const txt = String(children).trim();
-                  return /^\d+(?:\.\d+)?$/.test(txt)
-                    ? <code style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</code>
-                    : <code style={{ color: '#ce9178' }}>{children}</code>;
-                },
-                strong: ({ children }) => <span className="text-violet-400 font-medium">{children}</span> }}
-            >{metaphor2Part}</ReactMarkdown>
-            <SectionVoteBar section="metaphor2" />
+            >{metaphorPart}</ReactMarkdown>
+            <SectionVoteBar section="metaphor" />
           </div>
         </>
       );
@@ -888,26 +877,49 @@ OPTIONS_END
               </svg>
               <span className="text-xs font-mono text-[#dcdcaa]">{concept?.name}</span>
             </div>
-            <button
-              onClick={() => setIsEditMode(v => !v)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold transition-all text-gray-400 hover:text-white"
-            >
-              {isEditMode ? (
-                <>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  읽기 전용
-                </>
-              ) : (
-                <>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  편집
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  if (!isTypingMode) {
+                    // 타자연습 시작: package + import 줄만 미리 채움
+                    const lines = code.split('\n');
+                    const prefill = lines.filter(l => /^\s*(package |import )/.test(l)).join('\n');
+                    setTypingCode(prefill ? prefill + '\n\n' : '');
+                    setIsTypingMode(true);
+                  } else {
+                    setIsTypingMode(false);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold transition-all ${
+                  isTypingMode
+                    ? 'bg-[#a78bfa]/10 border-[#a78bfa]/30 text-[#a78bfa]'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-400 hover:text-white'
+                }`}
+              >
+                <span>⌨️</span>
+                {isTypingMode ? '타자연습 중' : '타자연습'}
+              </button>
+              <button
+                onClick={() => setIsEditMode(v => !v)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-bold transition-all text-gray-400 hover:text-white"
+              >
+                {isEditMode ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    읽기 전용
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    편집
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-hidden">
@@ -958,22 +970,70 @@ OPTIONS_END
           {/* 상단 타이틀 */}
           <div className="px-4 py-2 border-b border-[#333333] bg-[#050505] flex items-center justify-between">
             <div className="flex items-center gap-2">
-               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-               <span className="text-xs font-bold text-gray-300">Lucid Tutor Agent</span>
+              {isTypingMode ? (
+                <>
+                  <span className="text-sm">⌨️</span>
+                  <span className="text-xs font-bold text-[#a78bfa]">타자연습</span>
+                  <span className="text-[10px] text-gray-600 ml-1">왼쪽 코드를 보고 직접 타이핑하세요</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                  <span className="text-xs font-bold text-gray-300">Lucid Tutor Agent</span>
+                </>
+              )}
             </div>
-            {/* 상단 콤팩트 학습 종료 버튼 */}
-            <button
-              onClick={() => onComplete({ level: quizCount, score: 0 })}
-              className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm flex items-center gap-1 ${
-                learningPhase === 'completed'
-                  ? 'bg-cyan-400 text-black hover:bg-cyan-300 shadow-[0_0_10px_rgba(78,201,176,0.4)] animate-pulse-glow'
-                  : 'bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222]'
-              }`}
-            >
-              {learningPhase === 'completed' ? '레벨 확인하기 ✨' : '학습 종료 ✕'}
-            </button>
+            {isTypingMode ? (
+              <button
+                onClick={() => setIsTypingMode(false)}
+                className="text-[11px] px-3 py-1.5 rounded-lg font-bold bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222] transition-all"
+              >
+                채팅으로 돌아가기
+              </button>
+            ) : (
+              <button
+                onClick={() => onComplete({ level: quizCount, score: 0 })}
+                className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm flex items-center gap-1 ${
+                  learningPhase === 'completed'
+                    ? 'bg-cyan-400 text-black hover:bg-cyan-300 shadow-[0_0_10px_rgba(78,201,176,0.4)] animate-pulse-glow'
+                    : 'bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222]'
+                }`}
+              >
+                {learningPhase === 'completed' ? '레벨 확인하기 ✨' : '학습 종료 ✕'}
+              </button>
+            )}
           </div>
 
+          {/* 타자연습 모드 */}
+          {isTypingMode ? (
+            <div className="flex-1 overflow-hidden">
+              <Editor
+                height="100%"
+                language="java"
+                value={typingCode}
+                onChange={(val) => setTypingCode(val ?? '')}
+                theme="vs-dark"
+                options={{
+                  fontSize: editorFontSize,
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  wordWrap: 'on',
+                  lineNumbers: 'on',
+                  renderLineHighlight: 'line',
+                  cursorStyle: 'line',
+                  tabSize: 4,
+                  padding: { top: 12, bottom: 12 },
+                  scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+                  quickSuggestions: false,
+                  suggestOnTriggerCharacters: false,
+                  parameterHints: { enabled: false },
+                  wordBasedSuggestions: 'off',
+                  acceptSuggestionOnEnter: 'off',
+                }}
+              />
+            </div>
+          ) : (
+          <>
           {/* 메시지 목록 */}
           <div className="flex-1 overflow-auto p-10 flex flex-col gap-10 bg-[#1e1e1e]">
             {messages.length === 0 && (
@@ -1024,7 +1084,7 @@ OPTIONS_END
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                           )}
-                          비유 셔플
+                          메타포 셔플
                         </button>
                       </div>
                     </div>
@@ -1198,6 +1258,8 @@ OPTIONS_END
               </button>
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

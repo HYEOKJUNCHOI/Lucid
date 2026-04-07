@@ -6,7 +6,6 @@ import ChatView from './ChatView';
 import ResultView from './ResultView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
-import TypingPractice from './TypingPractice';
 import { getApiKey } from '../../lib/apiKey';
 
 // GPT로 코드 분석 → 주제 라벨 반환
@@ -597,10 +596,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
       <main className="flex-1 overflow-hidden p-2 pt-16 md:pt-2 md:p-2 flex justify-center bg-theme-bg">
         <div className="w-full max-w-[95%] xl:max-w-[1400px] h-full flex flex-col justify-center pb-2">
 
-          {mode === 'typing' ? (
-            <TypingPractice onBack={() => setMode(null)} />
-
-          ) : groupIDs.length === 0 ? (
+          {groupIDs.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-6 text-center animate-fade-in-up mt-20 md:mt-0">
               <div className="bg-theme-card/90 border border-theme-border rounded-[2rem] p-10 max-w-md w-full shadow-2xl backdrop-blur-xl">
                 <div className="w-16 h-16 mx-auto mb-6 bg-theme-primary/10 rounded-full flex items-center justify-center">
@@ -658,20 +654,6 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 </button>
               </div>
 
-              {/* 타자연습 카드 (하단 전체폭) */}
-              <button
-                onClick={() => setMode('typing')}
-                className="group w-full max-w-2xl mt-4 bg-white/[0.03] border border-white/[0.08] rounded-2xl p-6 text-left hover:border-[#a78bfa]/40 hover:bg-[#a78bfa]/5 transition-all duration-300 hover:shadow-[0_0_30px_rgba(167,139,250,0.1)] flex items-center gap-5"
-              >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#a78bfa]/20 to-[#818cf8]/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <span className="text-2xl">⌨️</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-bold text-white mb-0.5">코드 타자연습</h3>
-                  <p className="text-sm text-gray-400">실제 코드를 보고 직접 타이핑하며 손에 익혀보세요</p>
-                </div>
-                <svg className="w-4 h-4 text-gray-600 group-hover:text-[#a78bfa] transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-              </button>
             </div>
 
           ) : step === 1 ? (

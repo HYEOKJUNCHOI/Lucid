@@ -32,25 +32,23 @@ export const saveOrUpdateMetaphor = async (repoName, filePath, content, function
     if (!snap.exists()) {
       await setDoc(docRef, {
         repoName, filePath, content, functionalAnalysis,
-        // 섹션별 투표 (기능적 해석 / 비유1 / 비유2)
+        // 섹션별 투표 (기능적 해석 / 메타포)
         functional: { ...baseVotes },
-        metaphor1:  { ...baseVotes },
-        metaphor2:  { ...baseVotes },
+        metaphor:  { ...baseVotes },
         updatedAt: serverTimestamp(),
       });
     } else {
       const totalLikes =
         (snap.data().functional?.likes || 0) +
-        (snap.data().metaphor1?.likes || 0) +
-        (snap.data().metaphor2?.likes || 0);
+        (snap.data().metaphor?.likes || 0);
 
       if (totalLikes < 2) {
         // 좋아요 합계 2개 미만 → 새 비유로 교체
         await updateDoc(docRef, {
           content, functionalAnalysis,
           functional: { ...baseVotes },
-          metaphor1:  { ...baseVotes },
-          metaphor2:  { ...baseVotes },
+          metaphor:  { ...baseVotes },
+          metaphor:  { ...baseVotes },
           updatedAt: serverTimestamp(),
         });
       }
@@ -64,7 +62,7 @@ export const saveOrUpdateMetaphor = async (repoName, filePath, content, function
 
 /**
  * 섹션별 좋아요/싫어요 투표
- * @param section 'functional' | 'metaphor1' | 'metaphor2'
+ * @param section 'functional' | 'metaphor'
  * @param vote    'liked' | 'disliked'
  * @returns 최종 투표 상태 'liked' | 'disliked' | null (취소)
  */
@@ -80,8 +78,7 @@ export const voteSectionMetaphor = async (repoName, filePath, userId, section, v
       await setDoc(docRef, {
         repoName, filePath,
         functional: { ...base },
-        metaphor1:  { ...base },
-        metaphor2:  { ...base },
+        metaphor:  { ...base },
         updatedAt: serverTimestamp(),
       });
     }

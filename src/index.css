@@ -62,6 +62,16 @@ body {
   cursor: pointer !important;
 }
 
+/* 해석 패널: Ctrl 누르면 코드 토큰에 밑줄 + 손가락 */
+.code-token-clickable {
+  transition: border-bottom 0.1s, cursor 0.1s;
+  border-bottom: 1px solid transparent;
+}
+body.ctrl-held .code-token-clickable {
+  border-bottom: 1px dashed rgba(156,220,254,0.5);
+  cursor: pointer;
+}
+
 /* Ctrl+Click 코드 토큰 하이라이트 */
 .code-token-highlight {
   background-color: rgba(78, 201, 176, 0.35) !important;
