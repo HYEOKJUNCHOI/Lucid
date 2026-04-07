@@ -22,6 +22,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     quizCount, setQuizCount,
     functionalAnalysis, setFunctionalAnalysis,
     resetSession,
+    visitedFiles,
   } = useLearningStore();
 
   const [code, setCode] = useState('');
@@ -237,10 +238,14 @@ ${funcAnalysis}
   };
 
 
-  // concept 변경 시 채팅 세션 초기화
+  // concept 변경 시 채팅 세션 초기화 (이미 방문한 파일은 캐시 유지)
   useEffect(() => {
-    resetSession();
-    setQuizOptions([]);
+    if (!concept?.path) return;
+    const alreadyVisited = visitedFiles.includes(concept.path);
+    if (!alreadyVisited) {
+      resetSession();
+      setQuizOptions([]);
+    }
   }, [concept?.path, concept?.name]);
 
   // GitHub에서 코드 불러오기
@@ -508,7 +513,7 @@ OPTIONS_END
             </button>
           </div>
 
-          <div className="flex-1 overflow-auto bg-[#1e1e1e]">
+          <div className="flex-1 flex flex-col overflow-hidden bg-[#1e1e1e]">
             {codeLoading ? (
               <p className="text-gray-400 text-sm p-4">코드 불러오는 중...</p>
             ) : isEditMode ? (
@@ -516,18 +521,20 @@ OPTIONS_END
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 spellCheck={false}
-                className="w-full h-full min-h-full bg-transparent text-[#d4d4d4] font-mono text-[13px] leading-relaxed p-4 resize-none focus:outline-none"
+                className="flex-1 w-full bg-transparent text-[#d4d4d4] font-mono text-[13px] leading-relaxed p-4 resize-none focus:outline-none overflow-auto"
                 style={{ tabSize: 4 }}
               />
             ) : (
-              <SyntaxHighlighter
-                language="java"
-                style={vscDarkPlus}
-                customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '13px' }}
-                showLineNumbers={true}
-              >
-                {code}
-              </SyntaxHighlighter>
+              <div className="flex-1 overflow-auto">
+                <SyntaxHighlighter
+                  language="java"
+                  style={vscDarkPlus}
+                  customStyle={{ margin: 0, padding: '1rem', background: 'transparent', fontSize: '13px', minHeight: '100%' }}
+                  showLineNumbers={true}
+                >
+                  {code}
+                </SyntaxHighlighter>
+              </div>
             )}
           </div>
         </div>
