@@ -3,6 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import useLearningStore from '../../store/useLearningStore';
+import { auth } from '../../lib/firebase';
+import { getMetaphorDoc, saveOrUpdateMetaphor, voteSectionMetaphor } from '../../services/metaphorService';
+import { getApiKey } from '../../lib/apiKey';
 
 // GPT 응답 텍스트의 단일 줄바꿈(\n)을 마크다운 문단 구분(\n\n)으로 변환하는 전처리 함수
 // 이유: react-markdown은 단일 \n을 공백으로 처리하는 CommonMark 스펙을 따르기 때문
@@ -13,6 +16,9 @@ const preprocessMarkdown = (text) => {
     .replace(/OPTIONS_START[\s\S]*?OPTIONS_END/g, (match) => match) // OPTIONS 블록 보호
     .replace(/(?<!\n)\n(?!\n)/g, '  \n'); // 단일 \n → 마크다운 강제 줄바꿈(스페이스 2개 + \n)
 };
+
+// 파일 경로 기반 localStorage 키 (파일별 채팅 히스토리)
+const chatKey = (path) => `lucid_chat_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
 const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const {
@@ -31,21 +37,136 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [isEditMode, setIsEditMode] = useState(true); // 기본값: 편집 모드
   const [activeTab, setActiveTab] = useState('chat'); // 모바일 탭: "code" | "chat"
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
-  const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지 (모달용)
+  const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지
+  const [quizQuestion, setQuizQuestion] = useState(''); // 현재 퀴즈 문제 텍스트
+  const [showHint, setShowHint] = useState(false); // 기능적 해석 힌트 on/off
+
+  // 비유 Firebase 연동 (섹션별)
+  const [metaphorDocId, setMetaphorDocId] = useState(null);
+  const [usingCachedMetaphor, setUsingCachedMetaphor] = useState(false);
+  // 섹션별 투표: { likes, dislikes, userVote }
+  const [votes, setVotes] = useState({
+    functional: { likes: 0, dislikes: 0, userVote: null },
+    metaphor1:  { likes: 0, dislikes: 0, userVote: null },
+    metaphor2:  { likes: 0, dislikes: 0, userVote: null },
+  });
   
   const messagesEndRef = useRef(null);
   const chatPanelRef = useRef(null);
+  const quizCardRef = useRef(null);
+  const isQuizFocusedRef = useRef(false); // 퀴즈 카드 포커스 여부 (stale closure 방지용 ref)
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const highlightDecorRef = useRef([]);
+
+  // 코드 토큰 Ctrl+Click → Monaco 에디터에서 해당 위치 하이라이트
+  const highlightCodeToken = (token) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !code) return;
+
+    // 토큰에서 검색할 텍스트 정리 (괄호 제거 등)
+    const searchText = token.replace(/\(\)$/, '');
+    const model = editor.getModel();
+    if (!model) return;
+
+    // 코드에서 해당 텍스트 찾기
+    const matches = model.findMatches(searchText, false, false, true, null, false);
+    if (matches.length === 0) return;
+
+    const match = matches[0];
+    const line = match.range.startLineNumber;
+
+    // 해당 라인으로 스크롤
+    editor.revealLineInCenter(line);
+
+    // 하이라이트 데코레이션 추가
+    const newDecor = editor.deltaDecorations(highlightDecorRef.current, [
+      {
+        range: match.range,
+        options: {
+          className: 'code-token-highlight',
+          isWholeLine: false,
+        },
+      },
+      {
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: true,
+          className: 'code-line-highlight',
+        },
+      },
+    ]);
+    highlightDecorRef.current = newDecor;
+
+    // 1.5초 후 페이드 아웃
+    setTimeout(() => {
+      highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, []);
+    }, 1500);
+  };
+
+  // Monaco onMount: editorRef 저장 + Ctrl+Click으로 선언부 점프
+  const handleEditorMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+
+    // Ctrl 누르면 손가락 커서
+    const editorDom = editor.getDomNode();
+    editor.onKeyDown((e) => { if (e.ctrlKey || e.metaKey) editorDom?.classList.add('ctrl-held'); });
+    editor.onKeyUp(() => editorDom?.classList.remove('ctrl-held'));
+    editorDom?.addEventListener('mouseleave', () => editorDom?.classList.remove('ctrl-held'));
+
+    editor.onMouseDown((e) => {
+      if (!(e.event.ctrlKey || e.event.metaKey)) return;
+      const position = e.target.position;
+      if (!position) return;
+
+      const model = editor.getModel();
+      if (!model) return;
+
+      const wordAtPos = model.getWordAtPosition(position);
+      if (!wordAtPos) return;
+
+      e.event.preventDefault();
+      const word = wordAtPos.word;
+      const currentLine = position.lineNumber;
+
+      // 파일 전체에서 해당 단어의 모든 위치 찾기
+      const matches = model.findMatches(word, false, false, true, null, false);
+      if (matches.length <= 1) return; // 자기 자신뿐이면 점프 불필요
+
+      // 첫 번째 등장(선언부)으로 점프. 이미 첫 번째에 있으면 다음 위치로
+      const firstMatch = matches[0];
+      const target = (firstMatch.range.startLineNumber === currentLine && matches.length > 1)
+        ? matches[1] : firstMatch;
+
+      const line = target.range.startLineNumber;
+      editor.revealLineInCenter(line);
+      editor.setPosition({ lineNumber: line, column: target.range.startColumn });
+
+      // 하이라이트
+      const newDecor = editor.deltaDecorations(highlightDecorRef.current, [
+        { range: target.range, options: { className: 'code-token-highlight', isWholeLine: false } },
+        { range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className: 'code-line-highlight' } },
+      ]);
+      highlightDecorRef.current = newDecor;
+
+      setTimeout(() => {
+        highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, []);
+      }, 1500);
+    });
+  };
 
   // 스크롤 자동 이동
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 키보드 연동 (1~4번 선택, Tab 포커스 트랩)
+  // 키보드 연동 (1~4번 선택 — 퀴즈 카드에 포커스가 있을 때만 작동)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // 1. 퀴즈 선택지가 있으면 1~4 키 항상 작동 (input 포커스 여부 무관)
-      if (learningPhase === 'quiz' && !loading && quizOptions.length > 0 && ['1', '2', '3', '4'].includes(e.key)) {
+      // 1. 퀴즈 카드에 포커스가 있을 때만 1~4 키 작동 (채팅 입력 중에는 무시)
+      if (learningPhase === 'quiz' && !loading && quizOptions.length > 0 && isQuizFocusedRef.current && ['1', '2', '3', '4'].includes(e.key)) {
         const num = parseInt(e.key);
         if (num >= 1 && num <= quizOptions.length) {
           e.preventDefault();
@@ -96,7 +217,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+          'Authorization': `Bearer ${getApiKey()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -125,7 +246,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
       try {
         const codeContext = `[오늘 배운 코드]\n${code.substring(0, 3000)}`;
 
-        // Agent 1: 🧩 기능적 해석 (실제 동작 로직)
+        // Agent 1: 🧩 기능적 해석 (항상 새로 생성)
         const prompt1 = `${codeContext}\n\n위 코드의 실행 흐름을 설명해라.
 
 [규칙]
@@ -136,38 +257,68 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
 - 결과는 '### 🧩 기능적 해석'으로 시작
 `;
         const res1 = await callOpenAI([{ role: 'user', content: prompt1 }]);
-        
-        // 기능 분석 결과 저장 (나중에 셔플 시 사용)
         useLearningStore.getState().setFunctionalAnalysis(res1);
-        
         setLearningPhase('metaphor');
-        
-        // Agent 2: 🌿 메타포 해석 (감각적/비유 설명)
-        const prompt2 = `위 기능 설명을 기반으로 서로 다른 두 가지 메타포를 만들어라.
 
-[구성]
-1. 🎮 게임 비유
-2. 🏠 일상(생활) 비유
+        // Agent 2: Firebase 캐시 먼저 확인 → 좋아요 있으면 재사용, 없으면 GPT 생성
+        let res2;
+        let docId;
+        const cached = await getMetaphorDoc(repo.name, concept.path);
 
-[필수 조건]
-- 코드와 1:1 대응되는 비유만 사용
-- 크기 또는 구조 차이 반드시 포함
-- 값 이동 과정 포함
-- 손실 가능성 표현 (있다면)
-- 감성/성장/자연 비유 금지
+        const totalLikes =
+          (cached?.functional?.likes || 0) +
+          (cached?.metaphor1?.likes || 0) +
+          (cached?.metaphor2?.likes || 0);
+
+        if (cached && totalLikes >= 1) {
+          // 다른 학생들이 좋아요 누른 비유 재사용
+          res2 = cached.content;
+          docId = cached.id;
+          setUsingCachedMetaphor(true);
+          const uid = auth.currentUser?.uid;
+          setVotes({
+            functional: { likes: cached.functional?.likes || 0, dislikes: cached.functional?.dislikes || 0, userVote: uid ? (cached.functional?.voters?.[uid] || null) : null },
+            metaphor1:  { likes: cached.metaphor1?.likes || 0,  dislikes: cached.metaphor1?.dislikes || 0,  userVote: uid ? (cached.metaphor1?.voters?.[uid] || null) : null },
+            metaphor2:  { likes: cached.metaphor2?.likes || 0,  dislikes: cached.metaphor2?.dislikes || 0,  userVote: uid ? (cached.metaphor2?.voters?.[uid] || null) : null },
+          });
+        } else {
+          // GPT로 새 비유 생성
+          const prompt2 = `너는 10년차 코딩 강사이자, 비유의 천재다.
+어떤 코드든 읽으면 "아, 이건 현실에서 이거랑 똑같네"가 바로 떠오르는 사람이다.
+학생이 "아~!" 하고 무릎을 치게 만드는 게 너의 특기다.
+
+위 기능 설명을 기반으로 서로 다른 두 가지 비유를 만들어라.
+
+코드의 각 요소(클래스, 메서드, 변수, 흐름)가 현실에서 어떤 역할과 가장 비슷한지 파악하고,
+그 역할 구조가 현실에서 가장 자연스럽게 대응되는 시스템을 찾아서 비유해라.
+
+[핵심 원칙]
+- 소재는 네가 자유롭게 골라라. 제한 없다.
+- 단, 코드의 구조/역할과 진짜 비슷한 것을 골라라. 억지로 끼워넣지 마라.
+- 하나의 비유 안에서 세계관을 일관되게 유지해라 (자동차면 끝까지 자동차)
+- 누구나 경험해봤을 법한 것으로 해라
+- 두 비유는 서로 다른 소재/관점을 사용해라
+- 코드를 다른 단어로 번역하지 마라. 진짜 비유를 해라.
 
 [출력 규칙]
-- 각각 '### 🎮 게임 비유', '### 🏠 생활 비유'로 시작
-- 핵심 개념은 **굵게 + \`백틱\` 표시
-- 각 2~4문장 이내
+- 각각 '### 💡 비유 1', '### 💡 비유 2'로 시작
+- 각 비유 제목 옆에 어떤 소재인지 한 단어로 태그 (예: '### 💡 비유 1 — 택배')
+- 핵심 개념 단어만 **굵게** 표시
+- 각 3~5문장
 `;
+          res2 = await callOpenAI([
+            { role: 'user', content: prompt1 },
+            { role: 'assistant', content: res1 },
+            { role: 'user', content: prompt2 },
+          ]);
 
-        const res2 = await callOpenAI([
-          { role: 'user', content: prompt1 }, 
-          { role: 'assistant', content: res1 },
-          { role: 'user', content: prompt2 }
-        ]);
-        
+          // Firebase에 저장 (새 비유)
+          docId = await saveOrUpdateMetaphor(repo.name, concept.path, res2, res1);
+          setUsingCachedMetaphor(false);
+          setVotes({ functional: { likes: 0, dislikes: 0, userVote: null }, metaphor1: { likes: 0, dislikes: 0, userVote: null }, metaphor2: { likes: 0, dislikes: 0, userVote: null } });
+        }
+
+        setMetaphorDocId(docId || null);
         const combinedResponse = `${res1}\n\n---\n${res2}`;
         setMessages([{ role: 'assistant', content: combinedResponse }]);
         setLearningPhase('chat');
@@ -196,23 +347,29 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
     setLoading(true);
 
     try {
-      const promptShuffle = `다음 기능 설명을 기반으로 새로운 두 가지 메타포를 만들어라:
+      const promptShuffle = `너는 10년차 코딩 강사이자, 비유의 천재다.
+어떤 코드든 읽으면 "아, 이건 현실에서 이거랑 똑같네"가 바로 떠오르는 사람이다.
+학생이 "아~!" 하고 무릎을 치게 만드는 게 너의 특기다.
+
+다음 기능 설명을 기반으로 완전히 새로운 두 가지 비유를 만들어라:
 
 ${funcAnalysis}
 
-[구성]
-1. 🎮 게임 비유 (이전과 다른 컨셉)
-2. 🏠 생활 비유 (이전과 다른 컨셉)
+이전 비유와 다른 소재/관점을 사용해라.
+코드의 각 요소가 현실에서 어떤 역할과 가장 비슷한지 파악하고,
+그 역할 구조가 가장 자연스럽게 대응되는 시스템을 골라서 비유해라.
 
-[필수 조건]
-- 코드와 1:1 대응
-- 크기/구조 차이 포함
-- 값 이동 포함
-- 감성 비유 금지
+[핵심 원칙]
+- 소재는 자유롭게. 단, 역할이 진짜 비슷한 것만. 억지로 끼워넣지 마라.
+- 하나의 비유 안에서 세계관 일관되게 유지
+- 누구나 경험해봤을 법한 것으로
+- 코드를 다른 단어로 번역하지 마라. 진짜 비유를 해라.
 
 [출력 규칙]
-- 각각 '### 🎮 게임 비유', '### 🏠 생활 비유'로 시작
-- 각 2~4문장 이내
+- 각각 '### 💡 비유 1', '### 💡 비유 2'로 시작
+- 각 비유 제목 옆에 소재 태그 (예: '### 💡 비유 1 — 병원')
+- 핵심 개념 단어만 **굵게** 표시
+- 각 3~5문장
 `;
 
       const newMetaRes = await callOpenAI([
@@ -222,11 +379,17 @@ ${funcAnalysis}
       ]);
 
       const updatedResponse = `${funcAnalysis}\n\n---\n${newMetaRes}`;
-      
+
       // 첫 번째 어시스턴트 메시지를 업데이트
-      setMessages(prev => prev.map((m, idx) => 
+      setMessages(prev => prev.map((m, idx) =>
         idx === 0 && m.role === 'assistant' ? { ...m, content: updatedResponse } : m
       ));
+
+      // 셔플된 비유 Firebase 저장 + 투표 초기화
+      const newDocId = await saveOrUpdateMetaphor(repo.name, concept.path, newMetaRes, funcAnalysis);
+      setMetaphorDocId(newDocId);
+      setUsingCachedMetaphor(false);
+      setVotes({ functional: { likes: 0, dislikes: 0, userVote: null }, metaphor1: { likes: 0, dislikes: 0, userVote: null }, metaphor2: { likes: 0, dislikes: 0, userVote: null } });
     } catch (e) {
       console.error('셔플 실패:', e);
     } finally {
@@ -236,15 +399,42 @@ ${funcAnalysis}
   };
 
 
-  // concept 변경 시 채팅 세션 초기화 (이미 방문한 파일은 캐시 유지)
+  // 퀴즈 선택지가 새로 생성되면 퀴즈 카드로 자동 포커스
+  useEffect(() => {
+    if (quizOptions.length > 0 && quizCardRef.current) {
+      quizCardRef.current.focus();
+    }
+  }, [quizOptions.length]);
+
+  // concept 변경 시 → localStorage에서 해당 파일 채팅 복원 (없으면 새 세션)
   useEffect(() => {
     if (!concept?.path) return;
-    const alreadyVisited = visitedFiles.includes(concept.path);
-    if (!alreadyVisited) {
-      resetSession();
-      setQuizOptions([]);
+    setQuizOptions([]);
+    setQuizQuestion('');
+    const saved = localStorage.getItem(chatKey(concept.path));
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+          setLearningPhase('chat');
+          return;
+        }
+      } catch {}
     }
-  }, [concept?.path, concept?.name]);
+    // 저장된 히스토리 없음 → 새 세션 시작
+    resetSession();
+  }, [concept?.path]);
+
+  // messages 변경 시 파일별 localStorage에 저장 (임시 메시지 제외)
+  useEffect(() => {
+    if (!concept?.path || messages.length === 0) return;
+    const toSave = messages.filter(m => !m.isTemp);
+    if (toSave.length === 0) return;
+    try {
+      localStorage.setItem(chatKey(concept.path), JSON.stringify(toSave));
+    } catch {}
+  }, [messages, concept?.path]);
 
   // GitHub에서 코드 불러오기
   useEffect(() => {
@@ -357,9 +547,19 @@ OPTIONS_END
 4. 5번 문제의 해설까지 끝냈다면, 마지막에 반드시 "모든 퀴즈가 완료되었습니다. 💡" 라는 문장을 포함해 줘.`;
       }
 
-      const res = await callOpenAI(apiMessages, systemPrompt);
+      let res = await callOpenAI(apiMessages, systemPrompt);
 
-      // OPTIONS 파싱 → 모달 state에 저장, 채팅 메시지에서는 제거
+      // 퀴즈 페이즈인데 OPTIONS 태그가 없으면 → 자동 1회 재시도
+      if ((learningPhase === 'quiz' || isQuizTrigger) && !res.includes('OPTIONS_START') && !res.includes('완료되었습니다')) {
+        const retryMessages = [
+          ...apiMessages,
+          { role: 'assistant', content: res },
+          { role: 'user', content: '위 문제의 선택지를 반드시 OPTIONS_START ~ OPTIONS_END 블록 안에 1~4번 형식으로 포함해서 문제 전체를 다시 출력해줘.' },
+        ];
+        res = await callOpenAI(retryMessages, systemPrompt);
+      }
+
+      // OPTIONS 파싱 → 퀴즈 카드 state에 저장, 채팅 메시지에서는 제거
       if ((learningPhase === 'quiz' || isQuizTrigger) && res.includes('OPTIONS_START') && res.includes('OPTIONS_END')) {
         const optionsPart = res.split('OPTIONS_START')[1].split('OPTIONS_END')[0];
         const parsed = optionsPart
@@ -367,9 +567,30 @@ OPTIONS_END
           .filter((l) => l.trim().match(/^[1-4][\.\)]/))
           .map((l) => l.trim().replace(/^[1-4][\.\)]\s*/, ''));
         setQuizOptions(parsed);
-        // 채팅에는 OPTIONS 블록 제거된 텍스트만 저장
+        setShowHint(false);
+
         const cleanRes = res.replace(/OPTIONS_START[\s\S]*?OPTIONS_END/g, '').trim();
-        setMessages(prev => [...prev, { role: 'assistant', content: cleanRes }]);
+
+        // 피드백(정답/오답 해설)과 새 문제 분리
+        // GPT가 "정답입니다! [해설]\n\n퀴즈 N/5\n[문제]" 형태로 응답하기 때문
+        const quizHeaderMatch = cleanRes.match(/퀴즈\s*\d+\s*[\/\-]\s*5/);
+        if (quizHeaderMatch) {
+          const splitIdx = cleanRes.indexOf(quizHeaderMatch[0]);
+          const feedback = cleanRes.substring(0, splitIdx).trim();
+          const question = cleanRes.substring(splitIdx).trim();
+
+          // 정답/오답 해설은 채팅에 표시 (사용자가 볼 수 있도록)
+          if (feedback) {
+            setMessages(prev => [...prev, { role: 'assistant', content: feedback }]);
+          }
+          // 새 문제는 카드에만 표시
+          setQuizQuestion(question);
+          setMessages(prev => [...prev, { role: 'assistant', content: question, hidden: true }]);
+        } else {
+          // 첫 문제 (피드백 없음) → 전체가 문제
+          setQuizQuestion(cleanRes);
+          setMessages(prev => [...prev, { role: 'assistant', content: cleanRes, hidden: true }]);
+        }
       } else {
         setQuizOptions([]);
         setMessages(prev => [...prev, { role: 'assistant', content: res }]);
@@ -393,20 +614,192 @@ OPTIONS_END
     }
   };
 
+  // 섹션별 투표 핸들러 (optimistic update — UI 즉시 반영, Firebase는 백그라운드)
+  const handleSectionVote = (section, vote) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    // 즉시 UI 토글 (Firebase 결과 기다리지 않음)
+    setVotes(prev => {
+      const s = prev[section];
+      const newVote = s.userVote === vote ? null : vote; // 같은 버튼 → 취소
+      return {
+        ...prev,
+        [section]: {
+          likes:    s.likes    + (newVote === 'liked' ? 1 : s.userVote === 'liked' ? -1 : 0),
+          dislikes: s.dislikes + (newVote === 'disliked' ? 1 : s.userVote === 'disliked' ? -1 : 0),
+          userVote: newVote,
+        },
+      };
+    });
+
+    // Firebase 백그라운드 저장 (실패해도 UI는 유지)
+    (async () => {
+      let docId = metaphorDocId;
+      if (!docId) {
+        const currentContent = messages[0]?.content || '';
+        const funcAnalysis = useLearningStore.getState().functionalAnalysis || '';
+        docId = await saveOrUpdateMetaphor(repo.name, concept.path, currentContent, funcAnalysis);
+        if (docId) setMetaphorDocId(docId);
+      }
+      if (docId) await voteSectionMetaphor(repo.name, concept.path, uid, section, vote);
+    })();
+  };
+
+  // 섹션 피드백 버튼 (👍 도움됐다 / 👎 도움 안 됐다)
+  const SectionVoteBar = ({ section }) => {
+    const s = votes[section];
+    const [poppingUp, setPoppingUp]   = useState(false);
+    const [poppingDown, setPoppingDown] = useState(false);
+
+    const pop = (which) => {
+      if (which === 'liked')    { setPoppingUp(true);   setTimeout(() => setPoppingUp(false),   400); }
+      else                      { setPoppingDown(true); setTimeout(() => setPoppingDown(false), 400); }
+    };
+
+    const handleVote = (vote, e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      pop(vote);
+      handleSectionVote(section, vote);
+    };
+
+    const voted = s.userVote !== null;
+
+    return (
+      // 투표된 상태면 항상 보이고, 아니면 hover 시에만 보임
+      <div
+        className={`flex items-center justify-end gap-2 mt-1.5 transition-opacity duration-200 ${voted ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={(e) => handleVote('liked', e)}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border select-none ${poppingUp ? 'scale-110' : 'scale-100'}`}
+          style={{
+            transition: 'transform 0.15s ease, background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s',
+            backgroundColor: s.userVote === 'liked' ? '#10b981' : 'rgba(255,255,255,0.05)',
+            color:           s.userVote === 'liked' ? '#fff'    : '#9ca3af',
+            borderColor:     s.userVote === 'liked' ? '#10b981' : 'rgba(255,255,255,0.1)',
+            boxShadow:       s.userVote === 'liked' ? '0 0 12px rgba(16,185,129,0.45)' : 'none',
+            fontWeight:      s.userVote === 'liked' ? 700 : 400,
+          }}
+        >
+          👍 도움됐어요{s.likes > 0 ? ` · ${s.likes}` : ''}
+        </button>
+        <button
+          onClick={(e) => handleVote('disliked', e)}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border select-none ${poppingDown ? 'scale-110' : 'scale-100'}`}
+          style={{
+            transition: 'transform 0.15s ease, background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s',
+            backgroundColor: s.userVote === 'disliked' ? '#ef4444' : 'rgba(255,255,255,0.05)',
+            color:           s.userVote === 'disliked' ? '#fff'    : '#9ca3af',
+            borderColor:     s.userVote === 'disliked' ? '#ef4444' : 'rgba(255,255,255,0.1)',
+            boxShadow:       s.userVote === 'disliked' ? '0 0 12px rgba(239,68,68,0.45)' : 'none',
+            fontWeight:      s.userVote === 'disliked' ? 700 : 400,
+          }}
+        >
+          👎 별로예요{s.dislikes > 0 ? ` · ${s.dislikes}` : ''}
+        </button>
+      </div>
+    );
+  };
+
   // 메시지 렌더러 (일반 텍스트 및 퀴즈 옵션 분리 렌더링)
   const renderMessageContent = (msg, index) => {
     if (msg.role !== 'assistant') {
       return msg.content;
     }
 
-    // OPTIONS는 모달로 처리되므로 채팅 렌더러에서는 일반 마크다운으로만 표시
+    const proseBase = "prose prose-invert prose-base max-w-none prose-p:leading-relaxed prose-p:my-4 prose-li:my-1 prose-a:text-[#4ec9b0] prose-pre:bg-[#050505] prose-pre:border prose-pre:border-black/40 prose-code:text-[#ce9178] prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none";
 
+    // 제목 공통 컴포넌트 (흰색 + 굵게 + 크게)
+    const headingComponents = {
+      h1: ({ children }) => <h1 className="text-white font-extrabold text-2xl mt-6 mb-3">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-white font-extrabold text-xl mt-5 mb-2">{children}</h2>,
+      h3: ({ children }) => <h3 className="text-white font-extrabold text-lg mt-5 mb-2">{children}</h3>,
+    };
+
+    const content = msg.content;
+    const m1Marker = '### 💡 비유 1';
+    const m2Marker = '### 💡 비유 2';
+    const m1Idx = content.indexOf(m1Marker);
+    const m2Idx = content.indexOf(m2Marker);
+
+    // 기능적 해석 / 비유1 / 비유2 3분할 렌더링
+    if (m1Idx !== -1 && m2Idx !== -1) {
+      const analysisPart = preprocessMarkdown(content.substring(0, m1Idx))
+        .replace(/(?<!`)\b(\d+(?:\.\d+)?)\b(?!`)/g, '`$1`');
+      const metaphor1Part = preprocessMarkdown(content.substring(m1Idx, m2Idx))
+        .replace(/(?<!`)\b(\d+(?:\.\d+)?)\b(?!`)/g, '`$1`');
+      const metaphor2Part = preprocessMarkdown(content.substring(m2Idx))
+        .replace(/(?<!`)\b(\d+(?:\.\d+)?)\b(?!`)/g, '`$1`');
+
+      // 기능적 해석용 code 색상: VS Code 하늘색 (#9cdcfe)
+      const analysisCode = "prose prose-invert prose-base max-w-none prose-p:leading-relaxed prose-p:my-4 prose-li:my-1 prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none";
+
+      return (
+        <>
+          {/* 🧩 기능적 해석 */}
+          <div className="group relative rounded-xl border border-transparent hover:border-sky-500/20 hover:bg-sky-500/5 px-3 py-2 -mx-3 transition-all duration-200">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} className={analysisCode}
+              components={{ ...headingComponents,
+                code: ({ children }) => {
+                  const txt = String(children).trim();
+                  if (/^\d+(?:\.\d+)?$/.test(txt)) {
+                    return <code style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</code>;
+                  }
+                  return (
+                    <code
+                      style={{ color: '#9cdcfe', cursor: 'pointer', borderBottom: '1px dashed rgba(156,220,254,0.3)' }}
+                      title="Ctrl+Click으로 코드에서 찾기"
+                      onClick={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); highlightCodeToken(txt); } }}
+                    >{children}</code>
+                  );
+                },
+                strong: ({ children }) => <span className="text-sky-300 font-medium">{children}</span> }}
+            >{analysisPart}</ReactMarkdown>
+            <SectionVoteBar section="functional" />
+          </div>
+
+          {/* 💡 비유 1 */}
+          <div className="group relative rounded-xl border border-transparent hover:border-emerald-500/20 hover:bg-emerald-500/5 px-3 py-2 -mx-3 transition-all duration-200">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} className={proseBase}
+              components={{ ...headingComponents,
+                code: ({ children }) => {
+                  const txt = String(children).trim();
+                  return /^\d+(?:\.\d+)?$/.test(txt)
+                    ? <code style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</code>
+                    : <code style={{ color: '#ce9178' }}>{children}</code>;
+                },
+                strong: ({ children }) => <span className="text-emerald-400 font-medium">{children}</span> }}
+            >{metaphor1Part}</ReactMarkdown>
+            <SectionVoteBar section="metaphor1" />
+          </div>
+
+          {/* 💡 비유 2 */}
+          <div className="group relative rounded-xl border border-transparent hover:border-violet-500/20 hover:bg-violet-500/5 px-3 py-2 -mx-3 transition-all duration-200">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} className={proseBase}
+              components={{ ...headingComponents,
+                code: ({ children }) => {
+                  const txt = String(children).trim();
+                  return /^\d+(?:\.\d+)?$/.test(txt)
+                    ? <code style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</code>
+                    : <code style={{ color: '#ce9178' }}>{children}</code>;
+                },
+                strong: ({ children }) => <span className="text-violet-400 font-medium">{children}</span> }}
+            >{metaphor2Part}</ReactMarkdown>
+            <SectionVoteBar section="metaphor2" />
+          </div>
+        </>
+      );
+    }
+
+    // 그 외 일반 메시지
     return (
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        className="prose prose-invert prose-base max-w-none prose-p:leading-relaxed prose-p:my-4 prose-headings:text-cyan-400 prose-li:my-1 prose-strong:text-cyan-300 prose-a:text-[#4ec9b0] prose-pre:bg-[#050505] prose-pre:border prose-pre:border-black/40 prose-code:text-[#ce9178] prose-code:bg-white/5 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+      <ReactMarkdown remarkPlugins={[remarkGfm]} className={proseBase}
+        components={{ ...headingComponents, strong: ({ children }) => <span className="text-emerald-400 font-medium">{children}</span> }}
       >
-        {preprocessMarkdown(msg.content)}
+        {preprocessMarkdown(content)}
       </ReactMarkdown>
     );
   };
@@ -440,9 +833,9 @@ OPTIONS_END
 
       {/* PC: 2단 레이아웃 / 모바일: 탭 */}
       <div className="flex-1 flex gap-2 md:gap-3 overflow-hidden">
-        {/* 코드 패널 (더 넓게) */}
+        {/* 코드 패널 */}
         <div
-          className={`flex-[1.4] flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
+          className={`flex-[0.82] flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg ${
             activeTab !== 'code' ? 'hidden md:flex' : ''
           }`}
         >
@@ -486,6 +879,7 @@ OPTIONS_END
                 value={code}
                 onChange={(val) => setCode(val ?? '')}
                 theme="vs-dark"
+                onMount={handleEditorMount}
                 options={{
                   readOnly: !isEditMode,
                   fontSize: 13,
@@ -562,23 +956,28 @@ OPTIONS_END
                   )}
                   {renderMessageContent(msg, i)}
                   
-                  {/* 첫 번째 AI 응답(분석/비유) 하단에 셔플 버튼 노출 */}
+                  {/* 첫 번째 AI 응답 하단 셔플 버튼 */}
                   {i === 0 && msg.role === 'assistant' && learningPhase !== 'analyzing' && learningPhase !== 'metaphor' && (
-                    <div className="mt-6 flex justify-end">
-                      <button
-                        onClick={handleShuffleMetaphor}
-                        disabled={loading || isShuffling}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-bold text-gray-400 hover:text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all disabled:opacity-50"
-                      >
-                        {isShuffling ? (
-                          <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                        )}
-                        비유 셔플 (다른 예시 보기)
-                      </button>
+                    <div className="mt-4 flex items-center justify-between">
+                      {usingCachedMetaphor && (
+                        <span className="text-[10px] text-gray-600">👥 다른 학생들이 좋아한 비유</span>
+                      )}
+                      <div className="ml-auto">
+                        <button
+                          onClick={handleShuffleMetaphor}
+                          disabled={loading || isShuffling}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[11px] font-bold text-gray-400 hover:text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all disabled:opacity-50"
+                        >
+                          {isShuffling ? (
+                            <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                          비유 셔플
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -603,26 +1002,104 @@ OPTIONS_END
           {/* 입력창 + 퀴즈 버튼 */}
           <div className="border-t border-[#333333] p-2 md:p-3 flex flex-col gap-2 bg-[#050505]">
 
-            {/* 퀴즈 선택지 - 입력창 바로 위 인라인 */}
+            {/* 퀴즈 통합 카드 - 문제 + 힌트 토글 + 선택지 */}
             {quizOptions.length > 0 && learningPhase === 'quiz' && (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between px-1 mb-0.5">
-                  <span className="text-[10px] text-gray-600">선택지 — 키보드 숫자로도 선택 가능</span>
-                  <span className="text-[10px] text-gray-600">{quizCount} / 5</span>
+              <div
+                ref={quizCardRef}
+                tabIndex={0}
+                onFocus={() => { isQuizFocusedRef.current = true; }}
+                onBlur={() => { isQuizFocusedRef.current = false; }}
+                className="flex flex-col rounded-xl border border-[#2a2a2a] bg-[#111] overflow-hidden focus:outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30 transition-all"
+              >
+                {/* 카드 헤더: 진행도 + 힌트 토글 */}
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#222] bg-[#0a0a0a]">
+                  <span className="text-[10px] text-gray-500 font-bold tracking-widest">QUIZ {quizCount} / 5</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-600">카드 클릭 후 키보드 1~4 선택 가능</span>
+                    <button
+                      onClick={() => setShowHint(v => !v)}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all ${
+                        showHint
+                          ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-400'
+                          : 'bg-white/5 border-white/10 text-gray-500 hover:text-yellow-400 hover:border-yellow-500/30'
+                      }`}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      기능적 해석 힌트
+                    </button>
+                  </div>
                 </div>
-                {quizOptions.map((opt, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => sendMessage(`${idx + 1}번`)}
-                    disabled={loading}
-                    className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl bg-[#111] hover:bg-[#1a2a2a] border border-[#2a2a2a] hover:border-cyan-500/40 transition-all group"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-[#1e1e1e] border border-[#3a3a3a] group-hover:bg-cyan-500/15 group-hover:border-cyan-500/40 flex items-center justify-center font-bold text-xs text-gray-500 group-hover:text-cyan-400 shrink-0 transition-all">
-                      {idx + 1}
+
+                {/* 힌트 영역 (토글) */}
+                {showHint && functionalAnalysis && (
+                  <div className="px-3 py-2 border-b border-[#222] bg-yellow-500/5 text-yellow-300/80 text-xs leading-relaxed">
+                    {functionalAnalysis.replace(/^###\s*🧩\s*기능적\s*해석\s*/i, '').trim()}
+                  </div>
+                )}
+
+                {/* 문제 텍스트 */}
+                {quizQuestion && (
+                  <div className="px-3 py-2.5 border-b border-[#222] text-gray-200 text-sm leading-relaxed">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-code:text-[#ce9178] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+                      components={{ strong: ({ children }) => <span className="text-violet-400 font-medium">{children}</span> }}
+                    >
+                      {preprocessMarkdown(quizQuestion)}
+                    </ReactMarkdown>
+                  </div>
+                )}
+
+                {/* 선택지 목록 */}
+                <div className="flex flex-col gap-1 p-2">
+                  {quizOptions.map((opt, idx) => (
+                    <div
+                      key={idx}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#1a1a1a] hover:bg-[#1a2a2a] border border-[#2a2a2a] hover:border-cyan-500/40 transition-all group"
+                    >
+                      {/* 번호 뱃지 - 클릭 시 선택 */}
+                      <button
+                        onClick={() => sendMessage(`${idx + 1}번`)}
+                        disabled={loading}
+                        className="w-5 h-5 rounded-md bg-[#111] border border-[#3a3a3a] group-hover:bg-cyan-500/15 group-hover:border-cyan-500/40 flex items-center justify-center font-bold text-xs text-gray-500 group-hover:text-cyan-400 shrink-0 transition-all"
+                      >
+                        {idx + 1}
+                      </button>
+
+                      {/* 힌트 OFF: 일반 텍스트 버튼 */}
+                      {!showHint && (
+                        <button
+                          onClick={() => sendMessage(`${idx + 1}번`)}
+                          disabled={loading}
+                          className="flex-1 text-left text-gray-300 text-sm group-hover:text-white transition-colors"
+                        >
+                          {opt}
+                        </button>
+                      )}
+
+                      {/* 힌트 ON: 스포일러 박스 (드래그해서 긁으면 보임) */}
+                      {showHint && (
+                        <span
+                          className="flex-1 text-sm px-2 py-0.5 rounded select-text cursor-text"
+                          style={{
+                            color: '#1a1a1a',          /* 배경과 동일한 색 → 안 보임 */
+                            backgroundColor: '#1a1a1a',
+                            border: '1px solid #2a2a2a',
+                            userSelect: 'text',
+                          }}
+                          title="드래그해서 힌트 확인"
+                        >
+                          {opt}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-gray-300 text-sm group-hover:text-white transition-colors">{opt}</span>
-                  </button>
-                ))}
+                  ))}
+                  {showHint && (
+                    <p className="text-center text-[10px] text-gray-600 mt-1">드래그로 긁으면 힌트가 보여요</p>
+                  )}
+                </div>
               </div>
             )}
 

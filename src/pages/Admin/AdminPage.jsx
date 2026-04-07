@@ -4,13 +4,13 @@ import TeacherManagement from './TeacherManagement';
 import GroupManagement from './GroupManagement';
 import StudentManagement from './StudentManagement';
 
-const AdminPage = ({ user, onLogout }) => {
+const AdminPage = ({ user, userData, onLogout }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('students');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-svh bg-theme-bg text-white flex flex-col md:flex-row">
+    <div className="h-svh bg-theme-bg text-white flex flex-col md:flex-row overflow-hidden">
       
       {/* 관리자 사이드바 (데스크톱) / 상단바 (모바일) */}
       <aside className="w-full md:w-64 bg-theme-sidebar border-r border-theme-border flex flex-col justify-between p-4 shrink-0 hidden md:flex">
@@ -88,46 +88,53 @@ const AdminPage = ({ user, onLogout }) => {
         {/* 하단 프로필 및 설정 메뉴 */}
         <div className="relative mt-auto pt-6">
           {isMenuOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-full bg-theme-card border border-theme-border rounded-xl shadow-2xl overflow-hidden py-1 z-50 animate-fade-in-up">
+            <div className="absolute bottom-full left-0 mb-1 w-full bg-[#202020] border border-white/[0.08] rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+              <div className="px-3 py-2.5 flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
+                  {(userData?.displayName || user?.displayName || 'A')[0].toUpperCase()}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[13px] font-medium text-white truncate leading-tight">
+                    {userData?.displayName || user?.displayName || 'Admin'}
+                  </span>
+                  <span className="text-[11px] text-white/40 truncate leading-tight">{user?.email}</span>
+                </div>
+              </div>
+              <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
               <button
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  navigate('/home');
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-white/5 transition"
+                onClick={() => { setIsMenuOpen(false); navigate('/home'); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors"
               >
-                <svg className="w-4 h-4 text-theme-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
                 홈으로 돌아가기
               </button>
-              
-              <div className="h-px w-full bg-theme-border/50 my-1" />
-              
+              <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
               <button
                 onClick={onLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 hover:bg-white/5 transition"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-white/50 hover:bg-white/[0.06] hover:text-white/80 transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
                 로그아웃
               </button>
             </div>
           )}
 
-          <button 
+          <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center justify-between w-full p-2 hover:bg-white/5 rounded-xl transition cursor-pointer"
+            className="flex items-center gap-2.5 w-full px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors"
           >
-            <div className="flex items-center gap-3 px-2">
-               <div className="w-8 h-8 rounded-full bg-[#E5E5E5] flex items-center justify-center shrink-0 text-xs font-bold text-[#171717]">
-                 {user?.displayName ? user.displayName[0] : 'A'}
-               </div>
-               <span className="text-sm font-medium truncate max-w-[100px] text-theme-primary">{user?.displayName || 'Admin'}</span>
+            <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
+              {(userData?.displayName || user?.displayName || 'A')[0].toUpperCase()}
             </div>
-            <svg className={`w-4 h-4 text-theme-secondary transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            <span className="text-[13px] text-white/80 truncate flex-1 text-left">
+              {userData?.displayName || user?.displayName || 'Admin'}
+            </span>
+            <svg className={`w-3.5 h-3.5 text-white/30 shrink-0 transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
             </svg>
           </button>
         </div>

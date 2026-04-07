@@ -5,13 +5,15 @@ import { db } from '../../lib/firebase';
 import ChatView from './ChatView';
 import ResultView from './ResultView';
 import useLearningStore from '../../store/useLearningStore';
+import ApiKeyModal from '../../components/common/ApiKeyModal';
+import { getApiKey } from '../../lib/apiKey';
 
 // GPT로 코드 분석 → 주제 라벨 반환
 const analyzeChapterLabel = async (code) => {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+      'Authorization': `Bearer ${getApiKey()}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -50,6 +52,23 @@ const StudentPage = ({ user, userData, onLogout }) => {
   } = useLearningStore();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [streak, setStreak] = useState(0);
+
+  // 연속 출석 streak 계산 (하루에 한 번만 갱신)
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    const lastVisit = localStorage.getItem('lucid_last_visit');
+    const saved = parseInt(localStorage.getItem('lucid_streak') || '0');
+    let next = saved;
+    if (lastVisit !== today) {
+      next = lastVisit === yesterday ? saved + 1 : 1;
+      localStorage.setItem('lucid_streak', String(next));
+      localStorage.setItem('lucid_last_visit', today);
+    }
+    setStreak(next);
+  }, []);
 
   // 레포 목록
   const [classData, setClassData] = useState([]);
@@ -452,43 +471,65 @@ const StudentPage = ({ user, userData, onLogout }) => {
         {renderSidebar()}
 
         {/* 하단 프로필 */}
-        <div className="relative p-3 border-t border-theme-border">
+        <div className="relative p-2 border-t border-white/[0.06]">
+          {/* 팝업 메뉴 */}
           {isMenuOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-full bg-theme-card border border-theme-border rounded-xl shadow-2xl overflow-hidden py-1 z-50 animate-fade-in-up px-1">
-              <button
-                onClick={() => { setIsMenuOpen(false); navigate('/admin'); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-theme-primary hover:bg-white/5 transition rounded-lg"
-              >
-                <svg className="w-4 h-4 text-theme-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                관리자 페이지
-              </button>
-              <div className="h-px w-full bg-theme-border/50 my-0.5" />
+            <div className="absolute bottom-full left-0 mb-1 w-full bg-[#202020] border border-white/[0.08] rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+              {/* 유저 */}
+              <div className="px-3 py-2.5 flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
+                  {(userData?.displayName || user?.displayName || 'U')[0].toUpperCase()}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[13px] font-medium text-white truncate leading-tight">
+                    {userData?.displayName || user?.displayName}
+                  </span>
+                  <span className="text-[11px] text-white/40 truncate leading-tight">{user?.email}</span>
+                </div>
+              </div>
+
+              <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
+
+              {userData?.role === 'admin' && (
+                <button
+                  onClick={() => { setIsMenuOpen(false); navigate('/admin'); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  관리자 페이지
+                </button>
+              )}
+
+              <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
+
               <button
                 onClick={onLogout}
-                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-400 hover:bg-white/5 transition rounded-lg"
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-white/50 hover:bg-white/[0.06] hover:text-white/80 transition-colors"
               >
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
                 로그아웃
               </button>
             </div>
           )}
+
+          {/* 프로필 버튼 */}
           <button
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center justify-between w-full p-2 hover:bg-white/5 rounded-xl transition cursor-pointer"
+            className="flex items-center gap-2.5 w-full px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors"
           >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#E5E5E5] flex items-center justify-center shrink-0 text-xs font-bold text-[#171717]">
-                {user?.displayName ? user.displayName[0] : 'U'}
-              </div>
-              <span className="text-sm font-medium truncate max-w-[100px] text-theme-primary">{user?.displayName}</span>
+            <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
+              {(userData?.displayName || user?.displayName || 'U')[0].toUpperCase()}
             </div>
-            <svg className={`w-4 h-4 text-theme-secondary transition-transform shrink-0 ${isMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            <span className="text-[13px] text-white/80 truncate flex-1 text-left">
+              {userData?.displayName || user?.displayName}
+            </span>
+            <svg className="w-3.5 h-3.5 text-white/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
             </svg>
           </button>
         </div>
@@ -538,6 +579,68 @@ const StudentPage = ({ user, userData, onLogout }) => {
               </div>
             </div>
 
+          ) : step === 1 && !repo ? (
+            // ─── 듀오링고 스타일 스테이터스 화면 ───────────────────────────
+            (() => {
+              const xp = visitedFiles.length * 100;
+              const level = Math.floor(visitedFiles.length / 5) + 1;
+              const xpInLevel = (visitedFiles.length % 5) * 100;
+              const xpForNext = 500;
+              const xpPercent = Math.min((xpInLevel / xpForNext) * 100, 100);
+              const name = userData?.displayName || user?.displayName || '학생';
+              return (
+                <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in-up px-4">
+                  {/* 레벨 배지 */}
+                  <div className="mb-8">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#4ec9b0] to-[#569cd6] flex items-center justify-center shadow-[0_0_40px_rgba(78,201,176,0.25)] mb-4 mx-auto">
+                      <div className="text-center">
+                        <div className="text-[10px] font-bold text-black/60 uppercase tracking-widest leading-none">LEVEL</div>
+                        <div className="text-3xl font-black text-black leading-none mt-0.5">{level}</div>
+                      </div>
+                    </div>
+                    <h2 className="text-xl font-bold text-white">안녕하세요, {name}님 👋</h2>
+                    <p className="text-gray-500 text-sm mt-1">오늘도 한 단계 성장해봐요</p>
+                  </div>
+
+                  {/* 스탯 카드 3개 */}
+                  <div className="grid grid-cols-3 gap-3 w-full max-w-sm mb-6">
+                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 flex flex-col items-center gap-1">
+                      <span className="text-2xl">🔥</span>
+                      <span className="text-xl font-black text-[#fbbf24]">{streak}</span>
+                      <span className="text-[11px] text-gray-500">연속 출석</span>
+                    </div>
+                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 flex flex-col items-center gap-1">
+                      <span className="text-2xl">⚡</span>
+                      <span className="text-xl font-black text-[#4ec9b0]">{xp}</span>
+                      <span className="text-[11px] text-gray-500">총 XP</span>
+                    </div>
+                    <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 flex flex-col items-center gap-1">
+                      <span className="text-2xl">📚</span>
+                      <span className="text-xl font-black text-[#569cd6]">{visitedFiles.length}</span>
+                      <span className="text-[11px] text-gray-500">학습 파일</span>
+                    </div>
+                  </div>
+
+                  {/* XP 진행 바 */}
+                  <div className="w-full max-w-sm mb-8">
+                    <div className="flex items-center justify-between text-[11px] text-gray-500 mb-1.5">
+                      <span>Lv.{level}</span>
+                      <span>{xpInLevel} / {xpForNext} XP</span>
+                      <span>Lv.{level + 1}</span>
+                    </div>
+                    <div className="h-2.5 bg-white/[0.06] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#4ec9b0] to-[#569cd6] rounded-full transition-all duration-1000 ease-out"
+                        style={{ width: `${xpPercent}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-gray-500 text-sm">왼쪽에서 오늘 배운 과목을 선택하세요</p>
+                </div>
+              );
+            })()
+
           ) : step === 1 ? (
             <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in-up">
               <div className="mb-6 p-4 bg-gradient-to-br from-theme-primary/10 to-theme-icon/10 rounded-2xl border border-white/5">
@@ -552,9 +655,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 </svg>
               </div>
               <h2 className="text-xl font-bold text-white mb-2">오늘 배운 파일을 선택해주세요</h2>
-              <p className="text-gray-500 text-sm">
-                {!repo ? '왼쪽에서 과목을 선택하면 챕터 목록이 나타납니다.' : '챕터를 펼쳐 파일을 선택하면 AI 학습이 시작됩니다.'}
-              </p>
+              <p className="text-gray-500 text-sm">챕터를 펼쳐 파일을 선택하면 AI 학습이 시작됩니다.</p>
             </div>
 
           ) : step === 2 ? (
@@ -571,6 +672,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
           )}
         </div>
       </main>
+
+      {/* API 키 모달 */}
+      {showApiKeyModal && <ApiKeyModal onClose={() => setShowApiKeyModal(false)} />}
     </div>
   );
 };

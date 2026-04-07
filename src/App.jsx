@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import Login from './pages/Login/Login';
 import StudentPage from './pages/Student/StudentPage';
 import AdminPage from './pages/Admin/AdminPage';
+import DictionaryPopup from './components/common/DictionaryPopup';
 
 function App() {
   const { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, logout } = useAuth();
@@ -35,10 +36,11 @@ function App() {
 
   return (
     <BrowserRouter>
+      <DictionaryPopup />
       <Routes>
         <Route path="/"       element={isSuperAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/home" replace />} />
         <Route path="/home" element={<StudentPage user={user} userData={userData} onLogout={logout} />} />
-        <Route path="/admin"   element={isSuperAdmin ? <AdminPage user={user} onLogout={logout} /> : <Navigate to="/home" replace />} />
+        <Route path="/admin"   element={isSuperAdmin ? <AdminPage user={user} userData={userData} onLogout={logout} /> : <Navigate to="/home" replace />} />
         <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

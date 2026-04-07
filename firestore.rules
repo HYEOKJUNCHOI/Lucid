@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // admin 여부 확인 헬퍼
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // 사용자 문서: 본인 + admin 모두 읽기/쓰기 허용
+    match /users/{userId} {
+      allow read:  if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    }
+
+    // 사전 등록 학생: admin만 읽기/쓰기
+    match /invited_students/{doc} {
+      allow read, write: if request.auth != null && isAdmin();
+    }
+
+    // 그룹 / 강사: 로그인 유저 읽기, admin 쓰기
+    match /groups/{doc} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && isAdmin();
+    }
+    match /teachers/{doc} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && isAdmin();
+    }
+
+    // 비유 라이브러리: 로그인 유저 읽기/쓰기 (좋아요 포함)
+    match /metaphors/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 사전: 로그인 유저 읽기/쓰기
+    match /dictionary/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 챕터 라벨 캐시
+    match /chapterLabels/{doc} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

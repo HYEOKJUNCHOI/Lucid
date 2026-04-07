@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc, setDoc, query, where, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LucidLoader from '../../components/common/LucidLoader';
+import ExcelUploadModal from '../../components/admin/ExcelUploadModal';
 
 const StudentManagement = () => {
   const [users, setUsers] = useState([]);
@@ -21,7 +22,8 @@ const StudentManagement = () => {
   const [invitePhone, setInvitePhone] = useState('');
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [originalGroupIds, setOriginalGroupIds] = useState([]); // 모달 열 때 Firestore에서 읽은 원본
+  const [originalGroupIds, setOriginalGroupIds] = useState([]);
+  const [showExcelModal, setShowExcelModal] = useState(false); // 모달 열 때 Firestore에서 읽은 원본
 
   useEffect(() => {
     let usersLoaded = false;
@@ -308,6 +310,7 @@ const StudentManagement = () => {
   };
 
   return (
+    <>
     <div className="flex flex-col gap-8 animate-fade-in">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
@@ -337,6 +340,15 @@ const StudentManagement = () => {
               </button>
             </div>
           )}
+          <button
+            onClick={() => setShowExcelModal(true)}
+            className="px-6 py-2.5 bg-white/[0.03] hover:bg-white/[0.08] text-white font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            엑셀 일괄 등록
+          </button>
           <button
             onClick={openInviteAssign}
             className="px-6 py-2.5 bg-white/[0.03] hover:bg-white/[0.08] text-white font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
@@ -598,6 +610,14 @@ const StudentManagement = () => {
       )}
 
     </div>
+
+    {showExcelModal && (
+      <ExcelUploadModal
+        onClose={() => setShowExcelModal(false)}
+        onComplete={() => setShowExcelModal(false)}
+      />
+    )}
+    </>
   );
 };
 
