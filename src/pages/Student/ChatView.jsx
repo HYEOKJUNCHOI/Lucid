@@ -36,6 +36,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [codeLoading, setCodeLoading] = useState(true);
   const [isEditMode, setIsEditMode] = useState(true); // 기본값: 편집 모드
   const [editorFontSize, setEditorFontSize] = useState(13); // Ctrl+Wheel 줌
+  const [chatFontSize, setChatFontSize] = useState(16); // 채팅 Ctrl+Wheel 줌
   const [activeTab, setActiveTab] = useState('chat'); // 모바일 탭: "code" | "chat"
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
   const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지
@@ -798,6 +799,8 @@ OPTIONS_END
             <SectionVoteBar section="functional" />
           </div>
 
+          <div className="h-4" />
+
           {/* 🎯 메타포 설명 */}
           <div className="group relative rounded-xl border border-white/[0.06] hover:border-emerald-500/30 bg-white/[0.02] hover:bg-emerald-500/5 px-3 py-2 -mx-3 transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.08)]">
             <ReactMarkdown remarkPlugins={[remarkGfm]} className={proseBase}
@@ -1035,7 +1038,19 @@ OPTIONS_END
           ) : (
           <>
           {/* 메시지 목록 */}
-          <div className="flex-1 overflow-auto p-10 flex flex-col gap-10 bg-[#1e1e1e]">
+          <div
+            className="flex-1 overflow-auto p-10 flex flex-col gap-10 bg-[#1e1e1e]"
+            style={{ fontSize: `${chatFontSize}px` }}
+            ref={(el) => {
+              if (!el || el._wheelBound) return;
+              el._wheelBound = true;
+              el.addEventListener('wheel', (e) => {
+                if (!(e.ctrlKey || e.metaKey)) return;
+                e.preventDefault();
+                setChatFontSize(prev => Math.max(12, Math.min(24, prev + (e.deltaY < 0 ? 1 : -1))));
+              }, { passive: false });
+            }}
+          >
             {messages.length === 0 && (
               <p className="text-gray-500 text-sm text-center mt-8">
                 코드에 대해 질문해보세요

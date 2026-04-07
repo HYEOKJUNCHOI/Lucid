@@ -50,16 +50,26 @@ export const useAuth = () => {
               // groupIDs가 비어있을 때 invited_students에서 자동 동기화
               // 이유: 학생이 먼저 로그인(users 문서 생성) 후 어드민이 반 배정했을 경우,
               //       invited_students에는 groupIDs가 있지만 users 문서에는 반영이 안 되는 케이스 커버
-              if (!data.groupIDs || data.groupIDs.length === 0) {
-                const inviteRef = doc(db, 'invited_students', firebaseUser.email.toLowerCase());
-                const inviteSnap = await getDoc(inviteRef);
-                if (inviteSnap.exists()) {
-                  const inviteGroups = inviteSnap.data().groupIDs || [];
-                  if (inviteGroups.length > 0) {
-                    // users 문서에 groupIDs 업데이트 → onSnapshot 재발동으로 자동 반영
-                    await setDoc(userRef, { groupIDs: inviteGroups }, { merge: true });
-                    return; // 다음 onSnapshot 콜백에서 최신 data로 setUserData 호출됨
-                  }
+              // invited_students 확인: groupIDs 동기화 + 사전등록 이름 반영
+              const inviteRef = doc(db, 'invited_students', firebaseUser.email.toLowerCase());
+              const inviteSnap = await getDoc(inviteRef);
+              if (inviteSnap.exists()) {
+                const inviteData = inviteSnap.data();
+                const updates = {};
+
+                // groupIDs가 비어있으면 사전등록의 groupIDs로 채우기
+                if ((!data.groupIDs || data.groupIDs.length === 0) && inviteData.groupIDs?.length > 0) {
+                  updates.groupIDs = inviteData.groupIDs;
+                }
+
+                // 사전등록 이름이 있으면 displayName 덮어쓰기
+                if (inviteData.name && data.displayName !== inviteData.name) {
+                  updates.displayName = inviteData.name;
+                }
+
+                if (Object.keys(updates).length > 0) {
+                  await setDoc(userRef, updates, { merge: true });
+                  return; // onSnapshot 재발동으로 자동 반영
                 }
               }
 
