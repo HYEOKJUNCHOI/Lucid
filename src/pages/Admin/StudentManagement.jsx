@@ -98,16 +98,9 @@ const StudentManagement = () => {
   const openSingleAssign = (userObj) => {
     setAssignMode('single');
     setSelectedUser(userObj);
-    // 기존 groupIDs를 항상 Firebase 문서 ID로 정규화하여 체크박스와 매칭되게 함
-    // (이름으로 오염된 데이터도 안전하게 처리)
-    const normalizedIds = (userObj.groupIDs || []).map(raw => {
-      const byId = groups.find(g => g.id === raw);
-      if (byId) return byId.id;
-      const byName = groups.find(g => g.name === raw);
-      if (byName) return byName.id;
-      return null;
-    }).filter(Boolean);
-    setSelectedGroupIds(normalizedIds);
+    // 저장 시 normalizeToIds()가 이름→ID 변환을 처리하므로
+    // 모달 오픈 시에는 원본 groupIDs를 그대로 사용 (타이밍 이슈로 groups 상태가 비어있으면 normalizedIds = [] 가 되는 버그 방지)
+    setSelectedGroupIds(userObj.groupIDs || []);
     // 인적사항 정보 동기화
     setInviteName(userObj.displayName || '');
     setInvitePhone(userObj.phone || '');
@@ -168,7 +161,16 @@ const StudentManagement = () => {
       if (assignMode === 'single') {
         // 모달에서 선택한 상태를 그대로 저장 (체크 해제 = 제거)
         // 단, 저장 전 반드시 Firebase 문서 ID로 정규화
-        const mergedGroups = normalizeToIds(selectedGroupIds);
+        const mergedGroups = [...new Set(normalizeToIds(selectedGroupIds))];
+
+        // 안전장치: 기존에 그룹이 있었는데 전부 해제하면 확인 요청
+        const hadGroups = (selectedUser.groupIDs || []).length > 0;
+        if (hadGroups && mergedGroups.length === 0) {
+          if (!window.confirm('소속 그룹을 전부 제거합니다. 계속할까요?')) {
+            setSaving(false);
+            return;
+          }
+        }
         const lowerEmail = (selectedUser.email || '').toLowerCase();
 
         if (selectedUser.isRegistered) {

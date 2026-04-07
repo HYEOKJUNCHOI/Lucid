@@ -28,7 +28,11 @@ const RepoSelect = ({ groupIDs, onSelect }) => {
               if (!tSnap.exists()) return null;
               const teacher = tSnap.data();
 
-              // 3. GitHub 레포지토리 조회
+              // 3. 그룹명에서 기수 추출 (예: "국비_KORIT_9기" → "9")
+              const genMatch = group.name.match(/(\d+)기/);
+              const groupGeneration = genMatch ? genMatch[1] : null;
+
+              // 4. GitHub 레포지토리 조회
               const res = await fetch(
                 `https://api.github.com/users/${teacher.githubUsername}/repos?per_page=100&sort=updated`
               );
@@ -39,12 +43,12 @@ const RepoSelect = ({ groupIDs, onSelect }) => {
                   .filter((r) => !r.fork)
                   .map((r) => {
                     const match = r.name.match(/^korit_(\d+)_gov_(.+)$/);
-                    if (!match) return null; // 패턴 불일치 제외
-                    const generation = match[1];
+                    if (!match) return null;
+                    if (!groupGeneration || match[1] !== groupGeneration) return null; // 기수 불일치 또는 미확인 제외
                     const subject = match[2].replace(/_/g, ' ').toUpperCase();
                     return {
                       name: r.name,
-                      label: `${generation}기 · ${subject}`,
+                      label: `${match[1]}기 · ${subject}`,
                       description: r.description || '레포지토리 설명이 없습니다.',
                     };
                   })
