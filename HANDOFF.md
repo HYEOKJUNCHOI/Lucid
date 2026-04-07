@@ -38,62 +38,62 @@
 
 ### 작성 정보
 - **작성자:** Claude Code (CC)
-- **작성 시각:** 2026-04-07 KST
-- **커밋 해시:** `7065dc2`
+- **작성 시각:** 2026-04-07 KST (세션 3)
+- **커밋 해시:** `6851dc8`
 - **빌드 상태:** 컴파일 에러 없음 ✅
 
 ---
 
 ### 현재 상태 요약
-관리자 화면 강사/그룹 관리 기능 안정화 완료. 레포 파싱 정규식 개선.
-**다음 최우선 작업: `ChatView.jsx` GPT 연동** (Day 1 핵심 미완료)
+학생 페이지 사이드바 아코디언 트리 UI 완성. groupIDs 버그(invited_students 동기화 덮어쓰기) 수정.
+**다음 최우선 작업: `ChatView.jsx` GPT 연동** (sendMessage 함수가 TODO 플레이스홀더 상태)
 
 ---
 
 ### 이번 세션에서 한 일
 
-**강사 필드명 통일** (`TeacherManagement.jsx`)
-- 저장 필드: `githubRepo` → `githubUsername` 통일
-- UI 라벨: "GitHub 레포지토리 URL" → "GitHub 유저네임", placeholder: `예: code1218`
-- 이유: `RepoSelect.jsx`가 `teacher.githubUsername`으로 읽는데 저장은 `githubRepo`로 하고 있어서 레포 조회가 실제로 안 됐던 버그 수정
+**groupIDs 버그 수정** (`StudentManagement.jsx`)
+- `normalizeToIds` 헬퍼 삭제 (groups 상태 의존으로 불안정)
+- 등록된 학생 저장 시 `users/{uid}`만 업데이트. `invited_students` 동기화 완전 제거
+  - 이유: `invited_students`에 오래된 빈 데이터가 있으면 `useAuth.js`의 else 분기(최초 가입자 처리)가 실행될 때 그걸 읽어서 `users` 문서를 덮어쓰는 구조였음
+- `originalGroupIds` 상태 추가 → 모달 열 때 Firestore에서 읽은 원본값으로 안전장치 동작
 
-**그룹 강사 수정 기능** (`GroupManagement.jsx`)
-- 그룹 카드 hover 시 연필 아이콘 추가 → 클릭 시 인라인 강사 드롭다운 + 저장/취소
-- 강사 삭제 후 "강사 정보 없음" 상태인 그룹에서 대체 강사 지정 가능
-
-**레포 파싱 개선** (`RepoSelect.jsx`)
-- 정규식: `/_gov_(.+)$/` → `/^korit_(\d+)_gov_(.+)$/`
-- `korit_9_gov_java` → `9기 · JAVA` 형태로 라벨 표시
-- 패턴 불일치(`git_hub_study` 등) 자동 제외
+**사이드바 아코디언 트리** (`StudentPage.jsx`)
+- 기존 3단계 레벨(sidebarLevel 1→2→3 페이지 전환) 방식 완전 교체
+- `repo === null` : 레포 목록 표시 / `repo !== null` : 아코디언 트리 표시
+- 챕터 클릭 → 화살표 회전 + 인라인 파일 목록 (VS Code 파일 탐색기 스타일)
+- 파일은 첫 클릭 시에만 GitHub API 호출 → `chapterFilesMap`에 캐시
+- GPT 라벨 로딩 스피너 챕터 행 안에 인라인 표시
 
 ---
 
 ### 아직 안 한 일 / 이어서 해야 할 일
 
 1. **⭐ `ChatView.jsx` GPT 연동 (최우선)**
-   - 코드 불러오기는 이미 완성됨 (GitHub API)
-   - `sendMessage` 함수 안이 TODO 플레이스홀더 상태
-   - Agent 1: 코드 분석 → 개념 추출 (자동 실행)
-   - Agent 2: 게임 메타포 + 생활 메타포 생성 (자동 실행)
-   - Agent 3: 레벨 진단 4지선다 5문제 (버튼 트리거)
-   - `VITE_OPENAI_API_KEY` `.env`에 존재 확인됨. OpenAI SDK는 미설치 → fetch 직접 호출 또는 `npm install openai` 후 사용
+   - 코드 불러오기 완성됨 (GitHub API, `concept.type === 'file'` 분기)
+   - `sendMessage` 함수 내부가 TODO 플레이스홀더 상태 (line 70~82)
+   - 구현 방향:
+     - Agent 1: 코드 분석 → 핵심 개념 추출 (채팅 시작 시 자동 실행)
+     - Agent 2: 게임/생활 메타포 생성 (자동 실행)
+     - Agent 3: 레벨 진단 4지선다 5문제 (버튼 트리거)
+   - `VITE_OPENAI_API_KEY` `.env`에 존재 확인됨. fetch 직접 호출 방식 사용
 
-2. **`ModeSelect.jsx`, `ConceptSelect.jsx` UI 업데이트**
-   - 현재 `gray-800` 구형 스타일. 나머지 화면과 통일 필요
+2. **ResultView 레벨 시각화**
+   - 현재 뼈대만 있음 (`src/pages/Student/ResultView.jsx`)
+   - 클래시오브클랜 스타일 별/트로피 UI 구현 필요
 
-3. **Firebase `teachers` 컬렉션 기존 데이터 정리**
-   - 기존에 `githubRepo` 필드로 저장된 강사 데이터가 있으면 수정 버튼 한 번 눌러 저장하면 `githubUsername`으로 교체됨
-
-4. **ResultView 레벨 시각화**
-   - 현재 뼈대만 있음. 클래시오브클랜 스타일 별/트로피 UI 구현 필요
+3. **ModeSelect.jsx, ConceptSelect.jsx 파일**
+   - 학생 페이지 흐름에서 완전히 제거됨 (사이드바로 대체)
+   - 파일 자체는 아직 남아 있음 → 삭제해도 무방
 
 ---
 
 ### 주의사항 / 알려둘 것
 
-- **강사 데이터**: `teachers/{id}` 문서에 `githubUsername` 필드 필수. 없으면 `RepoSelect`에서 GitHub API 호출 불가
-- **레포 네이밍 규칙**: `korit_{기수}_gov_{과목}` 패턴만 학생 화면에 노출됨. 강사가 이 규칙으로 레포를 만들어야 함
-- **groupIDs**: Firestore `groups` 컬렉션의 문서 ID여야 함. 이름(name)이 들어가면 RepoSelect 조회 실패
-- **모드 정책**: `single`=Replace, `batch`=Merge. 의도적 분리이므로 변경 시 주의
+- **강사 데이터**: `teachers/{id}` 문서에 `githubUsername` 필드 필수
+- **레포 네이밍 규칙**: `korit_{기수}_gov_{과목}` 패턴만 학생 화면에 노출됨
+- **groupIDs**: Firestore `groups` 컬렉션의 문서 ID여야 함
+- **모드 정책**: `single`=Replace, `batch`=Merge
 - **GitHub API rate limit**: 인증 없이 public 레포 사용 중 (60req/h)
 - **환경변수**: `.env`에 `VITE_OPENAI_API_KEY` 존재
+- **GPT 챕터 라벨 캐시**: Firebase `chapterLabels/{id}` 컬렉션에 `label` + `commitHash` 저장. 커밋 해시 변경 시 자동 갱신

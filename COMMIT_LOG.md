@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-04-07 (세션 3)
+
+### [CC] refactor: groupIDs 버그 수정 + 사이드바 아코디언 트리 UI
+- **커밋 해시:** `6851dc8`
+- **지시:** groupIDs 재작성 + 사이드바 VS Code 트리 스타일로 변경
+- **내용:**
+  - `StudentManagement`: `normalizeToIds` 제거, 등록 유저는 `users/{uid}`만 업데이트 (`invited_students` 동기화 삭제 → 덮어쓰기 버그 원인 제거), `originalGroupIds` 상태로 안전장치 개선
+  - `StudentPage`: 3단계 레벨(sidebarLevel) 방식 → `repo === null` 분기로 단순화, 챕터 아코디언 트리뷰 구현 (클릭 시 인라인 파일 목록 + 지연 로딩)
+- **수정 파일:**
+  - `src/pages/Admin/StudentManagement.jsx`
+  - `src/pages/Student/StudentPage.jsx`
+
+### [CC] feat: 3단계 사이드바 네비게이션 + groupIDs 버그 수정 (선행 커밋)
+- **커밋 해시:** `dfdf569`
+- **지시:** 사이드바 레포→챕터→파일 3단계 구조, ChatView 파일타입 분기, groupIDs stale state 수정
+- **내용:**
+  - `StudentPage`: 레포 목록 사이드바 이동, GPT 챕터 라벨 분석 + Firebase 커밋해시 캐싱
+  - `ChatView`: `concept.type === 'file'` 직접 다운로드 분기 추가
+  - `StudentManagement`: `openSingleAssign`에서 Firestore 직접 읽기로 stale state 버그 수정
+- **수정 파일:**
+  - `src/pages/Student/StudentPage.jsx`
+  - `src/pages/Student/ChatView.jsx`
+  - `src/pages/Admin/StudentManagement.jsx`
+
+---
+
 ## 2026-04-07 (세션 2)
 
 ### [CC] fix: 강사 GitHub 유저네임 필드 통일 및 그룹 강사 수정 기능 추가
