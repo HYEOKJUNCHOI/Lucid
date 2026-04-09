@@ -8,12 +8,24 @@
   padding: 0;
 }
 
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
 body {
   font-family: 'Pretendard', system-ui, sans-serif;
-  background-color: #050505;
-  color: #f0f0f0;
+  background-color: #0e1512;
+  color: #ddeee8;
   min-height: 100svh;
   overflow-x: hidden;
+}
+
+/* 앱 전체 배경 — 은은한 포레스트 그라디언트 */
+#root {
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 10%, rgba(78,201,176,0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 40% at 85% 90%, rgba(34,197,94,0.05) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 60% at 50% 50%, rgba(20,83,45,0.08) 0%, transparent 65%),
+    #0e1512;
+  min-height: 100svh;
 }
 
 @keyframes popBounce {
@@ -86,4 +98,179 @@ body.ctrl-held .code-token-clickable {
 @keyframes token-fade {
   0%, 60% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* 퀴즈 오답 흔들기 */
+@keyframes quizShake {
+  0%   { transform: translateX(0); }
+  15%  { transform: translateX(-8px); }
+  30%  { transform: translateX(7px); }
+  45%  { transform: translateX(-6px); }
+  60%  { transform: translateX(5px); }
+  75%  { transform: translateX(-3px); }
+  90%  { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+.quiz-wrong-shake {
+  animation: quizShake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+/* 화살표 힌트 느린 바운스 */
+@keyframes bounceSlow {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50%       { transform: translateY(5px); opacity: 1; }
+}
+.animate-bounce-slow {
+  animation: bounceSlow 1.8s ease-in-out infinite;
+}
+
+/* 레포 카드 클릭 flash */
+@keyframes pingOnce {
+  0%   { transform: scale(1);   opacity: 0.4; }
+  70%  { transform: scale(1.05); opacity: 0.1; }
+  100% { transform: scale(1.05); opacity: 0; }
+}
+.animate-ping-once {
+  animation: pingOnce 0.5s ease-out forwards;
+}
+
+/* 사이드바 카드 순차 등장 */
+@keyframes sidebarSlideIn {
+  0% { opacity: 0; transform: translateX(-12px) scale(0.97); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+.sidebar-card-enter {
+  animation: sidebarSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes questRise {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(32px); }
+  15%  { opacity: 1; transform: translateX(-50%) translateY(0px); }
+  75%  { opacity: 1; transform: translateX(-50%) translateY(0px); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+.quest-complete-toast {
+  animation: questRise 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ─── 배치고사 인트로 애니메이션 ─── */
+@keyframes floatBob {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+@keyframes shimmerSweep {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes tierBounceIn {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.85); }
+  60%  { transform: translateY(-4px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes barFill {
+  from { width: 0%; }
+}
+.placement-float    { animation: floatBob 3s ease-in-out infinite; }
+.placement-row-1    { animation: fadeSlideUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
+.placement-row-2    { animation: fadeSlideUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.15s both; }
+.placement-row-3    { animation: fadeSlideUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.25s both; }
+.placement-row-4    { animation: fadeSlideUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.40s both; }
+.placement-row-5    { animation: fadeSlideUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.55s both; }
+.placement-tier-0   { animation: tierBounceIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
+.placement-tier-1   { animation: tierBounceIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.38s both; }
+.placement-tier-2   { animation: tierBounceIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.46s both; }
+.placement-tier-3   { animation: tierBounceIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.54s both; }
+.placement-tier-4   { animation: tierBounceIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.62s both; }
+.placement-bar-fill { animation: barFill 0.9s cubic-bezier(0.16,1,0.3,1) 0.75s both; }
+.placement-btn-shimmer {
+  background-size: 200% auto;
+  animation: shimmerSweep 2.5s linear infinite;
+  background-image: linear-gradient(90deg, #eab308 0%, #fde047 40%, #f59e0b 50%, #fde047 60%, #eab308 100%);
+}
+
+/* ─── 티어 아이콘 글로우 애니메이션 ─── */
+@keyframes tierGlowBronze {
+  0%, 100% { filter: drop-shadow(0 0 3px #d97706); }
+  50%       { filter: drop-shadow(0 0 10px #f59e0b) brightness(1.3); }
+}
+@keyframes tierGlowSilver {
+  0%, 100% { filter: drop-shadow(0 0 3px #9ca3af); }
+  50%       { filter: drop-shadow(0 0 10px #e5e7eb) brightness(1.4); }
+}
+@keyframes tierGlowGold {
+  0%, 100% { filter: drop-shadow(0 0 4px #eab308); }
+  50%       { filter: drop-shadow(0 0 14px #fde047) brightness(1.5); }
+}
+@keyframes tierGlowPlatinum {
+  0%   { filter: drop-shadow(0 0 6px #06b6d4) hue-rotate(0deg) brightness(1.2); }
+  33%  { filter: drop-shadow(0 0 14px #818cf8) hue-rotate(40deg) brightness(1.5); }
+  66%  { filter: drop-shadow(0 0 14px #22d3ee) hue-rotate(-20deg) brightness(1.5); }
+  100% { filter: drop-shadow(0 0 6px #06b6d4) hue-rotate(0deg) brightness(1.2); }
+}
+@keyframes tierGlowDiamond {
+  0%   { filter: drop-shadow(0 0 8px #a855f7) hue-rotate(0deg) brightness(1.3); transform: scale(1); }
+  25%  { filter: drop-shadow(0 0 20px #ec4899) hue-rotate(80deg) brightness(1.7); transform: scale(1.08); }
+  50%  { filter: drop-shadow(0 0 20px #06b6d4) hue-rotate(160deg) brightness(1.7); transform: scale(1); }
+  75%  { filter: drop-shadow(0 0 20px #f59e0b) hue-rotate(240deg) brightness(1.7); transform: scale(1.08); }
+  100% { filter: drop-shadow(0 0 8px #a855f7) hue-rotate(360deg) brightness(1.3); transform: scale(1); }
+}
+.tier-glow-bronze   { animation: tierGlowBronze   2.5s ease-in-out infinite; }
+.tier-glow-silver   { animation: tierGlowSilver   2.5s ease-in-out infinite; }
+.tier-glow-gold     { animation: tierGlowGold     2s ease-in-out infinite; }
+.tier-glow-platinum { animation: tierGlowPlatinum 3.5s ease-in-out infinite; }
+.tier-glow-diamond  { animation: tierGlowDiamond  3s ease-in-out infinite; }
+
+/* ─── 퀴즈 코드 패널 슬라이드 ─── */
+@keyframes quizCodePanelEnter {
+  0%   { opacity: 0; transform: translateX(-24px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes quizPanelSlideRight {
+  0%   { opacity: 0; transform: translateX(16px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.quiz-code-panel-enter {
+  animation: quizCodePanelEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.quiz-panel-slide-right {
+  animation: quizPanelSlideRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both;
+}
+
+/* 채팅 패널 스크롤바 — VS Code 스타일 슬림 다크 */
+.chat-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.chat-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+}
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.18);
+}
+
+/* 채팅 패널 스크롤바 — VS Code 스타일 슬림 다크 */
+.chat-scrollbar::-webkit-scrollbar { width: 6px; }
+.chat-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.chat-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+.chat-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* 블랙박스: 오래된 메시지 위로 사라지는 애니메이션 */
+@keyframes messageLeave {
+  0%   { opacity: 1; transform: translateY(0);     max-height: 600px; margin-bottom: 2.5rem; }
+  100% { opacity: 0; transform: translateY(-12px); max-height: 0;     margin-bottom: 0; }
+}
+.message-leaving {
+  animation: messageLeave 0.4s ease-out forwards;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 타자연습: 틀린 글자 하이라이트 */
+.typing-error-char {
+  background-color: rgba(255, 80, 80, 0.3) !important;
+  border-bottom: 2px solid #ff5050;
+  color: #ff8080 !important;
 }

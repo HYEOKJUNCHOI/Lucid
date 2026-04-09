@@ -3,8 +3,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import useLearningStore from '../../store/useLearningStore';
-import { auth } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getMetaphorDoc, saveOrUpdateMetaphor, voteSectionMetaphor } from '../../services/metaphorService';
+import { saveLearningResult, XP_WEIGHTS } from '../../services/learningService';
 import { getApiKey } from '../../lib/apiKey';
 
 // GPT 응답 텍스트의 단일 줄바꿈(\n)을 마크다운 문단 구분(\n\n)으로 변환하는 전처리 함수
@@ -17,8 +19,9 @@ const preprocessMarkdown = (text) => {
     .replace(/(?<!\n)\n(?!\n)/g, '  \n'); // 단일 \n → 마크다운 강제 줄바꿈(스페이스 2개 + \n)
 };
 
-// 파일 경로 기반 localStorage 키 (파일별 채팅 히스토리)
-const chatKey = (path) => `lucid_chat_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+// Firestore 채팅 세션 문서 ID
+const chatSessionId = (uid, repoName, path) =>
+  `${uid}___${repoName}___${path.replace(/[^a-zA-Z0-9가-힣]/g, '_')}`;
 
 const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const {
@@ -41,6 +44,9 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
   const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지
   const [quizQuestion, setQuizQuestion] = useState(''); // 현재 퀴즈 문제 텍스트
+  const [correctCount, setCorrectCount] = useState(0); // 퀴즈 정답 수
+  const [leavingCount, setLeavingCount] = useState(0); // 블랙박스: 애니메이션 중인 제거 메시지 수
+  const isTrimmingRef = useRef(false);
   const [showHint, setShowHint] = useState(false); // 기능적 해석 힌트 on/off
   const [isTypingMode, setIsTypingMode] = useState(false); // 타자연습 모드
   const [typingCode, setTypingCode] = useState(''); // 타자연습 입력 내용
@@ -213,6 +219,21 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // 블랙박스: 100개 초과 시 오래된 메시지 순차 제거
+  useEffect(() => {
+    if (messages.length > 100 && !isTrimmingRef.current) {
+      isTrimmingRef.current = true;
+      const excess = messages.length - 100;
+      const visibleLeaving = messages.slice(0, excess).filter(m => !m.hidden).length;
+      setLeavingCount(visibleLeaving);
+      setTimeout(() => {
+        setMessages(prev => prev.slice(excess));
+        setLeavingCount(0);
+        isTrimmingRef.current = false;
+      }, 400);
+    }
+  }, [messages.length]);
 
   // 키보드 연동 (1~4번 선택 — 퀴즈 카드에 포커스가 있을 때만 작동)
   useEffect(() => {
@@ -449,35 +470,51 @@ ${funcAnalysis}
     }
   }, [quizOptions.length]);
 
-  // concept 변경 시 → localStorage에서 해당 파일 채팅 복원 (없으면 새 세션)
+  // concept 변경 시 → Firestore에서 해당 파일 채팅 복원 (없으면 새 세션)
   useEffect(() => {
     if (!concept?.path) return;
     setQuizOptions([]);
     setQuizQuestion('');
-    const saved = localStorage.getItem(chatKey(concept.path));
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
-          setLearningPhase('chat');
+    const uid = auth.currentUser?.uid;
+    if (!uid) { resetSession(); return; }
+
+    const id = chatSessionId(uid, repo.name, concept.path);
+    getDoc(doc(db, 'chatSessions', id)).then(snap => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const msgs = data.messages;
+        if (Array.isArray(msgs) && msgs.length > 0) {
+          setMessages(msgs);
+          setLearningPhase(data.learningPhase || 'chat');
           return;
         }
-      } catch {}
-    }
-    // 저장된 히스토리 없음 → 새 세션 시작
-    resetSession();
+      }
+      resetSession();
+    }).catch(() => resetSession());
   }, [concept?.path]);
 
-  // messages 변경 시 파일별 localStorage에 저장 (임시 메시지 제외)
+  // messages 변경 시 Firestore에 저장 (2초 디바운스, 임시 메시지 제외)
   useEffect(() => {
     if (!concept?.path || messages.length === 0) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
     const toSave = messages.filter(m => !m.isTemp);
     if (toSave.length === 0) return;
-    try {
-      localStorage.setItem(chatKey(concept.path), JSON.stringify(toSave));
-    } catch {}
-  }, [messages, concept?.path]);
+
+    const timer = setTimeout(() => {
+      const id = chatSessionId(uid, repo.name, concept.path);
+      setDoc(doc(db, 'chatSessions', id), {
+        uid,
+        repoName: repo.name,
+        filePath: concept.path,
+        messages: toSave.slice(-100), // 최대 100개
+        learningPhase,
+        updatedAt: serverTimestamp(),
+      }).catch(e => console.warn('채팅 세션 저장 실패:', e));
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [messages, concept?.path, learningPhase]);
 
   // GitHub에서 코드 불러오기
   useEffect(() => {
@@ -587,7 +624,8 @@ OPTIONS_START
 3. 세번째 옵션
 4. 네번째 옵션
 OPTIONS_END
-4. 5번 문제의 해설까지 끝냈다면, 마지막에 반드시 "모든 퀴즈가 완료되었습니다. 💡" 라는 문장을 포함해 줘.`;
+4. 5번 문제의 해설까지 끝냈다면, 마지막에 반드시 "모든 퀴즈가 완료되었습니다. 💡" 라는 문장을 포함해 줘.
+5. 채점 시 피드백 첫 줄에 반드시 "RESULT:CORRECT" 또는 "RESULT:WRONG" 만 단독으로 표시해줘. (다음 문제 앞에)`;
       }
 
       let res = await callOpenAI(apiMessages, systemPrompt);
@@ -622,9 +660,13 @@ OPTIONS_END
           const feedback = cleanRes.substring(0, splitIdx).trim();
           const question = cleanRes.substring(splitIdx).trim();
 
+          // RESULT 태그 파싱 후 정답 카운트
+          if (feedback.includes('RESULT:CORRECT')) setCorrectCount(prev => prev + 1);
+          const cleanFeedback = feedback.replace(/^RESULT:(CORRECT|WRONG)\s*/m, '').trim();
+
           // 정답/오답 해설은 채팅에 표시 (사용자가 볼 수 있도록)
-          if (feedback) {
-            setMessages(prev => [...prev, { role: 'assistant', content: feedback }]);
+          if (cleanFeedback) {
+            setMessages(prev => [...prev, { role: 'assistant', content: cleanFeedback }]);
           }
           // 새 문제는 카드에만 표시
           setQuizQuestion(question);
@@ -643,6 +685,8 @@ OPTIONS_END
       if (learningPhase === 'quiz' || isQuizTrigger) {
         if (res.includes("완료되었습니다")) {
           setLearningPhase('completed');
+          const uid = auth.currentUser?.uid;
+          if (uid) saveLearningResult(uid, repo.name, concept.path, messages, correctCount);
         } else if (res.includes("2/5") && quizCount < 2) setQuizCount(2);
         else if (res.includes("3/5") && quizCount < 3) setQuizCount(3);
         else if (res.includes("4/5") && quizCount < 4) setQuizCount(4);
@@ -995,8 +1039,11 @@ OPTIONS_END
               </button>
             ) : (
               <button
-                onClick={() => onComplete({ level: quizCount, score: 0 })}
-                className={`text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all shadow-sm flex items-center gap-1 ${
+                onClick={() => {
+                  const xp = XP_WEIGHTS.quizComplete + (correctCount * XP_WEIGHTS.quizCorrect);
+                  onComplete({ level: quizCount, earnedXP: xp, correctCount });
+                }}
+                className={`text-[10px] px-2 py-[3px] rounded-md font-bold transition-all shadow-sm flex items-center gap-1 ${
                   learningPhase === 'completed'
                     ? 'bg-cyan-400 text-black hover:bg-cyan-300 shadow-[0_0_10px_rgba(78,201,176,0.4)] animate-pulse-glow'
                     : 'bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222]'
@@ -1039,7 +1086,7 @@ OPTIONS_END
           <>
           {/* 메시지 목록 */}
           <div
-            className="flex-1 overflow-auto p-10 flex flex-col gap-10 bg-[#1e1e1e]"
+            className="flex-1 overflow-auto p-10 flex flex-col gap-10 bg-[#1e1e1e] chat-scrollbar"
             style={{ fontSize: `${chatFontSize}px` }}
             ref={(el) => {
               if (!el || el._wheelBound) return;
@@ -1061,7 +1108,7 @@ OPTIONS_END
               .map((msg, i) => (
               <div
                 key={i}
-                className={`w-full ${
+                className={`w-full ${i < leavingCount ? 'message-leaving' : ''} ${
                   msg.role === 'user'
                     ? 'flex flex-col items-end'
                     : 'flex flex-col items-start'
@@ -1244,6 +1291,17 @@ OPTIONS_END
               </div>
             )}
 
+            {learningPhase === 'completed' ? (
+              <button
+                onClick={() => {
+                  const xp = XP_WEIGHTS.quizComplete + (correctCount * XP_WEIGHTS.quizCorrect);
+                  onComplete({ level: quizCount, earnedXP: xp, correctCount });
+                }}
+                className="w-full py-3 rounded-xl font-bold text-black text-sm bg-cyan-400 hover:bg-cyan-300 shadow-[0_0_16px_rgba(78,201,176,0.4)] transition-all"
+              >
+                확인 →
+              </button>
+            ) : (
             <div className="flex gap-2">
               <input
                 type="text"
@@ -1254,10 +1312,9 @@ OPTIONS_END
                     sendMessage(input);
                   }
                 }}
-                disabled={loading || learningPhase === 'idle' || learningPhase === 'analyzing' || learningPhase === 'metaphor' || learningPhase === 'completed'}
+                disabled={loading || learningPhase === 'idle' || learningPhase === 'analyzing' || learningPhase === 'metaphor'}
                 placeholder={
-                  learningPhase === 'analyzing' || learningPhase === 'metaphor' ? "AI가 분석 중입니다..." : 
-                  learningPhase === 'completed' ? "학습이 완료되었습니다. 결과 화면으로 이동해주세요." : 
+                  learningPhase === 'analyzing' || learningPhase === 'metaphor' ? "AI가 분석 중입니다..." :
                   "질문이나 정답을 입력하세요... (퀴즈시 1,2,3,4 키보드 입력 가능)"
                 }
                 tabIndex="0"
@@ -1272,6 +1329,7 @@ OPTIONS_END
                 전송
               </button>
             </div>
+            )}
           </div>
           </>
           )}

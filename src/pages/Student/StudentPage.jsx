@@ -1,40 +1,23 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import ChatView from './ChatView';
 import ResultView from './ResultView';
+import LevelUpView from './LevelUpView';
+import RoutineView from './RoutineView';
+import PlacementView from './PlacementView';
+import DiagnosisView from './DiagnosisView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
+import { calcLevel, xpToNextLevel, LEVEL_TABLE, getDailyXP, claimLoginXP, checkStreak, getStreakFreezes, isWeekend, getRewardStatus, DAILY_XP_CAP, generateFreeStudyCode, syncVisitedFile, loadProgressFromFirestore, syncUserStatus } from '../../services/learningService';
+import { onRoutineComplete } from '../../services/learningService';
 import { getApiKey } from '../../lib/apiKey';
 
-// GPT로 코드 분석 → 주제 라벨 반환
-const analyzeChapterLabel = async (code) => {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: '너는 개발자들의 코드를 분석하여 핵심 학습 주제를 파악하는 AI야. 제공되는 소스 코드를 읽고, 해당 코드에서 배우는 중심 기술 개념(예: 클래스 기초, 인스턴스 변수, 생성자, 메서드 오버라이딩 등)을 한국어 1~3단어 명사형으로만 답해. 만약 핵심 개념을 파악하기 어렵거나 폴더명과 차이가 없다면 빈 문자열("")을 반환해. 절대로 부연 설명이나 마침표를 넣지 마.',
-        },
-        { role: 'user', content: code.slice(0, 3000) }, // 코드 분석 범위를 3000자로 확대
-      ],
-      max_tokens: 30,
-      temperature: 0,
-    }),
-  });
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || '?';
-};
 
 const StudentPage = ({ user, userData, onLogout }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const groupIDs = userData?.groupIDs || [];
   const {
     teacher, setTeacher,
@@ -48,32 +31,119 @@ const StudentPage = ({ user, userData, onLogout }) => {
     concept, setConcept,
     result, setResult,
     visitedFiles, markFileVisited,
-    reset: storeReset
+    completedFiles, markFileCompleted,
+    reset: storeReset,
+    resetSession,
   } = useLearningStore();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [streak, setStreak] = useState(0);
-  const [mode, setMode] = useState(null); // 'chapter' | 'levelup' | null
+  const [streakStatus, setStreakStatus] = useState('ok'); // 'ok'|'grace1'|'grace2'|'broken'|'repair'
+  const [repairCount, setRepairCount] = useState(-1);
+  const [mode, setMode] = useState(() => {
+    const p = window.location.pathname;
+    if (p === '/home/chapter') return 'chapter';
+    if (p === '/home/routine') return 'routine';
+    if (p === '/home/levelup') return 'levelup';
+    return null;
+  });
+  const [sidebarMini, setSidebarMini] = useState(false); // 사이드바 미니모드
+  const [homeConfirm, setHomeConfirm] = useState(false); // 홈 이동 확인 모달
+  const [routineDoneModal, setRoutineDoneModal] = useState(null); // { xp, count }
 
-  // 연속 출석 streak 계산 (하루에 한 번만 갱신)
+  const [dailyXP, setDailyXP] = useState({ total: 0, routine: 0, levelup: 0, login: 0 });
+  const [freezeCount, setFreezeCount] = useState(0);
+  const [loginXPClaimed, setLoginXPClaimed] = useState(false);
+
+  // 연속 출석 + 접속 XP + 얼리기 (하루에 한 번만)
   useEffect(() => {
-    const today = new Date().toDateString();
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
-    const lastVisit = localStorage.getItem('lucid_last_visit');
-    const saved = parseInt(localStorage.getItem('lucid_streak') || '0');
-    let next = saved;
-    if (lastVisit !== today) {
-      next = lastVisit === yesterday ? saved + 1 : 1;
-      localStorage.setItem('lucid_streak', String(next));
-      localStorage.setItem('lucid_last_visit', today);
+    // 연속 출석 체크
+    const { streak: newStreak, status, repairCount: rc } = checkStreak();
+    setStreak(newStreak);
+    setStreakStatus(status);
+    setRepairCount(rc);
+    setFreezeCount(getStreakFreezes());
+
+    // 오늘의 XP 로드
+    setDailyXP(getDailyXP());
+
+    // 접속 보상 50 XP
+    const uid = user?.uid;
+    if (uid) {
+      claimLoginXP(uid).then((xp) => {
+        if (xp > 0) {
+          setLoginXPClaimed(true);
+          setDailyXP(getDailyXP());
+        }
+        // 대시보드 준비물: 사용자 상태 동기화 (접속 XP 지급 후)
+        syncUserStatus(uid, user?.displayName || user?.email?.split('@')[0] || '');
+      });
+
+      // Firestore 진도 → store 병합 (기기 간 동기화)
+      loadProgressFromFirestore(uid).then(({ visitedFiles: vf, completedFiles: cf }) => {
+        vf.forEach(p => markFileVisited(p));
+        cf.forEach(p => markFileCompleted(p));
+      });
     }
-    setStreak(next);
-  }, []);
+  }, [user]);
+
+
+  // mode 변경 시 URL 동기화
+  useEffect(() => {
+    const pathMap = { chapter: '/home/chapter', routine: '/home/routine', levelup: '/home/levelup' };
+    const target = pathMap[mode] || '/home';
+    if (location.pathname !== target) navigate(target, { replace: true });
+  }, [mode]);
 
   // 레포 목록
   const [classData, setClassData] = useState([]);
   const [classLoading, setClassLoading] = useState(true);
+  const [selectedRepoKey, setSelectedRepoKey] = useState(null); // 클릭 애니메이션용
+  const [visitedRepoKeys, setVisitedRepoKeys] = useState(new Set()); // 한번 이상 열어본 레포
+
+  // 챕터 퀘스트 완료 토스트
+  const [chapterQuestToast, setChapterQuestToast] = useState(null); // { name }
+  const prevCompletedRef = useRef([]);
+  useEffect(() => {
+    if (!completedFiles.length) return;
+    Object.entries(chapterFilesMap).forEach(([chName, files]) => {
+      if (!files.length) return;
+      const allDone = files.every(f => completedFiles.includes(f.path));
+      const wasDone = files.every(f => prevCompletedRef.current.includes(f.path));
+      if (allDone && !wasDone) {
+        setChapterQuestToast({ name: chName });
+        const t = setTimeout(() => setChapterQuestToast(null), 3200);
+        return () => clearTimeout(t);
+      }
+    });
+    prevCompletedRef.current = completedFiles;
+  }, [completedFiles, chapterFilesMap]);
+
+  // completedFiles 기반으로 visited repo 자동 마킹
+  useEffect(() => {
+    if (!completedFiles.length || !classData.length) return;
+    const keys = new Set();
+    classData.forEach(({ id, repos }) => {
+      repos.forEach((r) => {
+        const repoKey = `${id}-${r.name}`;
+        const files = Object.values(chapterFilesMap).flat();
+        if (files.some(f => completedFiles.includes(f.path))) {
+          if (selectedRepoKey === repoKey) keys.add(repoKey);
+        }
+      });
+    });
+    if (keys.size > 0) {
+      setVisitedRepoKeys(prev => new Set([...prev, ...keys]));
+    }
+  }, [completedFiles, selectedRepoKey]);
+  const [statusPop, setStatusPop] = useState(false); // 모드카드 클릭 시 스테이터스 박스 pop
+  const [selectedChapter, setSelectedChapter] = useState(null); // 2패널: 선택된 챕터
+  const [chapterHover, setChapterHover] = useState(null); // 챕터 호버 미리보기 { name, files, top, left }
+  const [freezeHover, setFreezeHover] = useState(null); // 얼리기 호버 툴팁 { top, left }
+  const [freeStudyTopic, setFreeStudyTopic] = useState(''); // 자유 예습 주제
+  const [freeStudyCode, setFreeStudyCode] = useState(null);   // 생성된 코드
+  const [freeStudyLoading, setFreeStudyLoading] = useState(false); // 생성 중
 
   // 레포 목록 로드
   useEffect(() => {
@@ -100,7 +170,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   const m = r.name.match(/^korit_(\d+)_gov_(.+)$/);
                   if (!m || !gen || m[1] !== gen) return null;
                   return { name: r.name, label: `${m[1]}기 · ${m[2].replace(/_/g, ' ').toUpperCase()}` };
-                }).filter(Boolean);
+                }).filter(Boolean).reverse(); // 역순: 첫 수업이 위로
               }
               return { id: gId, group, teacher: t, repos };
             } catch { return null; }
@@ -112,12 +182,23 @@ const StudentPage = ({ user, userData, onLogout }) => {
     fetchData();
   }, [groupIDs]);
 
-  // 챕터 로딩 로직 (선점/복원용)
+  // 챕터 로딩 로직 (새로고침 복원용 — 최초 마운트 시 1회만)
+  const hasRestoredRef = useRef(false);
   useEffect(() => {
-    if (repo && teacher && chapters.length === 0 && !chaptersLoading) {
+    if (!hasRestoredRef.current && repo && teacher && chapters.length === 0 && !chaptersLoading) {
+      hasRestoredRef.current = true;
       handleRepoSelect(teacher, repo);
     }
-  }, [repo, teacher, chapters, chaptersLoading]);
+  }, [repo, teacher]);
+
+  // GitHub API 남은 쿼터 체크
+  const checkGitHubRateLimit = async (headers) => {
+    try {
+      const res = await fetch('https://api.github.com/rate_limit', { headers });
+      const data = await res.json();
+      return data.resources?.core?.remaining ?? 999;
+    } catch { return 999; }
+  };
 
   // 레포 선택 → 챕터 목록 로드
   const handleRepoSelect = async (t, r) => {
@@ -130,11 +211,20 @@ const StudentPage = ({ user, userData, onLogout }) => {
     setChaptersLoading(true);
     setStep(1);
     setConcept(null);
+    setSelectedChapter(null);
 
     try {
       const headers = {};
       if (import.meta.env.VITE_GITHUB_TOKEN) {
         headers['Authorization'] = `token ${import.meta.env.VITE_GITHUB_TOKEN}`;
+      }
+
+      // API 쿼터 사전 체크 (챕터 수 × 3 정도 필요)
+      const remaining = await checkGitHubRateLimit(headers);
+      if (remaining < 10) {
+        alert(`GitHub API 호출 한도가 거의 소진되었습니다 (남은 횟수: ${remaining}). 잠시 후 다시 시도해주세요.`);
+        setChaptersLoading(false);
+        return;
       }
 
       const treeRes = await fetch(
@@ -153,76 +243,87 @@ const StudentPage = ({ user, userData, onLogout }) => {
           parent: item.path.includes('/') ? item.path.substring(0, item.path.lastIndexOf('/')) : '',
         }));
 
-      if (chDirs.length === 0) {
-        setChapters([]);
-        setChaptersLoading(false);
-        return;
+      let rootChapters;
+
+      if (chDirs.length > 0) {
+        // ch\d+ 폴더가 있으면 기존 로직
+        const parentCounts = {};
+        chDirs.forEach(d => { parentCounts[d.parent] = (parentCounts[d.parent] || 0) + 1; });
+        const root = Object.entries(parentCounts).sort((a, b) => b[1] - a[1])[0][0];
+
+        rootChapters = chDirs
+          .filter(d => d.parent === root)
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      } else {
+        // ch 폴더가 없으면 코드 파일이 있는 폴더를 찾아서 챕터로 표시
+        const ignoreSet = new Set(['node_modules', 'build', 'dist', 'target', 'out', '.idea', '.gradle', '.git', '.vscode', '__pycache__', 'test', 'tests', '__tests__', 'resources']);
+        const codeFiles = tree.filter(item =>
+          item.type === 'blob' &&
+          /\.(java|js|jsx|ts|tsx|py|html|css|jsp)$/.test(item.path) &&
+          !item.path.split('/').some(seg => ignoreSet.has(seg))
+        );
+
+        // 코드 파일의 부모 폴더를 수집
+        const folderPaths = new Set();
+        codeFiles.forEach(f => {
+          const parts = f.path.split('/');
+          if (parts.length < 2) return;
+          folderPaths.add(parts.slice(0, -1).join('/'));
+        });
+
+        // 하위 폴더가 있는 부모 폴더는 제거 (리프 폴더만 유지)
+        const leafFolders = Array.from(folderPaths).filter(fp =>
+          !Array.from(folderPaths).some(other => other !== fp && other.startsWith(fp + '/'))
+        );
+
+        // 이름 중복 체크 → 중복이면 부모 경로 포함
+        const nameCount = {};
+        leafFolders.forEach(fp => {
+          const name = fp.split('/').pop();
+          nameCount[name] = (nameCount[name] || 0) + 1;
+        });
+
+        rootChapters = leafFolders
+          .map(fp => {
+            const parts = fp.split('/');
+            const lastName = parts.pop();
+            const displayName = nameCount[lastName] > 1
+              ? `${parts.pop() || ''}/${lastName}`
+              : lastName;
+            return { name: displayName, fullPath: fp, parent: '' };
+          })
+          .sort((a, b) => a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true }));
       }
 
-      // 가장 많은 챕터를 가진 부모 경로
-      const parentCounts = {};
-      chDirs.forEach(d => { parentCounts[d.parent] = (parentCounts[d.parent] || 0) + 1; });
-      const root = Object.entries(parentCounts).sort((a, b) => b[1] - a[1])[0][0];
-
-      const rootChapters = chDirs
-        .filter(d => d.parent === root)
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-      // 챕터 목록 표시 (라벨 로딩 중)
-      const initialChapters = rootChapters.map(ch => ({ ...ch, label: null, labelLoading: true }));
+      const initialChapters = rootChapters.map(ch => ({ ...ch, label: null, labelLoading: false }));
       setChapters(initialChapters);
+
+      // ch 폴더가 없는 레포: 모든 폴더를 열린 상태 + tree에서 파일 목록 프리로드
+      if (chDirs.length === 0 && initialChapters.length > 0) {
+        const expanded = {};
+        const filesMap = {};
+        initialChapters.forEach(ch => {
+          expanded[ch.name] = true;
+          // tree에서 해당 폴더의 코드 파일 직접 추출 (API 호출 없이)
+          const folderFiles = tree
+            .filter(item =>
+              item.type === 'blob' &&
+              item.path.startsWith(ch.fullPath + '/') &&
+              !item.path.substring(ch.fullPath.length + 1).includes('/') &&
+              /\.(java|js|jsx|ts|tsx|py|html|css|jsp)$/.test(item.path)
+            )
+            .map(item => ({
+              name: item.path.split('/').pop(),
+              downloadUrl: `https://raw.githubusercontent.com/${t.githubUsername}/${r.name}/HEAD/${item.path}`,
+              path: item.path,
+            }));
+          filesMap[ch.name] = folderFiles;
+        });
+        setExpandedChapters(expanded);
+        setChapterFilesMap(filesMap);
+      }
+
       setChaptersLoading(false);
-
-      // 각 챕터 라벨 병렬 분석
-      rootChapters.forEach(async (ch, idx) => {
-        try {
-          const cacheId = `${t.githubUsername}_${r.name}_${ch.name}`;
-
-          // 커밋 해시 확인 (헤더 추가)
-          const commitRes = await fetch(
-            `https://api.github.com/repos/${t.githubUsername}/${r.name}/commits?path=${ch.fullPath}&per_page=1`,
-            { headers }
-          );
-          const commits = await commitRes.json();
-          const commitHash = Array.isArray(commits) ? (commits[0]?.sha?.slice(0, 7) || '') : '';
-
-          // Firebase 캐시 확인
-          const cacheSnap = await getDoc(doc(db, 'chapterLabels', cacheId));
-          if (cacheSnap.exists() && cacheSnap.data().commitHash === commitHash) {
-            setChapters(prev => prev.map((c, i) =>
-              i === idx ? { ...c, label: cacheSnap.data().label, labelLoading: false } : c
-            ));
-            return;
-          }
-
-          // 파일 목록 가져오기
-          const filesRes = await fetch(
-            `https://api.github.com/repos/${t.githubUsername}/${r.name}/contents/${ch.fullPath}`
-          );
-          const files = await filesRes.json();
-          const codeFile = Array.isArray(files)
-            ? files.find(f => /\.(java|js|jsx|ts|tsx|py)$/.test(f.name))
-            : null;
-
-          let label = ch.name;
-          if (codeFile) {
-            const codeRes = await fetch(codeFile.download_url);
-            const code = await codeRes.text();
-            label = await analyzeChapterLabel(code);
-          }
-
-          // Firebase 캐시 저장
-          await setDoc(doc(db, 'chapterLabels', cacheId), { label, commitHash });
-
-          setChapters(prev => prev.map((c, i) =>
-            i === idx ? { ...c, label, labelLoading: false } : c
-          ));
-        } catch {
-          setChapters(prev => prev.map((c, i) =>
-            i === idx ? { ...c, label: ch.name, labelLoading: false } : c
-          ));
-        }
-      });
     } catch (e) {
       console.error('챕터 로드 실패:', e);
       setChaptersLoading(false);
@@ -275,6 +376,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
   // 파일 선택 → ChatView
   const handleFileSelect = (file, ch) => {
     markFileVisited(file.path);
+    if (user?.uid) syncVisitedFile(user.uid, file.path);
     setConcept({
       type: 'file',
       downloadUrl: file.downloadUrl,
@@ -294,32 +396,51 @@ const StudentPage = ({ user, userData, onLogout }) => {
     // 레포 미선택: 레포 목록
     if (!repo) {
       return (
-        <div className="flex-1 overflow-y-auto px-3 py-2">
+        <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {groupIDs.length === 0 ? null : classLoading ? (
             <div className="flex items-center gap-2 px-2 py-3">
               <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
               <span className="text-gray-500 text-xs">불러오는 중...</span>
             </div>
           ) : (
-            classData.map(({ id, group, teacher: t, repos }) => (
-              <div key={id} className="mb-4">
+            classData.map(({ id, group, teacher: t, repos }, groupIdx) => (
+              <div key={id} className="mb-4 sidebar-card-enter" style={{ animationDelay: `${groupIdx * 60}ms` }}>
                 <div className="px-2 mb-1.5">
                   <p className="text-[13px] font-extrabold text-white/90 truncate">{group.name}</p>
                 </div>
-                {repos.map(r => (
-                  <button
-                    key={r.name}
-                    onClick={() => handleRepoSelect(t, r)}
-                    className="w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-200 flex items-center gap-2.5 group mb-1.5 bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/[0.05] hover:border-[#4ec9b0]/25 hover:text-white hover:shadow-[0_0_10px_rgba(78,201,176,0.1)]"
-                  >
-                    <div className="shrink-0 p-1.5 rounded-lg bg-white/5 group-hover:bg-[#4ec9b0]/10 transition-colors">
-                      <svg className="w-3 h-3 text-gray-500 group-hover:text-[#4ec9b0]" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-                      </svg>
-                    </div>
-                    <span className="text-[11px] font-semibold break-words min-w-0">{r.label}</span>
-                  </button>
-                ))}
+                {repos.map((r, repoIdx) => {
+                  const repoKey = `${id}-${r.name}`;
+                  const isSelected = selectedRepoKey === repoKey;
+                  return (
+                    <button
+                      key={r.name}
+                      onClick={() => {
+                        setSelectedRepoKey(repoKey);
+                        setVisitedRepoKeys(prev => new Set(prev).add(repoKey));
+                        handleRepoSelect(t, r);
+                      }}
+                      className={`sidebar-card-enter w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-200 flex items-center gap-2.5 group mb-1.5 relative overflow-hidden ${
+                        isSelected
+                          ? 'bg-white/[0.03] border-white/[0.07] text-gray-500'
+                          : 'bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/[0.05] hover:border-[#4ec9b0]/25 hover:text-white hover:shadow-[0_0_10px_rgba(78,201,176,0.1)]'
+                      }`}
+                      style={{ animationDelay: `${groupIdx * 60 + (repoIdx + 1) * 70}ms` }}
+                    >
+                      <div className={`shrink-0 p-1.5 rounded-lg transition-colors ${isSelected ? 'bg-white/[0.04]' : 'bg-white/5 group-hover:bg-[#4ec9b0]/10'}`}>
+                        {isSelected ? (
+                          <svg className="w-3 h-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3 h-3 text-gray-500 group-hover:text-[#4ec9b0]" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                          </svg>
+                        )}
+                      </div>
+                      <span className={`text-[11px] break-words min-w-0 ${isSelected ? 'font-normal text-gray-500' : 'font-semibold'}`}>{r.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             ))
           )}
@@ -329,13 +450,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
     // 레포 선택됨: 아코디언 트리뷰
     return (
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        {/* 뒤로가기 */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        {/* 뒤로가기: 레포 목록 */}
         <button
           onClick={() => { reset(); }}
-          className="flex items-center gap-1.5 text-gray-500 hover:text-white text-[11px] px-2 py-1.5 mb-1 transition"
+          className="flex items-center gap-2 text-gray-400 hover:text-white text-sm font-semibold px-2 py-2 mb-1 rounded-lg hover:bg-white/[0.04] transition-all"
         >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           레포 목록
@@ -350,13 +471,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
         ) : chapters.length === 0 ? (
           <p className="text-gray-600 text-xs px-2">챕터 없음</p>
         ) : (
-          chapters.map((ch) => {
+          chapters.map((ch, chIdx) => {
             const isExpanded = expandedChapters[ch.name];
             const files = chapterFilesMap[ch.name] || [];
             const isLoadingFiles = chapterFilesLoadingMap[ch.name];
 
             return (
-              <div key={ch.name} className="mb-0.5">
+              <div key={ch.name} className="mb-0.5 sidebar-card-enter" style={{ animationDelay: `${chIdx * 50}ms` }}>
                 {/* 챕터 행 */}
                 <button
                   onClick={() => handleChapterToggle(ch)}
@@ -374,15 +495,6 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   <span className="text-[11px] font-bold shrink-0" style={{ color: '#569cd6' }}>
                     {ch.name.replace('ch', 'ch.')}
                   </span>
-                  {ch.labelLoading ? (
-                    <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0 ml-1" />
-                  ) : (
-                    ch.label && ch.label !== ch.name && (
-                      <span className="text-[10px] truncate min-w-0 opacity-80 font-medium ml-1.5 px-1.5 py-0.5 rounded bg-white/5 border border-white/5" style={{ color: '#ce9178' }}>
-                        {ch.label}
-                      </span>
-                    )
-                  )}
                 </button>
 
                 {/* 파일 목록 (확장 시) */}
@@ -399,6 +511,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       files.map((file) => {
                         const isActive = concept?.path === file.path;
                         const isVisited = visitedFiles.includes(file.path);
+                        const isCompleted = completedFiles.includes(file.path);
                         return (
                           <button
                             key={file.name}
@@ -406,21 +519,29 @@ const StudentPage = ({ user, userData, onLogout }) => {
                             className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md transition-all group mb-0.5 ${
                               isActive
                                 ? 'bg-[#c586c0]/10'
+                                : isCompleted
+                                ? 'bg-[#4ec9b0]/5'
                                 : isVisited
                                 ? 'bg-[#f48ab8]/5'
                                 : 'hover:bg-white/[0.04]'
                             }`}
                           >
-                            <svg
-                              className="w-3 h-3 shrink-0 transition-colors"
-                              style={{ color: isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#555' }}
-                              fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
+                            {isCompleted ? (
+                              <svg className="w-3 h-3 shrink-0" style={{ color: '#4ec9b0' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="w-3 h-3 shrink-0 transition-colors"
+                                style={{ color: isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#555' }}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            )}
                             <span
                               className="text-[11px] truncate"
-                              style={{ color: isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#dcdcaa' }}
+                              style={{ color: isCompleted ? '#4ec9b0' : isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#dcdcaa' }}
                             >
                               {file.name}
                             </span>
@@ -441,14 +562,111 @@ const StudentPage = ({ user, userData, onLogout }) => {
   return (
     <div className="flex h-svh bg-theme-bg text-white overflow-hidden">
 
-      {/* 좌측 사이드바 */}
-      <aside className="w-64 shrink-0 bg-theme-sidebar border-r border-theme-border flex flex-col hidden md:flex">
+      {/* 챕터 호버 미리보기 (fixed) */}
+      {chapterHover && chapterHover.files.length > 0 && (
+        <div
+          className="pointer-events-none z-[9999] fixed w-52 bg-[#1a1a1a] border border-white/[0.08] rounded-xl p-2.5 shadow-2xl"
+          style={{ top: chapterHover.top, left: chapterHover.left + 8 }}
+        >
+          <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 px-0.5">
+            {chapterHover.name.replace('ch', 'ch.')} · {chapterHover.files.length}개 파일
+          </p>
+          <div className="flex flex-col gap-0.5">
+            {chapterHover.files.map((f) => {
+              const fc = completedFiles.includes(f.path);
+              const fv = visitedFiles.includes(f.path);
+              return (
+                <div key={f.name} className="flex items-center gap-1.5 px-1 py-0.5">
+                  {fc ? (
+                    <span className="text-[8px] shrink-0" style={{ color: '#4ec9b0' }}>✓</span>
+                  ) : fv ? (
+                    <span className="w-1 h-1 rounded-full shrink-0" style={{ background: '#f48ab8' }} />
+                  ) : (
+                    <span className="w-1 h-1 rounded-full bg-white/10 shrink-0" />
+                  )}
+                  <span className="text-[10px] truncate" style={{ color: fc ? '#4ec9b0' : fv ? '#f48ab8' : '#9ca3af' }}>{f.name}</span>
+                </div>
+              );
+            })}
+          </div>
+          {/* 말풍선 꼬리 */}
+          <div className="absolute top-3 right-full w-0 h-0 border-t-4 border-b-4 border-r-4 border-t-transparent border-b-transparent border-r-white/[0.08]" />
+        </div>
+      )}
 
-        {/* 로고 */}
-        <div className="p-4 pb-2">
+      {/* 얼리기 호버 툴팁 (fixed) */}
+      {freezeHover && (
+        <div
+          className="pointer-events-none z-[9999] fixed w-52 rounded-2xl shadow-2xl"
+          style={{ top: freezeHover.top, left: freezeHover.left + 10, background: 'linear-gradient(160deg, #1c1c2e 0%, #1a1a28 100%)', border: '1px solid rgba(86,156,214,0.2)', boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(86,156,214,0.08)' }}
+        >
+          {/* 헤더 */}
+          <div className="px-3.5 pt-3 pb-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-base leading-none">🧊</span>
+              <span className="text-[11px] font-black text-white tracking-tight">얼리기</span>
+            </div>
+            <p className="text-[8.5px] leading-[1.6]" style={{ color: 'rgba(255,255,255,0.38)' }}>
+              연속 출석이 끊겨도<br />스트릭을 지켜주는 아이템
+            </p>
+          </div>
+
+          {/* 획득 조건 */}
+          <div className="px-3.5 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <p className="text-[7.5px] font-bold uppercase tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.25)' }}>획득 조건</p>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-start gap-2">
+                <span className="text-[9px] mt-px">📅</span>
+                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}>주말 토·일 모두<br /><span style={{ color: 'rgba(255,255,255,0.7)' }}>루틴 완료</span> 시 1개</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-[9px] mt-px">🔥</span>
+                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}><span style={{ color: '#fbbf24' }}>14일 연속 달성</span> 시<br />1개 추가 지급</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 14일 진행 */}
+          <div className="px-3.5 py-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[7.5px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>14일 달성까지</p>
+              <p className="text-[8px] font-black" style={{ color: '#fbbf24' }}>{freezeHover.streak % 14}<span style={{ color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}> / 14</span></p>
+            </div>
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              <div className="h-full rounded-full" style={{ width: `${Math.min(((freezeHover.streak % 14) / 14) * 100, 100)}%`, background: 'linear-gradient(90deg, #fbbf24, #f97316)', boxShadow: '0 0 6px rgba(251,191,36,0.6)' }} />
+            </div>
+            {freezeHover.streak >= 14 && (
+              <p className="text-[7.5px] mt-1" style={{ color: 'rgba(251,191,36,0.6)' }}>✓ {Math.floor(freezeHover.streak / 14)}회 달성</p>
+            )}
+          </div>
+
+          {/* 말풍선 꼬리 */}
+          <div className="absolute top-5 right-full w-0 h-0 border-t-[5px] border-b-[5px] border-r-[5px] border-t-transparent border-b-transparent" style={{ borderRightColor: 'rgba(86,156,214,0.2)' }} />
+        </div>
+      )}
+
+      {/* 챕터 퀘스트 완료 토스트 */}
+      {chapterQuestToast && (
+        <div className="quest-complete-toast fixed bottom-10 left-1/2 z-[200] pointer-events-none"
+          style={{ transform: 'translateX(-50%)' }}>
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl border border-[#f59e0b]/40 bg-[#0c0c0c] shadow-[0_0_40px_rgba(245,158,11,0.25)]">
+            <span className="text-xl">⚔️</span>
+            <div>
+              <p className="text-[11px] font-black tracking-[0.15em] uppercase text-[#f59e0b]">챕터 완료</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">{chapterQuestToast.name.replace('ch', 'ch.')} 모든 파일 학습 완료</p>
+            </div>
+            <span className="text-[#f59e0b]/60 text-lg ml-1">✦</span>
+          </div>
+        </div>
+      )}
+
+      {/* 좌측 사이드바 */}
+      <aside className={`${sidebarMini ? 'w-[68px]' : 'w-64'} shrink-0 bg-theme-sidebar border-r border-theme-border flex flex-col hidden md:flex transition-all duration-300 overflow-hidden`} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+
+        {/* 로고 + 사이드바 토글 (Claude 스타일) */}
+        <div className={`${sidebarMini ? 'p-2' : 'px-4 py-3'} flex items-center ${sidebarMini ? 'justify-center' : 'justify-between'}`}>
           <div
-            className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-xl transition"
-            onClick={reset}
+            className={`flex items-center ${sidebarMini ? '' : 'gap-3'}`}
           >
             <div className="p-2 bg-gradient-to-br from-theme-primary/20 to-theme-icon/20 rounded-xl backdrop-blur-md border border-white/10 ring-1 ring-theme-primary/30 shadow-[0_0_15px_rgba(78,201,176,0.2)] shrink-0">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="url(#student-logo-gradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -463,47 +681,272 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 <path d="m14.5 4-5 16"/>
               </svg>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">Lucid</h1>
+            {!sidebarMini && <h1 className="text-2xl font-black tracking-tight text-white">Lucid</h1>}
           </div>
+          {!sidebarMini && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setSidebarMini(true); }}
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.08] transition-all"
+              title="사이드바 접기"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* 콤팩트 스테이터스 */}
-        {(() => {
-          const xp = visitedFiles.length * 100;
-          const level = Math.floor(visitedFiles.length / 5) + 1;
-          const xpInLevel = (visitedFiles.length % 5) * 100;
-          const xpForNext = 500;
-          const xpPercent = Math.min((xpInLevel / xpForNext) * 100, 100);
-          return (
-            <div className="px-3 py-3 border-b border-white/[0.06]">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4ec9b0] to-[#569cd6] flex items-center justify-center shadow-sm shrink-0">
-                  <span className="text-xs font-black text-black">{level}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-bold text-white truncate">{userData?.displayName || user?.displayName || '학생'}</div>
-                  <div className="text-[10px] text-gray-500">{xpInLevel}/{xpForNext} XP</div>
-                </div>
-              </div>
-              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden mb-2">
-                <div className="h-full bg-gradient-to-r from-[#4ec9b0] to-[#569cd6] rounded-full transition-all duration-700" style={{ width: `${xpPercent}%` }} />
-              </div>
-              <div className="flex justify-between text-[10px] text-gray-600">
-                <span>🔥 {streak}일 연속</span>
-                <span>📚 {visitedFiles.length}파일</span>
-                <span>⚡ {xp} XP</span>
-              </div>
-            </div>
-          );
-        })()}
+        {/* 사이드바 콘텐츠: 모드에 따라 분기 (미니모드에서는 아이콘 카드) */}
+        {sidebarMini ? (
+          /* ─── 미니모드: 아이콘 카드 ─── */
+          <div className="flex-1 flex flex-col items-center gap-1.5 py-2 px-1 overflow-hidden">
+            {(() => {
+              const totalXP = userData?.totalXP || 0;
+              const lv = calcLevel(totalXP);
+              const now = new Date();
+              const dayNames = ['일','월','화','수','목','금','토'];
+              const courseEnd = new Date('2025-09-30');
+              const daysLeft = Math.max(0, Math.ceil((courseEnd - now) / 86400000));
+              return (
+                <>
+                  {/* 펼치기 버튼 */}
+                  <button
+                    onClick={() => setSidebarMini(false)}
+                    className="w-12 h-14 rounded-xl bg-white/[0.04] border border-white/[0.08] flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:text-white hover:bg-white/[0.08] hover:border-white/[0.15] transition-all mb-1"
+                    title="사이드바 펼치기"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="3" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                      <path d="m14 9 3 3-3 3" />
+                    </svg>
+                    <span className="text-[7px] font-bold">펼치기</span>
+                  </button>
+                  {/* 날짜 */}
+                  <div className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.08] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition" title={`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${dayNames[now.getDay()]}요일`}>
+                    <span className="text-[15px] font-black text-white leading-none">{now.getDate()}</span>
+                    <span className="text-[8px] font-bold text-[#569cd6]">{dayNames[now.getDay()]}</span>
+                  </div>
+                  {/* 레벨 */}
+                  <div className="w-12 h-12 rounded-xl bg-[#4ec9b0]/[0.08] border border-[#4ec9b0]/25 flex flex-col items-center justify-center cursor-pointer hover:border-[#4ec9b0]/50 transition" title={`Lv.${lv}`}>
+                    <span className="text-[15px] font-black leading-none text-[#4ec9b0]">{lv}</span>
+                    <span className="text-[8px] font-bold text-gray-500">레벨</span>
+                  </div>
+                  {/* 오늘 XP */}
+                  <div className="w-12 h-12 rounded-xl bg-[#f59e0b]/[0.06] border border-[#f59e0b]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#f59e0b]/40 transition" title={`오늘 ${dailyXP.total}/${DAILY_XP_CAP} XP`}>
+                    <span className="text-[13px] font-black text-[#f59e0b] leading-none">{dailyXP.total}</span>
+                    <span className="text-[8px] font-bold text-gray-500">XP</span>
+                  </div>
+                  {/* 연속 출석 */}
+                  <div className="w-12 h-12 rounded-xl bg-[#c586c0]/[0.06] border border-[#c586c0]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#c586c0]/40 transition" title={`연속 출석 ${streak}일`}>
+                    <span className="text-[15px] font-black text-[#c586c0] leading-none">{streak}</span>
+                    <span className="text-[8px] font-bold text-gray-500">출석</span>
+                  </div>
+                  {/* 학습 파일 */}
+                  <div className="w-12 h-12 rounded-xl bg-[#dcdcaa]/[0.06] border border-[#dcdcaa]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#dcdcaa]/40 transition" title={`학습 파일 ${visitedFiles.length}개`}>
+                    <span className="text-[15px] font-black text-[#dcdcaa] leading-none">{visitedFiles.length}</span>
+                    <span className="text-[8px] font-bold text-gray-500">파일</span>
+                  </div>
+                  {/* 얼리기 */}
+                  <div className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.06] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition" title={`얼리기 ${freezeCount}개`}>
+                    <span className="text-[15px] font-black text-[#569cd6] leading-none">{freezeCount}</span>
+                    <span className="text-[8px] font-bold text-gray-500">얼리기</span>
+                  </div>
+                  {/* D-day */}
+                  <div className="w-12 h-12 rounded-xl bg-[#ce9178]/[0.06] border border-[#ce9178]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#ce9178]/40 transition" title={`수료까지 D-${daysLeft}`}>
+                    <span className="text-[11px] font-black text-[#ce9178] leading-none">D-{daysLeft}</span>
+                    <span className="text-[8px] font-bold text-gray-500">수료</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        ) : (
+          /* ─── 홈 / 레벨업: 풀 스테이터스 (듀오링고 스타일) ─── */
+          <div className="flex-1 overflow-hidden flex flex-col px-2.5 py-2" style={{ overflowX: 'visible' }}>
+            {(() => {
+              const now = new Date();
+              const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+              const month = now.getMonth() + 1;
+              const date = now.getDate();
+              const dayName = dayNames[now.getDay()];
+              const courseEnd = new Date('2025-09-30');
+              const daysLeft = Math.max(0, Math.ceil((courseEnd - now) / 86400000));
 
-        {/* 사이드바 콘텐츠 */}
-        {renderSidebar()}
+              const totalXP = userData?.totalXP || 0;
+              const level = calcLevel(totalXP);
+              const currentLevelXP = LEVEL_TABLE.find(r => r.level === level)?.xp || 0;
+              const nextLevelXP = LEVEL_TABLE.find(r => r.level === level + 1)?.xp || currentLevelXP;
+              const xpInLevel = totalXP - currentLevelXP;
+              const xpForNext = nextLevelXP - currentLevelXP;
+              const xpPercent = Math.min((xpInLevel / xpForNext) * 100, 100);
+
+              // 티어 계산
+
+              // 보상 현황
+              const rewards = getRewardStatus(totalXP);
+
+              return (
+                <>
+
+                  {/* 프로필 + 레벨 — 최상단 */}
+                  <div className="p-3 rounded-xl mb-2" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.12) 0%, rgba(139,92,246,0.06) 100%)', border: '1px solid rgba(167,139,250,0.3)', boxShadow: '0 0 20px rgba(139,92,246,0.1)' }}>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-14 h-14 rounded-full flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.3), rgba(139,92,246,0.2))', border: '2px solid rgba(167,139,250,0.6)', boxShadow: '0 0 16px rgba(139,92,246,0.5)' }}>
+                        <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(216,180,254,0.7)' }}>LV</span>
+                        <span className="text-lg font-black leading-none" style={{ color: '#d8b4fe', textShadow: '0 0 8px rgba(216,180,254,0.8)' }}>{level}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[22px] font-black text-white truncate leading-tight">{userData?.displayName || user?.displayName || '학생'}</div>
+                      </div>
+                    </div>
+                    <div className="text-[10px] mb-1.5 flex justify-between px-0.5" style={{ color: 'rgba(216,180,254,0.5)' }}>
+                      <span>{xpInLevel} XP</span>
+                      <span>다음 레벨까지 {xpForNext - xpInLevel} XP</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${xpPercent}%`, background: 'linear-gradient(90deg, #a78bfa, #7c3aed)', boxShadow: '0 0 10px rgba(139,92,246,0.7)' }} />
+                    </div>
+                  </div>
+
+                  {/* 스탯 그리드 (날짜 + 얼리기) */}
+                  <div className="grid grid-cols-2 gap-1.5 mb-2">
+                    <div className="text-center p-2 rounded-xl border border-[#4ec9b0]/20 transition-colors" style={{ background: 'linear-gradient(135deg, rgba(78,201,176,0.18), rgba(78,201,176,0.06))' }}>
+                      <div className="text-[8px] font-bold text-gray-500 tracking-widest mb-0.5">{now.getFullYear()}.{String(month).padStart(2,'0')}</div>
+                      <div className="text-lg font-black text-white leading-none">{date}</div>
+                      <div className="text-[8px] font-bold mt-0.5" style={{ color: now.getDay() === 0 ? 'rgba(248,113,113,0.9)' : now.getDay() === 6 ? 'rgba(96,165,250,0.9)' : 'rgba(255,255,255,0.5)' }}>{dayName}요일{isWeekend() ? ' 자유' : ''}</div>
+                    </div>
+                    {/* 얼리기 — fixed 툴팁 트리거 */}
+                    <div
+                      className="cursor-default"
+                      onMouseEnter={e => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setFreezeHover({ top: r.top, left: r.right, streak });
+                      }}
+                      onMouseLeave={() => setFreezeHover(null)}
+                    >
+                      <div className="text-center p-2 rounded-xl h-full flex flex-col items-center justify-center transition-colors" style={{ background: 'rgba(86,156,214,0.06)', border: '1px solid rgba(86,156,214,0.15)' }}>
+                        <div className="text-lg font-black" style={{ color: '#569cd6' }}>{freezeCount}</div>
+                        <div className="text-[8px] font-semibold text-gray-500 mt-0.5">얼리기 🧊</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 연속 출석 — 한달 달력 */}
+                  {(() => {
+                    const dayLabels = ['일','월','화','수','목','금','토'];
+                    const year = now.getFullYear();
+                    const mon = now.getMonth();
+                    const todayDate = now.getDate();
+                    const firstDow = new Date(year, mon, 1).getDay(); // 1일의 요일
+                    const daysInMonth = new Date(year, mon + 1, 0).getDate();
+
+                    // streak 기준으로 출석일 역산
+                    const attendedDates = new Set();
+                    for (let i = 0; i < streak; i++) {
+                      const d = new Date(now);
+                      d.setDate(todayDate - i);
+                      if (d.getMonth() === mon) attendedDates.add(d.getDate());
+                    }
+
+                    // 달력 셀 배열 (빈칸 + 날짜)
+                    const cells = [];
+                    for (let i = 0; i < firstDow; i++) cells.push(null);
+                    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+                    return (
+                      <div className="mb-2 p-2 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(245,158,11,0.04) 100%)', border: '1px solid rgba(251,191,36,0.22)' }}>
+                        <div className="flex items-center justify-between mb-2 px-0.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{month}월 출석</span>
+                          <span className="text-[11px] font-black" style={{ color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }}>{streak}일 연속 🔥</span>
+                        </div>
+                        {/* 요일 헤더 */}
+                        <div className="grid grid-cols-7 mb-1">
+                          {dayLabels.map((d, idx) => (
+                            <div key={d} className="text-center text-[7px] font-bold" style={{ color: idx === 0 ? 'rgba(248,113,113,0.8)' : idx === 6 ? 'rgba(96,165,250,0.8)' : 'rgba(255,255,255,0.35)' }}>{d}</div>
+                          ))}
+                        </div>
+                        {/* 날짜 셀 */}
+                        <div className="grid grid-cols-7">
+                          {cells.map((d, i) => {
+                            if (!d) return <div key={i} />;
+                            const isToday = d === todayDate;
+                            const attended = attendedDates.has(d);
+                            const isFuture = d > todayDate;
+                            return (
+                              <div key={i}
+                                className="aspect-square flex items-center justify-center rounded text-[7px] font-black transition-all"
+                                style={
+                                  isToday ? {
+                                    background: 'linear-gradient(135deg, rgba(251,191,36,0.45), rgba(245,158,11,0.3))',
+                                    color: '#fbbf24',
+                                    boxShadow: '0 0 10px rgba(251,191,36,0.6), inset 0 0 4px rgba(251,191,36,0.1)',
+                                    border: '1px solid rgba(251,191,36,0.7)',
+                                  } : attended ? {
+                                    background: 'linear-gradient(135deg, rgba(251,191,36,0.28), rgba(253,224,71,0.15))',
+                                    color: '#fde047',
+                                    boxShadow: '0 0 6px rgba(251,191,36,0.35)',
+                                    border: '1px solid rgba(251,191,36,0.35)',
+                                  } : isFuture ? {
+                                    color: 'rgba(255,255,255,0.12)',
+                                  } : {
+                                    color: 'rgba(255,255,255,0.22)',
+                                  }
+                                }>
+                                {attended && !isToday ? '✓' : d}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 오늘의 XP 게이지 */}
+                  <div className="p-2 rounded-xl bg-[#f59e0b]/[0.04] border border-[#f59e0b]/10 mb-2">
+                    <div className="flex justify-between text-[10px] mb-1 px-0.5">
+                      <span className="font-bold" style={{ color: '#f59e0b' }}>오늘의 XP</span>
+                      <span className="text-gray-500">{dailyXP.total} / {DAILY_XP_CAP}</span>
+                    </div>
+                    <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-[#f59e0b] to-[#f97316] rounded-full transition-all duration-500" style={{ width: `${Math.min((dailyXP.total / DAILY_XP_CAP) * 100, 100)}%` }} />
+                    </div>
+                    <div className="flex justify-between text-[8px] text-gray-600 mt-1 px-0.5">
+                      <span>접속 {dailyXP.login > 0 ? '✓' : '-'}</span>
+                      <span>루틴 {dailyXP.routine}/{200}</span>
+                      <span>문제 {dailyXP.levelup}/{250}</span>
+                    </div>
+                  </div>
+
+                  {/* 보상 계단 */}
+                  <div className="p-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                    <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">보상 현황</p>
+                    {rewards.map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 mb-1 last:mb-0">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] shrink-0 ${r.achieved ? 'bg-[#4ec9b0]/20 text-[#4ec9b0]' : 'bg-white/[0.04] text-gray-600'}`}>
+                          {r.achieved ? '✓' : ''}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
+                            <div className="h-full bg-[#4ec9b0] rounded-full transition-all" style={{ width: `${r.progress}%` }} />
+                          </div>
+                        </div>
+                        <span className="text-[13px] shrink-0">{r.reward}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                </>
+              );
+            })()}
+          </div>
+        )}
 
         {/* 하단 프로필 */}
-        <div className="relative p-2 border-t border-white/[0.06]">
+        <div className={`relative ${sidebarMini ? 'p-1' : 'p-2'} border-t border-white/[0.06]`}>
           {/* 팝업 메뉴 */}
-          {isMenuOpen && (
+          {isMenuOpen && !sidebarMini && (
             <div className="absolute bottom-full left-0 mb-1 w-full bg-[#202020] border border-white/[0.08] rounded-xl shadow-xl z-50 py-1 overflow-hidden">
               {/* 유저 */}
               <div className="px-3 py-2.5 flex items-center gap-2.5">
@@ -549,18 +992,22 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
           {/* 프로필 버튼 */}
           <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="flex items-center gap-2.5 w-full px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors"
+            onClick={() => sidebarMini ? setSidebarMini(false) : setIsMenuOpen(!isMenuOpen)}
+            className={`flex items-center ${sidebarMini ? 'justify-center' : 'gap-2.5'} w-full px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors`}
           >
             <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
               {(userData?.displayName || user?.displayName || 'U')[0].toUpperCase()}
             </div>
-            <span className="text-[13px] text-white/80 truncate flex-1 text-left">
-              {userData?.displayName || user?.displayName}
-            </span>
-            <svg className="w-3.5 h-3.5 text-white/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
-            </svg>
+            {!sidebarMini && (
+              <>
+                <span className="text-[13px] text-white/80 truncate flex-1 text-left">
+                  {userData?.displayName || user?.displayName}
+                </span>
+                <svg className="w-3.5 h-3.5 text-white/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                </svg>
+              </>
+            )}
           </button>
         </div>
       </aside>
@@ -609,87 +1056,630 @@ const StudentPage = ({ user, userData, onLogout }) => {
               </div>
             </div>
 
-          ) : step === 1 && !repo ? (
-            // ─── 모드 선택 카드 2장 ───────────────────────────
+          ) : mode === 'routine' ? (
+            // ─── 오늘의 루틴 ─────────────────────────────────────
+            <RoutineView
+              teacher={teacher}
+              repo={repo}
+              chapters={chapters}
+              chapterFilesMap={chapterFilesMap}
+              chaptersLoading={chaptersLoading}
+              visitedFiles={visitedFiles}
+              userData={userData}
+              onBack={(completed) => { setMode(null); setStep(0); if (completed) setRoutineDoneModal(completed); }}
+              onFileSelect={(file, ch) => { handleFileSelect(file, ch); setMode('chapter'); }}
+            />
+
+          ) : mode === 'freeStudy' && freeStudyCode ? (
+            // ─── 자유 예습: 코드 생성 완료 → ChatView ────────────
+            <div className="w-full h-full relative">
+              <ChatView
+                teacher={teacher}
+                repo={repo}
+                concept={{ type: 'freeStudy', path: `freeStudy_${freeStudyTopic}`, name: freeStudyTopic, code: freeStudyCode }}
+                onComplete={() => { setMode(null); setFreeStudyTopic(''); setFreeStudyCode(null); }}
+                onBack={() => { setFreeStudyCode(null); setFreeStudyTopic(''); }}
+              />
+              {/* 주제 재입력 버튼 */}
+              <button
+                onClick={() => { setFreeStudyCode(null); setFreeStudyTopic(''); }}
+                className="absolute top-3 right-28 text-[10px] flex items-center gap-1 px-2.5 py-1 rounded-lg z-20 transition-all"
+                style={{ color: 'rgba(56,189,248,0.7)', border: '1px solid rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.05)' }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#38bdf8'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.5)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'rgba(56,189,248,0.7)'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.2)'; }}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                주제 재입력
+              </button>
+            </div>
+
+          ) : mode === 'freeStudy' ? (
+            // ─── 자유 예습: 스켈레톤 + 모달 ────────────────────
+            <div className="w-full h-full relative overflow-hidden flex">
+              {/* 왼쪽: 코드 에디터 (50%) */}
+              <div className="w-1/2 bg-[#1e1e1e] flex flex-col border-r border-white/[0.06] relative">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] bg-[#252526]">
+                  <div className="w-24 h-4 rounded bg-white/[0.08]" />
+                  <div className="w-16 h-4 rounded bg-white/[0.06]" />
+                  <div className="w-20 h-4 rounded bg-white/[0.06]" />
+                </div>
+                <div className="flex-1 p-6 flex flex-col gap-3">
+                  {[80,60,90,45,70,55,85,40,65,75,50].map((w,i) => (
+                    <div key={i} className="h-3.5 rounded bg-white/[0.04]" style={{ width: `${w}%`, marginLeft: i % 3 === 1 ? '2rem' : i % 3 === 2 ? '4rem' : 0 }} />
+                  ))}
+                </div>
+
+                {/* 코드 생성 중 로딩 */}
+                {freeStudyLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: 'rgba(14,14,20,0.7)', backdropFilter: 'blur(4px)' }}>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'rgba(56,189,248,0.6)', borderTopColor: 'transparent' }} />
+                      <p className="text-[11px] font-bold" style={{ color: 'rgba(56,189,248,0.7)' }}>{freeStudyTopic} 코드 생성 중...</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* 주제 입력 모달 — 왼쪽 패널 중앙 */}
+                {!freeStudyTopic && !freeStudyLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: 'rgba(14,14,20,0.6)', backdropFilter: 'blur(4px)' }}>
+                    <div className="w-72 rounded-2xl p-6" style={{ background: 'linear-gradient(160deg, #1c1c2e, #18182a)', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(56,189,248,0.06)' }}>
+                      <p className="text-[11px] font-bold text-center mb-1" style={{ color: 'rgba(56,189,248,0.7)' }}>자유 예습</p>
+                      <p className="text-[13px] font-black text-white text-center mb-4">배우고 싶은 주제는?</p>
+                      <input
+                        autoFocus
+                        type="text"
+                        defaultValue=""
+                        onKeyDown={async e => {
+                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                            const topic = e.currentTarget.value.trim();
+                            setFreeStudyTopic(topic);
+                            setFreeStudyLoading(true);
+                            try {
+                              const code = await generateFreeStudyCode(topic, getApiKey());
+                              setFreeStudyCode(code);
+                            } catch {
+                              setFreeStudyCode('// 코드 생성에 실패했습니다. 다시 시도해주세요.');
+                            } finally {
+                              setFreeStudyLoading(false);
+                            }
+                          }
+                          if (e.key === 'Escape') { setMode(null); setFreeStudyTopic(''); setFreeStudyCode(null); }
+                        }}
+                        placeholder="예: 배열 기초, 싱글톤, 상속..."
+                        className="w-full rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 outline-none text-center transition-all"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(56,189,248,0.25)' }}
+                        onFocus={e => { e.currentTarget.style.border = '1px solid rgba(56,189,248,0.6)'; e.currentTarget.style.boxShadow = '0 0 16px rgba(56,189,248,0.12)'; }}
+                        onBlur={e => { e.currentTarget.style.border = '1px solid rgba(56,189,248,0.25)'; e.currentTarget.style.boxShadow = 'none'; }}
+                      />
+                      <p className="text-[9px] text-center mt-2.5" style={{ color: 'rgba(255,255,255,0.2)' }}>Enter로 시작 · Esc로 돌아가기</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 오른쪽: 채팅 영역 (50%) */}
+              <div className="w-1/2 flex flex-col bg-[#181818]">
+                <div className="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[#4ec9b0]/60" />
+                    <div className="w-32 h-4 rounded bg-white/[0.08]" />
+                  </div>
+                  {/* 주제어 재입력 버튼 */}
+                  {freeStudyTopic && (
+                    <button
+                      onClick={() => setFreeStudyTopic('')}
+                      className="text-[10px] flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all"
+                      style={{ color: 'rgba(56,189,248,0.7)', border: '1px solid rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.05)' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#38bdf8'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.5)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'rgba(56,189,248,0.7)'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.2)'; }}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                      주제 재입력
+                    </button>
+                  )}
+                </div>
+                <div className="flex-1 p-5 flex flex-col gap-4">
+                  {[1,2,3,4].map(i => (
+                    <div key={i} className="flex flex-col gap-2">
+                      <div className="h-3 rounded bg-white/[0.06] w-3/4" />
+                      <div className="h-3 rounded bg-white/[0.04] w-full" />
+                      <div className="h-3 rounded bg-white/[0.04] w-5/6" />
+                    </div>
+                  ))}
+                </div>
+                <div className="px-4 py-3 border-t border-white/[0.06]">
+                  <div className="h-10 rounded-xl bg-white/[0.04] border border-white/[0.06]" />
+                </div>
+              </div>
+
+              {/* 돌아가기 */}
+              <button onClick={() => { setMode(null); setFreeStudyTopic(''); }} className="absolute top-3 right-4 text-[11px] text-gray-600 hover:text-white transition z-20 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                돌아가기
+              </button>
+            </div>
+
+          ) : mode === 'levelup' ? (
+            // ─── 레벨업 문제지옥 ─────────────────────────────────
+            <LevelUpView
+              userData={userData}
+              onBack={() => setMode(null)}
+            />
+
+          ) : mode === 'diagnosis' ? (
+            // ─── 전체 레벨 진단 ──────────────────────────────────
+            <DiagnosisView
+              teacher={teacher}
+              repo={repo}
+              chapters={chapters}
+              chapterFilesMap={chapterFilesMap}
+              onBack={() => setMode(null)}
+            />
+
+          ) : mode === 'placement' ? (
+            // ─── 배치고사 ────────────────────────────────────────
+            <PlacementView
+              teacher={teacher}
+              repo={repo}
+              chapters={chapters}
+              chapterFilesMap={chapterFilesMap}
+              onBack={() => setMode(null)}
+              onPlaced={({ score, placement }) => {
+                // 만점: 그냥 홈으로 (파일 선택은 사용자가 직접)
+                // 자동 배치: 해당 인덱스 파일 바로 열기
+                if (placement.type === 'auto' && placement.idx !== null) {
+                  const flat = Object.values(chapterFilesMap || {}).flat();
+                  const target = flat[placement.idx];
+                  if (target) {
+                    // 챕터 찾기
+                    const chEntry = Object.entries(chapterFilesMap || {}).find(([, files]) =>
+                      files?.some(f => f.path === target.path)
+                    );
+                    const ch = chapters?.find(c => c.name === chEntry?.[0]);
+                    if (ch) handleFileSelect(target, ch);
+                  }
+                }
+                setMode(null);
+              }}
+            />
+
+          ) : mode === 'chapter' ? (
+            // ─── 챕터별 학습 ─────────────────────────────────────
+            step >= 3 ? (
+              <ResultView result={result} onReset={() => { resetSession(); setStep(1); setConcept(null); }} userData={userData} />
+            ) : step === 2 ? (
+              <ChatView
+                teacher={teacher}
+                repo={repo}
+                concept={concept}
+                onComplete={(r) => { setResult(r); setStep(3); }}
+                onBack={() => setStep(1)}
+              />
+            ) : (
+              // 레포 목록 or 챕터/파일 브라우저 (중앙 화면)
+              <div className="w-full h-full flex flex-col overflow-hidden animate-fade-in-up">
+                {/* 브레드크럼 */}
+                <div className="flex items-center gap-2 px-6 py-3 border-b border-white/[0.06] shrink-0 flex-wrap">
+                  <button
+                    onClick={() => { setMode(null); reset(); }}
+                    className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                    홈
+                  </button>
+                  {repo && (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      <button onClick={() => reset()} className="text-gray-400 hover:text-white text-sm transition">레포 목록</button>
+                      <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                      <span className="text-[#4ec9b0] text-sm font-semibold truncate max-w-[240px]">{repo.label}</span>
+                    </>
+                  )}
+                </div>
+                {/* 본문 */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <div className={repo ? 'w-full h-full px-4 py-4' : 'max-w-4xl mx-auto w-full px-6 py-6'}>
+                    {!repo ? (
+                      // ─── 레포 목록 ───────────────────────────────
+                      <div>
+                        <h2 className="text-2xl font-black text-white mb-1">챕터별 학습</h2>
+                        <p className="text-sm text-gray-500 mb-6">학습할 수업을 선택하세요</p>
+                        {classLoading ? (
+                          <div className="flex items-center gap-2 py-4">
+                            <div className="w-4 h-4 border-2 border-[#4ec9b0]/60 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-gray-500 text-sm">불러오는 중...</span>
+                          </div>
+                        ) : (
+                          classData.map(({ id, group, teacher: t, repos }, groupIdx) => (
+                            <div key={id} className="mb-8">
+                              <p className="text-sm font-bold text-white/80 mb-3 px-1">{group.name}</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {repos.map((r) => {
+                                  const repoKey = `${id}-${r.name}`;
+                                  const isSel = selectedRepoKey === repoKey;
+                                  return (
+                                    <button
+                                      key={r.name}
+                                      onClick={() => { setSelectedRepoKey(repoKey); setVisitedRepoKeys(prev => new Set(prev).add(repoKey)); handleRepoSelect(t, r); }}
+                                      className={`text-left px-4 py-4 rounded-xl border transition-all flex items-center gap-3 group relative overflow-hidden ${
+                                        isSel
+                                          ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/40 shadow-[0_0_20px_rgba(78,201,176,0.15),inset_0_1px_0_rgba(78,201,176,0.2)]'
+                                          : visitedRepoKeys.has(repoKey)
+                                            ? 'bg-gradient-to-b from-white/[0.04] to-white/[0.01] border-[#4ec9b0]/15 shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-[#4ec9b0]/30'
+                                            : 'bg-gradient-to-b from-white/[0.04] to-white/[0.01] border-white/[0.07] shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] hover:bg-gradient-to-b hover:from-[#4ec9b0]/[0.08] hover:to-[#4ec9b0]/[0.03] hover:border-[#4ec9b0]/30'
+                                      }`}
+                                    >
+                                      <div className={`shrink-0 p-2.5 rounded-xl ${isSel ? 'bg-[#4ec9b0]/20' : 'bg-white/[0.04] group-hover:bg-[#4ec9b0]/10'}`}>
+                                        <svg className={`w-4 h-4 ${isSel ? 'text-[#4ec9b0]' : 'text-gray-600 group-hover:text-[#4ec9b0]'}`} fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                                        </svg>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`text-sm truncate ${isSel ? 'font-bold text-[#4ec9b0]' : 'font-medium text-gray-300 group-hover:text-white'}`}>{r.label}</p>
+                                      </div>
+                                      <svg className="w-4 h-4 text-gray-600 group-hover:text-[#4ec9b0] shrink-0 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : (
+                      // ─── 2패널: 챕터 목록(좌) + 파일 그리드(우) ──
+                      <div className="flex gap-0" style={{ height: 'calc(100vh - 120px)', minHeight: 0 }}>
+                        {/* 왼쪽: 챕터 목록 */}
+                        <div className="w-48 shrink-0 border-r border-white/[0.06] overflow-y-auto pr-1 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                          <p className="text-[9px] font-bold text-gray-600 uppercase tracking-wider px-2 py-2">{repo.label}</p>
+                          {chaptersLoading ? (
+                            <div className="flex items-center gap-1.5 px-2 py-2">
+                              <div className="w-3 h-3 border-2 border-[#4ec9b0]/60 border-t-transparent rounded-full animate-spin shrink-0" />
+                              <span className="text-gray-500 text-[10px]">로딩 중...</span>
+                            </div>
+                          ) : chapters.length === 0 ? (
+                            <p className="text-gray-600 text-[10px] px-2">챕터 없음</p>
+                          ) : (
+                            chapters.map((ch) => {
+                              const isSel = selectedChapter?.name === ch.name;
+                              const files = chapterFilesMap[ch.name] || [];
+                              const allCompleted = files.length > 0 && files.every(f => completedFiles.includes(f.path));
+                              const hasCompleted = files.some(f => completedFiles.includes(f.path));
+                              const hasVisited = files.some(f => visitedFiles.includes(f.path));
+                              return (
+                                <div
+                                  key={ch.name}
+                                  onMouseEnter={files.length > 0 ? (e) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setChapterHover({ name: ch.name, files, top: rect.top, left: rect.right });
+                                  } : undefined}
+                                  onMouseLeave={files.length > 0 ? () => setChapterHover(null) : undefined}
+                                >
+                                  <button
+                                    onClick={() => {
+                                      setSelectedChapter(ch);
+                                      if (!chapterFilesMap[ch.name] || chapterFilesMap[ch.name].length === 0) {
+                                        handleChapterToggle(ch);
+                                      }
+                                    }}
+                                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all ${
+                                      isSel ? 'bg-[#569cd6]/15 text-[#569cd6]' : 'text-gray-400 hover:bg-white/[0.04] hover:text-white'
+                                    }`}
+                                  >
+                                    {hasCompleted ? (
+                                      <span className="text-[8px] shrink-0" style={{ color: '#4ec9b0' }}>✓</span>
+                                    ) : hasVisited ? (
+                                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#f48ab8' }} />
+                                    ) : (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-white/10 shrink-0" />
+                                    )}
+                                    <span className={`text-[11px] font-semibold truncate ${isSel ? 'text-[#569cd6]' : ''}`}>
+                                      {ch.name.replace('ch', 'ch.')}
+                                    </span>
+                                    {files.length > 0 && (
+                                      <span className="ml-auto text-[9px] text-gray-600 shrink-0">{files.length}</span>
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* 오른쪽: 파일 그리드 */}
+                        <div className="flex-1 overflow-y-auto px-6 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                          {!selectedChapter ? (
+                            <div className="flex flex-col items-center justify-center h-full text-center py-16">
+                              <svg className="w-10 h-10 text-gray-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg>
+                              <p className="text-gray-600 text-sm">왼쪽에서 챕터를 선택하세요</p>
+                            </div>
+                          ) : (() => {
+                            const files = chapterFilesMap[selectedChapter.name] || [];
+                            const isLoading = chapterFilesLoadingMap[selectedChapter.name];
+                            return (
+                              <div>
+                                <p className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider">
+                                  {selectedChapter.name.replace('ch', 'ch.')}
+                                  {files.length > 0 && <span className="ml-2 text-gray-600 normal-case font-normal">{files.length}개 파일</span>}
+                                </p>
+                                {isLoading ? (
+                                  <div className="flex items-center gap-2 py-4">
+                                    <div className="w-3 h-3 border border-gray-600 border-t-transparent rounded-full animate-spin" />
+                                    <span className="text-gray-600 text-xs">로딩 중...</span>
+                                  </div>
+                                ) : files.length === 0 ? (
+                                  <p className="text-gray-600 text-sm">파일 없음</p>
+                                ) : (
+                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                    {files.map((file) => {
+                                      const isActive = concept?.path === file.path;
+                                      const isVisited = visitedFiles.includes(file.path);
+                                      const isCompleted = completedFiles.includes(file.path);
+                                      return (
+                                        <button
+                                          key={file.name}
+                                          onClick={() => handleFileSelect(file, selectedChapter)}
+                                          className={`text-left flex items-center gap-2 px-3 py-3 rounded-xl transition-all border ${
+                                            isActive ? 'bg-[#c586c0]/10 border-[#c586c0]/25'
+                                            : isCompleted ? 'bg-[#4ec9b0]/5 border-[#4ec9b0]/15'
+                                            : isVisited ? 'bg-[#f48ab8]/5 border-[#f48ab8]/10'
+                                            : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/[0.12]'
+                                          }`}
+                                        >
+                                          {isCompleted ? (
+                                            <svg className="w-3.5 h-3.5 shrink-0" style={{ color: '#4ec9b0' }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                          ) : (
+                                            <svg className="w-3.5 h-3.5 shrink-0" style={{ color: isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#555' }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                          )}
+                                          <span className="text-[12px] truncate font-medium" style={{ color: isCompleted ? '#4ec9b0' : isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#dcdcaa' }}>
+                                            {file.name}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+
+          ) : (
+            // ─── 홈 (mode === null) 모드 카드 3장 ────────────────
             <div className="flex flex-col items-center justify-center h-full animate-fade-in-up px-4">
-              <h2 className="text-xl font-bold text-white mb-2">오늘은 뭘 할까요?</h2>
-              <p className="text-gray-500 text-sm mb-8">왼쪽에서 과목을 선택한 뒤 모드를 골라주세요</p>
+              {(() => {
+                const name = userData?.displayName || user?.displayName || '학생';
+                const level = calcLevel(userData?.totalXP || 0);
+                const cheer = streak >= 14 ? `${streak}일 연속 — 넌 이미 다름` :
+                              streak >= 7  ? `${streak}일 연속 🔥 상위 5%예요` :
+                              streak >= 3  ? `${streak}일 연속 중 — 습관이 만들어지고 있어요` :
+                              streak >= 2  ? `어제도 왔었죠? 오늘도 할 수 있어요 !! 화이팅 !!` :
+                              visitedFiles.length > 0 ? `지금까지 ${visitedFiles.length}개 파일 — 포기하지 마요` :
+                              '첫 걸음이 제일 어렵습니다. 시작해봐요';
+                return (
+                  <>
+                    <div className={`text-center mb-8 transition-transform duration-300 ${statusPop ? 'scale-[1.06]' : 'scale-100'}`}
+                      onTransitionEnd={() => setStatusPop(false)}
+                    >
+                      <h2 className="text-2xl font-black text-white mb-2">{name}님, 오늘도 한 판 해볼까요?</h2>
+                      <p className="text-sm" style={{ color: '#4ec9b0' }}>{cheer}</p>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {/* 스트릭 경고 배너 */}
+              {streakStatus === 'grace2' && (
+                <div className="w-full max-w-2xl mb-4 px-4 py-3 rounded-xl bg-[#f59e0b]/10 border border-[#f59e0b]/30 flex items-center gap-3">
+                  <span className="text-xl">⚠️</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#f59e0b]">내일이 마지막 기회예요</p>
+                    <p className="text-[11px] text-gray-400">오늘 루틴을 안 하면 {streak}일 연속이 사라져요. 지금 바로 시작하세요!</p>
+                  </div>
+                </div>
+              )}
+              {streakStatus === 'broken' && (
+                <div className="w-full max-w-2xl mb-4 px-4 py-3 rounded-xl bg-[#ef4444]/10 border border-[#ef4444]/30 flex items-center gap-3">
+                  <span className="text-xl">💔</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#ef4444]">연속 루틴이 초기화됐어요</p>
+                    <p className="text-[11px] text-gray-400">루틴을 3일 연속 완료하면 기존 스트릭을 복구할 수 있어요!</p>
+                  </div>
+                </div>
+              )}
+              {streakStatus === 'repair' && (
+                <div className="w-full max-w-2xl mb-4 px-4 py-3 rounded-xl bg-[#a855f7]/10 border border-[#a855f7]/30 flex items-center gap-3">
+                  <span className="text-xl">🔧</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-[#a855f7]">스트릭 복구 퀘스트 진행 중</p>
+                    <p className="text-[11px] text-gray-400">루틴 3연속 완료 시 복구! 현재 <span className="text-[#a855f7] font-bold">{repairCount}/3</span> 완료</p>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    {[0,1,2].map(i => (
+                      <div key={i} className={`w-2 h-2 rounded-full ${i < repairCount ? 'bg-[#a855f7]' : 'bg-white/10'}`} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 눌러보라는 화살표 힌트 */}
+              <div className="flex items-center gap-2 mb-3 animate-bounce-slow">
+                <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+                <span className="text-[11px] text-gray-300 font-semibold">눌러서 시작해보세요</span>
+              </div>
+
+              {/* 상단 2컬럼: 루틴 + 자유 예습 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mb-4">
+                {/* 오늘의 루틴 카드 */}
+                <button
+                  onClick={async () => {
+                    if (!repo && classData.length > 0) {
+                      const firstClass = classData.find(c => c.repos && c.repos.length > 0);
+                      if (firstClass) await handleRepoSelect(firstClass.teacher, firstClass.repos[0]);
+                    }
+                    setMode('routine'); setStatusPop(true);
+                  }}
+                  className="group relative bg-gradient-to-br from-[#f59e0b]/[0.12] to-[#f97316]/[0.06] border border-[#f59e0b]/30 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(245,158,11,0.10)] hover:-translate-y-2 hover:border-[#f59e0b]/60 hover:from-[#f59e0b]/[0.20] hover:to-[#f97316]/[0.10] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(245,158,11,0.28)]"
+                >
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#f59e0b]/25 to-[#f97316]/15 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-[#f59e0b]/20 shrink-0">
+                      <svg className="w-6 h-6 text-[#f59e0b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold mb-1" style={{ color: '#f59e0b' }}>오늘의 루틴</h3>
+                      <p className="text-xs text-gray-400">오늘 배운 코드를 한 바퀴 훑어보세요.</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-gray-500 mb-1 px-0.5">
+                    <span>오늘의 XP</span>
+                    <span>{dailyXP.total} / 500</span>
+                  </div>
+                  <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-[#f59e0b] to-[#f97316] rounded-full transition-all duration-700" style={{ width: `${Math.min((dailyXP.total / 500) * 100, 100)}%` }} />
+                  </div>
+                  <div className="mt-3 flex items-center gap-1 text-[11px] text-[#f59e0b] font-bold">
+                    <span>시작</span>
+                    <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </div>
+                </button>
+
+                {/* 자유 예습 카드 */}
+                <button
+                  onClick={() => { setFreeStudyTopic(''); setMode('freeStudy'); }}
+                  className="group relative bg-gradient-to-br from-[#38bdf8]/[0.10] to-[#818cf8]/[0.04] border border-[#38bdf8]/25 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(56,189,248,0.08)] hover:-translate-y-2 hover:border-[#38bdf8]/55 hover:from-[#38bdf8]/[0.18] hover:to-[#818cf8]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(56,189,248,0.22)]"
+                >
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#38bdf8]/25 to-[#818cf8]/15 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(56,189,248,0.12)] ring-1 ring-[#38bdf8]/20 shrink-0">
+                      <svg className="w-6 h-6 text-[#38bdf8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.847a4.5 4.5 0 003.09 3.09L15.75 12l-2.847.813a4.5 4.5 0 00-3.09 3.09z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold mb-1" style={{ color: '#38bdf8' }}>자유 예습</h3>
+                      <p className="text-xs text-gray-400">주제를 입력하면 AI가 코드를 만들어줘요.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-600 mb-3">배열기초, 싱글톤, 상속... 뭐든 OK</p>
+                  <div className="flex items-center gap-1 text-[11px] text-[#38bdf8] font-bold">
+                    <span>시작하기</span>
+                    <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </div>
+                </button>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
                 {/* 챕터별 학습 카드 */}
                 <button
-                  onClick={() => setMode('chapter')}
-                  className="group relative bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 text-left hover:border-[#4ec9b0]/40 hover:bg-[#4ec9b0]/5 transition-all duration-300 hover:shadow-[0_0_30px_rgba(78,201,176,0.1)]"
+                  onClick={() => { setMode('chapter'); setStatusPop(true); }}
+                  className="group relative bg-gradient-to-br from-[#4ec9b0]/[0.10] to-[#569cd6]/[0.04] border border-[#4ec9b0]/25 rounded-2xl p-8 text-left shadow-[0_4px_24px_rgba(78,201,176,0.10)] hover:-translate-y-2 hover:border-[#4ec9b0]/60 hover:from-[#4ec9b0]/[0.18] hover:to-[#569cd6]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(78,201,176,0.26)]"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4ec9b0]/20 to-[#569cd6]/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4ec9b0]/25 to-[#569cd6]/15 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(78,201,176,0.15)] ring-1 ring-[#4ec9b0]/20">
                     <svg className="w-7 h-7 text-[#4ec9b0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2">챕터별 학습</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">강사의 코드를 챕터 순서대로 학습합니다. AI가 코드를 분석하고 비유로 설명해줍니다.</p>
-                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#4ec9b0] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span>과목 먼저 선택하세요</span>
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <h3 className="text-lg font-bold mb-2" style={{ color: '#4ec9b0' }}>챕터별 학습 (복습)</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">강사의 코드를 자유롭게 탐색합니다. 예전 코드도 다시 볼 수 있어요.</p>
+                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#4ec9b0] font-bold group-hover:gap-2.5 transition-all duration-200">
+                    <span>시작하기</span>
+                    <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
                 </button>
 
-                {/* 레벨업 문제지옥 카드 */}
+                {/* 레벨업 문제지옥 카드 (보라색) */}
                 <button
-                  onClick={() => setMode('levelup')}
-                  className="group relative bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 text-left hover:border-[#f59e0b]/40 hover:bg-[#f59e0b]/5 transition-all duration-300 hover:shadow-[0_0_30px_rgba(245,158,11,0.1)]"
+                  onClick={() => { setMode('levelup'); setStatusPop(true); }}
+                  className="group relative bg-gradient-to-br from-[#a855f7]/[0.10] to-[#6366f1]/[0.04] border border-[#a855f7]/25 rounded-2xl p-8 text-left shadow-[0_4px_24px_rgba(168,85,247,0.10)] hover:-translate-y-2 hover:border-[#a855f7]/60 hover:from-[#a855f7]/[0.18] hover:to-[#6366f1]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(168,85,247,0.26)]"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#f59e0b]/20 to-[#ef4444]/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    <svg className="w-7 h-7 text-[#f59e0b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#a855f7]/25 to-[#6366f1]/15 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(168,85,247,0.15)] ring-1 ring-[#a855f7]/20">
+                    <svg className="w-7 h-7 text-[#a855f7]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2">레벨업 문제지옥</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">프로그래밍 핵심 키워드를 퀴즈로 마스터합니다. 틀릴수록 강해집니다.</p>
-                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#f59e0b] font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span>바로 시작</span>
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <h3 className="text-lg font-bold mb-2" style={{ color: '#a855f7' }}>레벨업 문제지옥</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">과목별 문제를 풀며 티어를 올립니다. 틀릴수록 강해집니다.</p>
+                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#a855f7] font-bold group-hover:gap-2.5 transition-all duration-200">
+                    <span>도전하기</span>
+                    <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
                 </button>
-              </div>
 
+              </div>
             </div>
 
-          ) : step === 1 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center animate-fade-in-up">
-              <div className="mb-6 p-4 bg-gradient-to-br from-theme-primary/10 to-theme-icon/10 rounded-2xl border border-white/5">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="url(#welcome-grad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <defs>
-                    <linearGradient id="welcome-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#4ec9b0" />
-                      <stop offset="100%" stopColor="#569cd6" />
-                    </linearGradient>
-                  </defs>
-                  <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
-                </svg>
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">오늘 배운 파일을 선택해주세요</h2>
-              <p className="text-gray-500 text-sm">챕터를 펼쳐 파일을 선택하면 AI 학습이 시작됩니다.</p>
-            </div>
-
-          ) : step === 2 ? (
-            <ChatView
-              teacher={teacher}
-              repo={repo}
-              concept={concept}
-              onComplete={(r) => { setResult(r); setStep(3); }}
-              onBack={() => setStep(1)}
-            />
-
-          ) : (
-            <ResultView result={result} onReset={reset} />
           )}
         </div>
       </main>
 
+
       {/* API 키 모달 */}
       {showApiKeyModal && <ApiKeyModal onClose={() => setShowApiKeyModal(false)} />}
+
+      {/* 홈 이동 확인 모달 */}
+      {homeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setHomeConfirm(false)}>
+          <div className="bg-[#1a1a1a] border border-white/[0.08] rounded-2xl p-6 w-[340px] shadow-[0_16px_64px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-[#f59e0b]/10 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#f59e0b]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">홈으로 이동</p>
+                <p className="text-xs text-gray-500">진행 중인 학습이 초기화됩니다</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-300 mb-6">정말 홈으로 돌아가시겠습니까?</p>
+            <div className="flex gap-2">
+              <button onClick={() => setHomeConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-400 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all">
+                취소
+              </button>
+              <button onClick={() => { setHomeConfirm(false); setMode(null); reset(); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/20 hover:bg-[#f59e0b]/20 transition-all">
+                홈으로
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 루틴 완료 축하 모달 */}
+      {routineDoneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in-up" onClick={() => setRoutineDoneModal(null)}>
+          <div className="bg-[#1a1a1a] border border-[#f59e0b]/20 rounded-2xl p-7 w-[360px] shadow-[0_16px_64px_rgba(245,158,11,0.15)] text-center" onClick={e => e.stopPropagation()}>
+            <div className="text-4xl mb-3">🎉</div>
+            <h3 className="text-xl font-black text-white mb-1">루틴 완료!</h3>
+            <p className="text-sm text-gray-400 mb-5">오늘의 루틴을 마쳤어요. 수고했어요!</p>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="p-3 rounded-xl bg-[#f59e0b]/[0.08] border border-[#f59e0b]/15">
+                <p className="text-2xl font-black text-[#f59e0b]">+{routineDoneModal.xp || 0}</p>
+                <p className="text-[10px] text-gray-500 font-semibold mt-0.5">XP 획득</p>
+              </div>
+              <div className="p-3 rounded-xl bg-[#c586c0]/[0.08] border border-[#c586c0]/15">
+                <p className="text-2xl font-black text-[#c586c0]">{streak}</p>
+                <p className="text-[10px] text-gray-500 font-semibold mt-0.5">연속 루틴일</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setRoutineDoneModal(null)}
+              className="w-full py-3 rounded-xl text-sm font-bold text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/25 hover:bg-[#f59e0b]/20 transition-all"
+            >
+              홈으로 돌아가기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

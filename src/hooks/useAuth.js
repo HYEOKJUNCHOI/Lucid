@@ -10,6 +10,7 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import useLearningStore from '../store/useLearningStore';
+import { restoreStreakFromFirestore } from '../services/learningService';
 
 export const useAuth = () => {
   const [user, setUser]               = useState(undefined); // undefined = 확인 중
@@ -40,37 +41,45 @@ export const useAuth = () => {
           
           // 실시간 리스너 설정
           unsubDoc = onSnapshot(userRef, async (snap) => {
+            try {
             if (snap.exists()) {
               const data = snap.data();
-              // 개발자 계정 무조건 관리자 승격 (리스너 안에서 중복 처리 방지 겸 저장)
+              // 개발자 계정 무조건 관리자 승격
               if (firebaseUser.email?.toLowerCase() === 'gurwns369@naver.com' && data.role !== 'admin') {
                 await setDoc(userRef, { role: 'admin' }, { merge: true });
               }
 
-              // groupIDs가 비어있을 때 invited_students에서 자동 동기화
-              // 이유: 학생이 먼저 로그인(users 문서 생성) 후 어드민이 반 배정했을 경우,
-              //       invited_students에는 groupIDs가 있지만 users 문서에는 반영이 안 되는 케이스 커버
               // invited_students 확인: groupIDs 동기화 + 사전등록 이름 반영
-              const inviteRef = doc(db, 'invited_students', firebaseUser.email.toLowerCase());
-              const inviteSnap = await getDoc(inviteRef);
-              if (inviteSnap.exists()) {
-                const inviteData = inviteSnap.data();
-                const updates = {};
+              try {
+                const inviteRef = doc(db, 'invited_students', firebaseUser.email.toLowerCase());
+                const inviteSnap = await getDoc(inviteRef);
+                if (inviteSnap.exists()) {
+                  const inviteData = inviteSnap.data();
+                  const updates = {};
 
-                // groupIDs가 비어있으면 사전등록의 groupIDs로 채우기
-                if ((!data.groupIDs || data.groupIDs.length === 0) && inviteData.groupIDs?.length > 0) {
-                  updates.groupIDs = inviteData.groupIDs;
-                }
+                  // groupIDs가 비어있으면 사전등록의 groupIDs로 채우기
+                  if ((!data.groupIDs || data.groupIDs.length === 0) && inviteData.groupIDs?.length > 0) {
+                    updates.groupIDs = inviteData.groupIDs;
+                  }
 
-                // 사전등록 이름이 있으면 displayName 덮어쓰기
-                if (inviteData.name && data.displayName !== inviteData.name) {
-                  updates.displayName = inviteData.name;
-                }
+                  // 사전등록 이름이 있으면 displayName 덮어쓰기
+                  if (inviteData.name && data.displayName !== inviteData.name) {
+                    updates.displayName = inviteData.name;
+                  }
 
-                if (Object.keys(updates).length > 0) {
-                  await setDoc(userRef, updates, { merge: true });
-                  return; // onSnapshot 재발동으로 자동 반영
+                  // studentType 동기화
+                  if (inviteData.studentType && data.studentType !== inviteData.studentType) {
+                    updates.studentType = inviteData.studentType;
+                  }
+
+                  if (Object.keys(updates).length > 0) {
+                    console.log('[useAuth] invited_students 동기화:', updates);
+                    await setDoc(userRef, updates, { merge: true });
+                    return; // onSnapshot 재발동으로 자동 반영
+                  }
                 }
+              } catch (inviteErr) {
+                console.warn('[useAuth] invited_students 동기화 실패:', inviteErr);
               }
 
               setUserData(data);
@@ -102,11 +111,16 @@ export const useAuth = () => {
                 email: firebaseUser.email,
                 displayName: inviteName || firebaseUser.displayName || '이름 없음',
                 phone: invitePhone || '',
+                studentType: inviteSnap.exists() ? (inviteSnap.data().studentType || 'beginner') : 'beginner',
               };
               await setDoc(userRef, newUser);
               // setDoc 이후 리스너가 다시 돌면서 setUserData가 호출될 것이므로 명시적 set은 생략 가능하나 안정성 위해 유지
             }
             setLoading(false);
+            } catch (snapErr) {
+              console.error('[useAuth] onSnapshot 콜백 에러:', snapErr);
+              setLoading(false);
+            }
           });
 
           // 접속 시간 기록 (별도로 한 번만)
@@ -122,6 +136,9 @@ export const useAuth = () => {
         setRole(null);
         setLoading(false);
       }
+      // 로그인 시 streak 데이터 localStorage 복원
+      if (firebaseUser) await restoreStreakFromFirestore(firebaseUser.uid);
+
       setUser(firebaseUser);
     });
 
@@ -151,7 +168,6 @@ export const useAuth = () => {
   };
 
   const logout = () => {
-    // 로그아웃 시 로그인 상태 초기화 및 Zustand 스토어 리셋 (Persistence 해제)
     useLearningStore.getState().reset();
     setLoginLoading(false);
     setLoginError(null);
