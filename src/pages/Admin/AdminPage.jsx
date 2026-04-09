@@ -3,10 +3,15 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import TeacherManagement from './TeacherManagement';
 import GroupManagement from './GroupManagement';
 import StudentManagement from './StudentManagement';
+import StudentDashboard from './StudentDashboard';
+import SeatChart from './SeatChart';
+import AlertsAndTop from './AlertsAndTop';
+import MetaphorLibrary from './MetaphorLibrary';
+import RewardPanel from './RewardPanel';
 
 const AdminPage = ({ user, userData, onLogout }) => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('students');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -42,10 +47,23 @@ const AdminPage = ({ user, userData, onLogout }) => {
 
           <nav className="flex flex-col gap-1">
             <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border ${
+                activeTab === 'dashboard'
+                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]'
+                  : 'border-transparent text-gray-500 hover:text-white hover:bg-white/[0.03]'
+              }`}
+            >
+              <svg className={`w-4 h-4 shrink-0 ${activeTab === 'dashboard' ? 'text-[#4ec9b0]' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              학생 현황 대시보드
+            </button>
+            <button
               onClick={() => setActiveTab('students')}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border ${
-                activeTab === 'students' 
-                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]' 
+                activeTab === 'students'
+                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]'
                   : 'border-transparent text-gray-500 hover:text-white hover:bg-white/[0.03]'
               }`}
             >
@@ -81,6 +99,58 @@ const AdminPage = ({ user, userData, onLogout }) => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               강사 등록
+            </button>
+            <button
+              onClick={() => setActiveTab('seats')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border ${
+                activeTab === 'seats'
+                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]'
+                  : 'border-transparent text-gray-500 hover:text-white hover:bg-white/[0.03]'
+              }`}
+            >
+              <svg className={`w-4 h-4 shrink-0 ${activeTab === 'seats' ? 'text-[#4ec9b0]' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+              좌석 배치도
+            </button>
+            <button
+              onClick={() => setActiveTab('alerts')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border ${
+                activeTab === 'alerts'
+                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]'
+                  : 'border-transparent text-gray-500 hover:text-white hover:bg-white/[0.03]'
+              }`}
+            >
+              <svg className={`w-4 h-4 shrink-0 ${activeTab === 'alerts' ? 'text-[#4ec9b0]' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              알림 · TOP3
+            </button>
+            <button
+              onClick={() => setActiveTab('metaphors')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border ${
+                activeTab === 'metaphors'
+                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]'
+                  : 'border-transparent text-gray-500 hover:text-white hover:bg-white/[0.03]'
+              }`}
+            >
+              <svg className={`w-4 h-4 shrink-0 ${activeTab === 'metaphors' ? 'text-[#4ec9b0]' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              메타포 라이브러리
+            </button>
+            <button
+              onClick={() => setActiveTab('rewards')}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 border ${
+                activeTab === 'rewards'
+                  ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/30 text-[#4ec9b0] font-bold shadow-[0_0_15px_rgba(78,201,176,0.1)]'
+                  : 'border-transparent text-gray-500 hover:text-white hover:bg-white/[0.03]'
+              }`}
+            >
+              <svg className={`w-4 h-4 shrink-0 ${activeTab === 'rewards' ? 'text-[#4ec9b0]' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+              </svg>
+              리워드
             </button>
           </nav>
         </div>
@@ -167,6 +237,12 @@ const AdminPage = ({ user, userData, onLogout }) => {
       {/* 모바일 탭 (헤더 바로 아래) */}
       <div className="md:hidden flex overflow-x-auto border-b border-theme-border bg-theme-bg">
         <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex-1 py-3 px-4 text-sm font-bold whitespace-nowrap border-b-2 transition-colors ${
+            activeTab === 'dashboard' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
+          }`}
+        >대시보드</button>
+        <button
           onClick={() => setActiveTab('students')}
           className={`flex-1 py-3 px-4 text-sm font-bold whitespace-nowrap border-b-2 transition-colors ${
             activeTab === 'students' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
@@ -184,14 +260,43 @@ const AdminPage = ({ user, userData, onLogout }) => {
             activeTab === 'teachers' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
           }`}
         >강사 등록</button>
+        <button
+          onClick={() => setActiveTab('seats')}
+          className={`flex-1 py-3 px-4 text-sm font-bold whitespace-nowrap border-b-2 transition-colors ${
+            activeTab === 'seats' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
+          }`}
+        >좌석 배치</button>
+        <button
+          onClick={() => setActiveTab('alerts')}
+          className={`flex-1 py-3 px-4 text-sm font-bold whitespace-nowrap border-b-2 transition-colors ${
+            activeTab === 'alerts' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
+          }`}
+        >알림·TOP3</button>
+        <button
+          onClick={() => setActiveTab('metaphors')}
+          className={`flex-1 py-3 px-4 text-sm font-bold whitespace-nowrap border-b-2 transition-colors ${
+            activeTab === 'metaphors' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
+          }`}
+        >메타포</button>
+        <button
+          onClick={() => setActiveTab('rewards')}
+          className={`flex-1 py-3 px-4 text-sm font-bold whitespace-nowrap border-b-2 transition-colors ${
+            activeTab === 'rewards' ? 'border-theme-primary text-theme-primary' : 'border-transparent text-gray-400'
+          }`}
+        >리워드</button>
       </div>
 
       {/* 메인 컨텐츠 영역 */}
       <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-        <div className="max-w-5xl mx-auto">
+        <div className={activeTab === 'seats' ? 'w-full' : 'max-w-5xl mx-auto'}>
+          {activeTab === 'dashboard' && <StudentDashboard />}
+          {activeTab === 'seats' && <SeatChart />}
           {activeTab === 'students' && <StudentManagement />}
           {activeTab === 'groups' && <GroupManagement />}
           {activeTab === 'teachers' && <TeacherManagement />}
+          {activeTab === 'alerts' && <AlertsAndTop />}
+          {activeTab === 'metaphors' && <MetaphorLibrary />}
+          {activeTab === 'rewards' && <RewardPanel />}
         </div>
       </main>
 

@@ -20,6 +20,7 @@ const StudentManagement = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
+  const [inviteStudentType, setInviteStudentType] = useState('beginner');
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const [originalGroupIds, setOriginalGroupIds] = useState([]);
@@ -116,6 +117,7 @@ const StudentManagement = () => {
     setInviteName(userObj.displayName || '');
     setInvitePhone(userObj.phone || '');
     setInviteEmail(userObj.email || '');
+    setInviteStudentType(userObj.studentType || 'beginner');
     setIsModalOpen(true);
   };
 
@@ -131,6 +133,7 @@ const StudentManagement = () => {
     setInviteEmail('');
     setInviteName('');
     setInvitePhone('');
+    setInviteStudentType('beginner');
     setSelectedGroupIds([]);
     setIsModalOpen(true);
   };
@@ -141,6 +144,7 @@ const StudentManagement = () => {
     setInviteEmail('');
     setInviteName('');
     setInvitePhone('');
+    setInviteStudentType('beginner');
     setSelectedGroupIds([]);
     setOriginalGroupIds([]);
   };
@@ -172,7 +176,8 @@ const StudentManagement = () => {
           await updateDoc(doc(db, 'users', selectedUser.id), {
             groupIDs: newGroupIds,
             displayName: inviteName.trim(),
-            phone: invitePhone.trim()
+            phone: invitePhone.trim(),
+            studentType: inviteStudentType,
           });
         } else {
           // 미가입 유저: invited_students 문서 업데이트
@@ -181,7 +186,8 @@ const StudentManagement = () => {
             email: lowerEmail,
             groupIDs: newGroupIds,
             name: inviteName.trim(),
-            phone: invitePhone.trim()
+            phone: invitePhone.trim(),
+            studentType: inviteStudentType,
           }, { merge: true });
         }
       }
@@ -222,7 +228,8 @@ const StudentManagement = () => {
           await updateDoc(doc(db, 'users', userDoc.id), {
             groupIDs: mergedGroups,
             displayName: inviteName.trim(),
-            phone: invitePhone.trim()
+            phone: invitePhone.trim(),
+            studentType: inviteStudentType,
           });
         } else {
           const inviteRef = doc(db, 'invited_students', lowerEmail);
@@ -238,7 +245,8 @@ const StudentManagement = () => {
             email: lowerEmail,
             name: inviteName.trim(),
             phone: invitePhone.trim(),
-            groupIDs: finalGroups
+            groupIDs: finalGroups,
+            studentType: inviteStudentType,
           }, { merge: true });
         }
       }
@@ -406,6 +414,15 @@ const StudentManagement = () => {
                           {!u.isRegistered && (
                              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-[#4ec9b0]/10 text-[#4ec9b0] border border-[#4ec9b0]/20">사전등록</span>
                           )}
+                          {u.studentType === 'major' && (
+                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">🎓 전공</span>
+                          )}
+                          {u.studentType === 'experienced' && (
+                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">⚡ 경험자</span>
+                          )}
+                          {(!u.studentType || u.studentType === 'beginner') && (
+                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-white/[0.04] text-gray-500 border border-white/10">일반</span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 font-mono text-xs text-gray-400">
@@ -542,6 +559,18 @@ const StudentManagement = () => {
                       placeholder="010-0000-0000"
                       className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-theme-primary focus:ring-1 focus:ring-theme-primary transition"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-300 mb-1.5">학생 유형</label>
+                    <select
+                      value={inviteStudentType}
+                      onChange={(e) => setInviteStudentType(e.target.value)}
+                      className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-theme-primary focus:ring-1 focus:ring-theme-primary transition"
+                    >
+                      <option value="beginner">처음 — 비전공 입문자</option>
+                      <option value="experienced">⚡ 경험자 — 비전공 유경험자</option>
+                      <option value="major">🎓 전공자 — CS/개발 전공</option>
+                    </select>
                   </div>
                 </div>
               )}
