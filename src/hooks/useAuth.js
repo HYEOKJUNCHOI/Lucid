@@ -50,9 +50,9 @@ export const useAuth = () => {
             if (snap.exists()) {
               const data = snap.data();
               // 중복 로그인 감지
-              const localSessionId = localStorage.getItem('lucid_session_id');
+              const localSessionId = sessionStorage.getItem('lucid_session_id');
               if (localSessionId && data.sessionId && data.sessionId !== localSessionId) {
-                localStorage.removeItem('lucid_session_id');
+                sessionStorage.removeItem('lucid_session_id');
                 await signOut(auth);
                 setLoginError('다른 기기에서 로그인되어 자동 로그아웃되었습니다.');
                 return;
@@ -176,7 +176,7 @@ export const useAuth = () => {
     setLoginLoading(key);
     try {
       const newSessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      localStorage.setItem('lucid_session_id', newSessionId);
+      sessionStorage.setItem('lucid_session_id', newSessionId);
       const result = await signInWithPopup(auth, provider);
       await setDoc(doc(db, 'users', result.user.uid), { sessionId: newSessionId }, { merge: true });
     } catch (e) {
@@ -218,7 +218,7 @@ export const useAuth = () => {
   };
 
   const logout = () => {
-    localStorage.removeItem('lucid_session_id');
+    sessionStorage.removeItem('lucid_session_id');
     useLearningStore.getState().reset();
     setLoginLoading(null); // null이어야 버튼 disabled가 풀림 (false면 cursor-wait 유지됨)
     setLoginError(null);
