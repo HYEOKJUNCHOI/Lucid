@@ -37,6 +37,103 @@
 ## 인수인계 내용
 
 ### 작성 정보
+- **작성자:** Claude Code (CC)
+- **작성 시각:** 2026-04-10 KST
+- **빌드 상태:** 컴파일 에러 없음 (CSS/JSON/JSX 편집만) ✅
+
+---
+
+### 현재 상태 요약
+FreeStudyView(자유학습)의 Monaco 에디터 테마를 **One Dark(One EyeCare)** 기준으로 전면 정리. 탭은 **Chrome 스타일 오목 귀(flare)** 포함, 배경색은 CSS 변수 2개(`--free-editor-bg`, `--free-tabbar-bg`)로 그룹화해서 한 곳만 바꾸면 탭/에디터/채팅/Monaco까지 전부 동기화됨.
+
+**다음 최우선 작업: Chrome 탭 귀 크기 14px 시각 확인** — 직전 세션 마지막에 11→14로 키웠는데 혁준님이 눈으로 확인 전에 세션 종료됨. 새 세션 시작 시 "자유학습" 들어가서 탭 하단 플레어가 또렷이 보이는지 체크 필요.
+
+---
+
+### 이번 세션에서 한 일 (2026-04-10)
+
+**1. CSS 변수 그룹화 + Monaco 런타임 주입**
+- `src/index.css` `:root`에 `--free-editor-bg`, `--free-tabbar-bg` 추가
+- `FreeStudyView.jsx` `handleEditorMount`에서 `getComputedStyle`로 읽어 `nightOwlTheme`에 `defineTheme` 주입
+- 효과: CSS 변수 1번 바꾸면 탭바/활성탭/에디터 본문/채팅/오른쪽 버튼 패널/Monaco `editor.background`까지 전부 동기화
+
+**2. Monaco 테마 전면 전환 (Catppuccin 파스텔 → One Dark)**
+- `src/themes/nightOwl.json` 룰 전체 재작성
+- One EyeCare Theme(by Nazmus Sayad) 기반 Atom One Dark 팔레트
+- 팔레트: 주석 `#5c6370` / 문자열 `#98c379` / 숫자·상수 `#d19a66` / 키워드·스토리지 `#c678dd` / 연산자·regex `#56b6c2` / 타입 `#e5c07b` / 함수 `#61afef` / 변수 `#abb2bf`
+- 배경 `#282c34` → 런타임에 CSS 변수로 교체됨
+- **빨강(`#e06c75`) 사용 금지 원칙** 유지
+- 메서드 노랑 `#ffc66d` 보존 규칙 **해제** (파랑 `#61afef`로, 메모리도 갱신)
+
+**3. Java 토크나이저 분리**
+- `FreeStudyView.jsx` Monarch provider에 `storageModifiers` 배열 추가
+- `public/private/protected/static/final/abstract/...` → `storage.modifier`
+- `import/package/class/for/if/...` → `keyword`
+- 토크나이저 rules의 두 곳(메서드 패턴 `(?=\s*\()` + 일반 식별자)에 `@storageModifiers` 케이스 먼저 추가
+- **현재 두 토큰 모두 `#c678dd` 보라로 매핑** — 유저가 "원복해줘 보라색계열로" 지시. 토크나이저 분리는 남겨둠(나중에 색 바꾸려면 nightOwl.json `storage.modifier` 한 줄만 바꾸면 됨)
+
+**4. Chrome 탭 모양 구현** (`src/index.css` `.free-tab*`)
+- `.free-tab-bar`: `padding: 6px 0 0 14px` (왼쪽만 14px, 첫 탭 귀가 `overflow-hidden`에 안 잘리게)
+- `.free-tab`: `border-top-left-radius: 13px`, `border-top-right-radius: 13px`, `margin-right: 2px`
+- `.free-tab-active::before/::after`, `.free-tab-inactive:hover::before/::after`, `.free-tab-right-panel::before` 모두 14×14px 오목 귀
+- 마스크: `radial-gradient(circle at 0 0, transparent 14px, #000 14.5px)` — 위치는 좌우에 따라 `0 0` / `100% 0`
+- `.free-tab-right-panel`도 같은 클래스로 활성 탭과 일체형 처리(왼쪽 귀만, 오른쪽은 패널 `overflow-hidden`으로 클리핑)
+
+**5. 배경 밝기 튜닝 (반복 iteration)**
+- 시작: `#282c34` (10/10) → 요청 -4단계 → `#181a1f` (6/10) → 요청 7.5로 → `#1e2127` (7.5/10) — 최종값
+- 탭바는 별도로 6/10 유지 → `#14161a` — 최종값
+- 대비: 활성탭 7.5 vs 탭바 6 → 탭 입체감 확보
+
+**6. 비활성 탭 밝기 튜닝**
+- 원래 `rgba(0,0,0,0.35)` + `inset 0 2px 4px rgba(0,0,0,0.5)` → 너무 어둡다
+- 4단계(`rgba(255,255,255,0.035)`) → 너무 밝다
+- 최종 2.5단계: `background: rgba(0,0,0,0.16); box-shadow: inset 0 1px 3px rgba(0,0,0,0.35)`
+
+**7. 비활성 탭 호버**
+- 중복된 `.free-tab-inactive:hover` 2개 규칙을 하나로 병합
+- `background: rgba(255,255,255,0.08); color: #e5e7eb; box-shadow: none`
+- 좌/우 귀도 `rgba(255,255,255,0.08)`로 동기화
+
+**8. 오른쪽 채팅 패널 색상 정리** (`FreeStudyView.jsx`)
+- 패널 테두리 `#313244` → `#2c313a` (Catppuccin 잔재 제거)
+- 입력창 상단 구분선 `#313244` → `#2c313a`
+- 입력창 배경 `#1e1e1e` → `#14161a` (탭바와 동일)
+- 입력창 테두리 `#313244` → `#2c313a`
+- 왼쪽 코드 패널 테두리도 동일하게 통일
+
+---
+
+### 아직 안 한 일 / 이어서 해야 할 일
+
+1. **⭐ Chrome 탭 귀 14px 시각 확인 (최우선)**
+   - 직전 이터레이션(11→14px)이 혁준님 눈으로 확인되기 전에 세션 종료
+   - 자유학습 페이지 들어가서 활성 탭(Main.java, AI 생성 코드) 하단 플레어가 크롬처럼 또렷이 보이는지 체크
+   - 만약 여전히 둥글게만 보이면 → 추가 디버깅 필요 (마스크 렌더링 검증, clip-path 대안 고려)
+
+2. **홈페이지 반 카드 플래시 버그**
+   - `src/hooks/useAuth.js` line 88에 `console.log('[useAuth] setUserData', ...)` 디버그 로그 **남아있음**
+   - `src/pages/Student/StudentPage.jsx:1058` `{!userData ? null : groupIDs.length === 0 ? (...)}` 가드 조건 넣어둠
+   - 혁준님이 F12 콘솔에서 로그 확인 후 결과 피드백 기다리는 중
+   - 커밋/배포 전에는 console.log 제거해야 함
+
+3. **storage.modifier 색 분리 여부**
+   - 지금은 keyword와 동일한 보라 `#c678dd`
+   - 토크나이저는 이미 `storageModifiers` 케이스로 분리해둠 → `nightOwl.json`의 `storage.modifier` 한 줄만 바꾸면 색 분리 가능
+   - 필요해지면 바꿀 것
+
+---
+
+### 주의사항 / 알려둘 것
+
+- **Monaco 테마는 런타임 주입 구조**: `nightOwl.json`에 하드코딩된 `editor.background` `#282c34`는 `handleEditorMount`에서 CSS 변수로 덮어써짐. JSON 값을 직접 바꿔도 런타임 값이 이긴다.
+- **One Dark 팔레트는 고정 기준**: 메모리(`feedback_theme_pastel.md`)에도 기록됨. 새 토큰에 색 넣을 때는 이 팔레트 안에서 역할 매칭부터 시도. 빨강 계열 회피.
+- **CSS 변수 바꿀 때**: `src/index.css`의 `:root` 두 줄만 바꾸면 탭/에디터/채팅/Monaco까지 한 번에 반영됨. 개별 하드코딩 값으로 돌아가지 말 것.
+- **`FreeStudyView.jsx`는 untracked 상태**: 이 파일은 git에 한 번도 add된 적 없음 — 이번 커밋에서 처음 추가됨.
+- **워킹디렉토리에 쌓인 다른 수정 파일들**: Admin 페이지, StudentPage 등 여러 파일에 커밋 안 된 변경이 있음. **이번 커밋은 이번 세션 작업(index.css, nightOwl.json, FreeStudyView.jsx)에만 집중** — 나머지는 별도 세션/커밋에서 처리 필요.
+
+---
+
+### 작성 정보 (이전)
 - **작성자:** Antigravity (AG)
 - **작성 시각:** 2026-04-07 KST (세션 4)
 - **빌드 상태:** 컴파일 에러 없음 (Vite build success) ✅

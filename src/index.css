@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── FreeStudyView 색상 토큰 (그룹화) ─────────────
+   한 번 바꾸면 탭/에디터/채팅/Monaco 테마까지 모두 동기화됨
+   ────────────────────────────────────────────────── */
+:root {
+  --free-editor-bg: #1e2127;  /* 활성 탭 + 에디터 본문 + 채팅 패널 + 오른쪽 버튼 패널 (One Dark 7.5/10) */
+  --free-tabbar-bg: #14161a;  /* 탭바 (비활성 배경, One Dark strip 6/10) */
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -314,6 +322,188 @@ body.ctrl-held .code-token-clickable {
 }
 .bean-card-in {
   animation: beanCardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ─── Chrome 탭 입체 효과 ─── */
+.chrome-tab-active {
+  background: linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.015) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.13),   /* 상단 하이라이트 */
+    0 -2px 8px rgba(0,0,0,0.35),             /* 위로 들어올리는 그림자 */
+    2px 0 6px rgba(0,0,0,0.2),
+    -2px 0 6px rgba(0,0,0,0.2);
+}
+
+/* 활성 탭 하단 왼쪽 오목 귀 */
+.chrome-tab-active::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: -8px;
+  width: 8px;
+  height: 8px;
+  border-bottom-right-radius: 8px;
+  box-shadow: 3px 2px 0 2px #0d0d0d;
+  pointer-events: none;
+}
+/* 활성 탭 하단 오른쪽 오목 귀 */
+.chrome-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  right: -8px;
+  width: 8px;
+  height: 8px;
+  border-bottom-left-radius: 8px;
+  box-shadow: -3px 2px 0 2px #0d0d0d;
+  pointer-events: none;
+}
+
+/* ─── FreeStudyView Chrome 탭 ─── */
+.free-tab-bar {
+  background: var(--free-tabbar-bg);
+  padding: 6px 0 0 14px;                            /* 좌측: 첫 탭 왼쪽 귀(14px)가 잘리지 않을 만큼 */
+}
+.free-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  border-top-left-radius: 13px;
+  border-top-right-radius: 13px;
+  margin-right: 2px;
+  transition: background-color 0.15s ease, color 0.15s ease, padding 0.15s ease;
+}
+.free-tab-active {
+  background: var(--free-editor-bg);
+  color: #bbbbbb;
+}
+.free-tab-inactive {
+  color: #6b7280;
+  background: rgba(0,0,0,0.16);                    /* 1→2.5단계: 원래 0.35보다 약하게 덮음 */
+  box-shadow:
+    inset 0 1px 3px rgba(0,0,0,0.35),              /* 파묻힘을 살짝만 남김 */
+    inset 0 -1px 0 rgba(255,255,255,0.02);         /* 하단 살짝 하이라이트 */
+}
+.free-tab-inactive:hover {
+  background: rgba(255,255,255,0.08);              /* 호버 시 또렷이 밝아짐 (Chrome 느낌) */
+  box-shadow: none;                                /* 파묻힘 제거로 앞으로 떠오르는 느낌 */
+  color: #e5e7eb;
+}
+/* 비활성 탭 호버 시 오목 귀 (왼쪽) */
+.free-tab-inactive:hover::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  background: rgba(255,255,255,0.08);
+  -webkit-mask-image: radial-gradient(circle at 0 0, transparent 14px, #000 14.5px);
+  mask-image: radial-gradient(circle at 0 0, transparent 14px, #000 14.5px);
+  pointer-events: none;
+}
+/* 비활성 탭 호버 시 오목 귀 (오른쪽) */
+.free-tab-inactive:hover::after {
+  content: '';
+  position: absolute;
+  right: -14px;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  background: rgba(255,255,255,0.08);
+  -webkit-mask-image: radial-gradient(circle at 100% 0, transparent 14px, #000 14.5px);
+  mask-image: radial-gradient(circle at 100% 0, transparent 14px, #000 14.5px);
+  pointer-events: none;
+}
+/* 활성 탭 하단 왼쪽 오목 귀 (마스크 방식) */
+.free-tab-active::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  background: var(--free-editor-bg);
+  -webkit-mask-image: radial-gradient(circle at 0 0, transparent 14px, #000 14.5px);
+  mask-image: radial-gradient(circle at 0 0, transparent 14px, #000 14.5px);
+  pointer-events: none;
+}
+/* 활성 탭 하단 오른쪽 오목 귀 (마스크 방식) */
+.free-tab-active::after {
+  content: '';
+  position: absolute;
+  right: -14px;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  background: var(--free-editor-bg);
+  -webkit-mask-image: radial-gradient(circle at 100% 0, transparent 14px, #000 14.5px);
+  mask-image: radial-gradient(circle at 100% 0, transparent 14px, #000 14.5px);
+  pointer-events: none;
+}
+/* 오른쪽 버튼 영역 — 크롬탭 모양 (왼쪽 오목귀만) */
+.free-tab-right-panel {
+  position: relative;
+  background: var(--free-editor-bg);
+  border-top-left-radius: 13px;
+  border-top-right-radius: 13px;
+}
+.free-tab-right-panel::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  background: var(--free-editor-bg);
+  -webkit-mask-image: radial-gradient(circle at 0 0, transparent 14px, #000 14.5px);
+  mask-image: radial-gradient(circle at 0 0, transparent 14px, #000 14.5px);
+  pointer-events: none;
+}
+
+/* 탭 단축키 뱃지 */
+.free-tab-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #9ca3af;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.free-tab-inactive .free-tab-shortcut {
+  background: rgba(255,255,255,0.03);
+  border-color: rgba(255,255,255,0.05);
+  color: #6b7280;
+}
+
+/* 비활성 탭 호버 */
+.chrome-tab-inactive:hover {
+  background: rgba(255,255,255,0.04);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* 전역 코드 폰트 */
+code, pre, kbd, .font-mono {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace !important;
+  font-weight: 380;
+  font-variant-ligatures: contextual;
+}
+
+/* Monaco 읽기 모드 알림 폰트 */
+.monaco-editor .monaco-editor-overlaymessage .message {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
 }
 
 /* 퀴즈 코드블록: Ctrl 누르면 토큰에 손가락 커서 */

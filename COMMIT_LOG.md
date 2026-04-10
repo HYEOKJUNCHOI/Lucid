@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-04-10 (세션 — FreeStudyView 테마/탭)
+
+### [CC] style: FreeStudyView One Dark 팔레트 + Chrome 탭 모양 + 배경 그룹화
+- **지시:** 자유학습 페이지 Monaco 에디터 색상을 One Dark(One EyeCare) 기반으로 정리하고, 탭을 Chrome 탭처럼 오목 귀 포함 형태로 구현. 배경색은 한 곳 바꾸면 전체가 동기화되도록 그룹화.
+- **내용:**
+  - **CSS 변수 그룹화** (`src/index.css`): `--free-editor-bg`, `--free-tabbar-bg` 두 토큰으로 탭/에디터/채팅/오른쪽 버튼 패널 색상 통합. 최종값은 에디터 `#1e2127` (밝기 7.5/10), 탭바 `#14161a` (6/10).
+  - **Monaco 테마 런타임 동기화** (`FreeStudyView.jsx` `handleEditorMount`): `getComputedStyle`로 `--free-editor-bg` 읽어서 `nightOwlTheme`에 주입. JSON 테마를 매번 `defineTheme`으로 갱신.
+  - **One Dark 팔레트 전면 적용** (`nightOwl.json`): Catppuccin/파스텔 방향 폐기, Atom One Dark 기준으로 모든 토큰 재매핑. 핵심 — 주석 `#5c6370`, 문자열 `#98c379`, 숫자/상수 `#d19a66`, 키워드/스토리지 `#c678dd`, 타입 `#e5c07b`, 함수 `#61afef`, 변수 foreground `#abb2bf`. 빨강(`#e06c75`) 사용 금지 원칙. 메서드 노랑 `#ffc66d` 보존 규칙은 해제(메모리도 갱신).
+  - **Java 토크나이저 storageModifiers 분리** (`FreeStudyView.jsx`): `import`(keyword)와 `public/private/static/final...`(storage.modifier)을 별도 케이스로 분리. 현재 두 토큰 모두 보라 `#c678dd`로 매핑(유저가 원복 지시) — 나중에 분리가 필요하면 JSON 한 줄만 바꾸면 됨.
+  - **Chrome 탭 모양** (`src/index.css` `.free-tab*` 클래스): `::before`/`::after`에 `radial-gradient` 마스크로 좌/우 오목 귀 구현. 귀 크기 14×14px, 탭바 좌측 패딩 14px로 첫 탭 귀가 `overflow-hidden`에 안 잘리도록.
+  - **비활성 탭 밝기 튜닝**: 원래 `rgba(0,0,0,0.35)` + 강한 inset shadow → 최종 `rgba(0,0,0,0.16)` + 부드러운 inset shadow (밝기 1→2.5단계).
+  - **비활성 탭 호버**: 중복된 `.free-tab-inactive:hover` 규칙 병합, 배경 `rgba(255,255,255,0.08)`, 텍스트 `#e5e7eb`로 또렷하게.
+  - **오른쪽 채팅 패널 색상 맞춤** (`FreeStudyView.jsx`): 테두리 `#313244` → `#2c313a`, 입력창 배경 `#1e1e1e` → `#14161a`, 입력창 테두리도 `#2c313a`. 왼쪽 패널 테두리도 통일.
+- **수정 파일:**
+  - `src/index.css` — CSS 변수 그룹화, Chrome 탭 클래스, 색상 토큰
+  - `src/themes/nightOwl.json` — One Dark 팔레트 전면 재작성
+  - `src/pages/Student/FreeStudyView.jsx` — 토크나이저 분리, 런타임 테마 주입, 패널 색상
+
+---
+
 ## 2026-04-07 (세션 4)
 
 ### [AG] feat: ChatView GPT 연동 및 Zustand 상태관리 전면 도입
