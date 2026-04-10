@@ -96,9 +96,9 @@ body.ctrl-held .code-token-clickable {
   animation: token-fade 1.5s ease-out forwards;
 }
 @keyframes token-fade {
-  0%, 60% { opacity: 1; }
-  100% { opacity: 0; }
+  0%, 100% { opacity: 1; }
 }
+
 
 /* 퀴즈 오답 흔들기 */
 @keyframes quizShake {
@@ -314,6 +314,11 @@ body.ctrl-held .code-token-clickable {
 }
 .bean-card-in {
   animation: beanCardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 퀴즈 코드블록: Ctrl 누르면 토큰에 손가락 커서 */
+body.ctrl-held .quiz-code-ctrl span {
+  cursor: pointer !important;
 }
 
 /* 타자연습: 틀린 글자 하이라이트 */

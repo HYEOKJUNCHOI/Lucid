@@ -10,6 +10,7 @@ import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { addDailyXP, onQuestComplete, syncStreakToFirestore, getStreakMultiplier, getQuestRepeatCount, recordQuestRepeat, getQuestDropRate, rollBeanDrop, getBeanCount } from '../../services/learningService';
 import BeanRewardCard from '../../components/common/BeanRewardCard';
+import nightOwlTheme from '../../themes/nightOwl.json';
 
 // ─── 파일 확장자 → Monaco language ──────────────
 const extToLang = (name) => {
@@ -119,6 +120,57 @@ O/X 문제의 경우 options는 ["⭕ 맞다","❌ 틀리다"]로.
 파일: ${fileName}`;
 };
 
+// ─── 아코디언 섹션 (라이트) ─────────────────────
+const AccordionSection = ({ title, content, expanded, onToggle, accentColor = '#f59e0b', onTokenClick }) => (
+  <div>
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-1.5 py-1.5 text-left group"
+    >
+      <span className="text-[9px] transition-transform duration-200" style={{ color: '#4b5563', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+      <span className="text-[11px] font-semibold transition-colors" style={{ color: expanded ? accentColor : '#6b7280' }}>
+        {title}
+      </span>
+    </button>
+    {expanded && (
+      <div className="pl-3 pb-2 border-l border-white/[0.08] ml-1 mt-0.5">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}
+          className="prose prose-invert max-w-none text-[11px] prose-p:my-1 prose-p:leading-relaxed prose-li:my-0 prose-code:bg-white/10 prose-code:px-1 prose-code:rounded prose-code:text-[#fbbf24] prose-code:before:content-none prose-code:after:content-none prose-strong:font-semibold prose-h3:text-[11px] prose-h3:font-bold prose-h3:text-gray-300 prose-h3:mt-2 prose-h3:mb-1"
+          components={{
+            code: ({ children }) => {
+              const txt = String(children).trim();
+              return (
+                <code
+                  className="code-token-clickable text-[10px] bg-white/5 px-1 rounded"
+                  style={{ color: '#9cdcfe', cursor: 'inherit' }}
+                  onClick={(e) => { if ((e.ctrlKey || e.metaKey) && onTokenClick) { e.preventDefault(); onTokenClick(txt); } }}
+                >{children}</code>
+              );
+            },
+            strong: ({ children }) => <span className="font-semibold" style={{ color: accentColor }}>{children}</span>,
+            h1: () => null,
+            h2: () => null,
+            h3: () => null,
+          }}
+        >{content}</ReactMarkdown>
+      </div>
+    )}
+  </div>
+);
+
+// ─── Chrome 스타일 탭 버튼 ─────────────────────
+const TabButton = ({ active, shortcut, label, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`relative px-3 py-2.5 text-[11px] font-bold transition-all flex items-center gap-1.5 border-b-2 whitespace-nowrap ${
+      active ? 'text-white border-[#f59e0b]' : 'text-gray-500 border-transparent hover:text-gray-300'
+    }`}
+  >
+    <span className="text-[9px] px-1 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-gray-500 font-mono">{shortcut}</span>
+    {label}
+  </button>
+);
+
 // ─── 채팅 프롬프트 ──────────────────────────────
 const CHAT_SYSTEM = `당신은 친절한 코딩 멘토입니다. 학생이 코드에 대해 자유롭게 질문합니다.
 - 쉬운 말로 대답하세요
@@ -148,6 +200,47 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   // 원두 드랍 상태
   const [beanDrop, setBeanDrop] = useState(null); // null | { isFirst, beanCount }
 
+  // ─── Monaco ref ──────────────────────────────
+  const editorRef = useRef(null);
+  const monacoRef = useRef(null);
+  const highlightDecorRef = useRef([]);
+
+  // 코드 토큰 Ctrl+Click → Monaco 에디터 하이라이트
+  const highlightCodeToken = (token) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !code) return;
+    const searchText = token.replace(/\(\)$/, '');
+    const model = editor.getModel();
+    if (!model) return;
+    const matches = model.findMatches(searchText, false, false, true, null, false);
+    if (matches.length === 0) return;
+    const match = matches[0];
+    const line = match.range.startLineNumber;
+    editor.revealLineInCenter(line);
+    highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, [
+      { range: match.range, options: { inlineClassName: 'code-token-highlight' } },
+      { range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className: 'code-line-highlight' } },
+    ]);
+    setTimeout(() => { highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, []); }, 1500);
+    setLeftTab(1);
+  };
+
+  // Ctrl 키 → body 클래스 토글 (해석 패널 밑줄 CSS용)
+  useEffect(() => {
+    const onDown = (e) => { if (e.ctrlKey || e.metaKey) document.body.classList.add('ctrl-held'); };
+    const onUp = () => document.body.classList.remove('ctrl-held');
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', onUp);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', onUp);
+      document.body.classList.remove('ctrl-held');
+    };
+  }, []);
+
   // ─── 패널 리사이즈 ─────────────────────────────
   const splitContainerRef = useRef(null);
   const [splitRatio, setSplitRatio] = useState(0.5);
@@ -175,12 +268,18 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  // 오른쪽 패널 상태: idle | explaining | quiz
-  const [panelMode, setPanelMode] = useState('idle');
+  // ─── 탭 상태 ─────────────────────────────────
+  const [leftTab, setLeftTab] = useState(1); // 1=수업코드, 2=AI코드
+  const [rightTab, setRightTab] = useState(3); // 3=채팅, 4=퀴즈
+  const [quizVisible, setQuizVisible] = useState(false); // 퀴즈가 시작됐는지 여부
 
-  // AI 설명
-  const [aiExplanation, setAiExplanation] = useState('');
-  const [aiLoading, setAiLoading] = useState(false);
+  // 해석 + 메타포 자동 분석
+  const [analysisResult, setAnalysisResult] = useState(null); // null | { functional, metaphor }
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({ functional: false, metaphor: false });
+  const [voteState, setVoteState] = useState({ functional: null, metaphor: null }); // null | 'up' | 'down'
+
+  // 퀴즈 로딩 메시지
   const [loadingMsg, setLoadingMsg] = useState('');
 
   // 퀴즈
@@ -201,8 +300,7 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   // 종료 확인 모달
   const [exitConfirm, setExitConfirm] = useState(false);
 
-  // 채팅 모달
-  const [chatOpen, setChatOpen] = useState(true); // 처음엔 열림 (idle 상태)
+  // 채팅
   const [chatMessages, setChatMessages] = useState([]);
   const [chatSuggestions, setChatSuggestions] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -212,16 +310,35 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   // phase: loading | active | done
   const [phase, setPhase] = useState('loading');
 
-  // ─── F2: 다음 문제 단축키 ────────────────────
+  // ─── F2: 아코디언 사이클 / 퀴즈 다음 문제 ──
   useEffect(() => {
     const handler = (e) => {
       if (e.key !== 'F2') return;
       e.preventDefault();
-      if (panelMode === 'quiz' && quizFeedback && !quizDone) goNextQuestion();
+      if (rightTab === 3 && analysisResult) {
+        setExpandedSections(prev => {
+          if (!prev.functional && !prev.metaphor) return { functional: true, metaphor: false };
+          if (prev.functional && !prev.metaphor) return { functional: false, metaphor: true };
+          return { functional: false, metaphor: false };
+        });
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [panelMode, quizFeedback, quizDone, quizHearts, quizIdx, quizQuestions.length]);
+  }, [rightTab, quizVisible, analysisResult, quizFeedback, quizDone, quizHearts, quizIdx, quizQuestions.length]);
+
+  // ─── Shift+1/2/3/4 단축키 ──────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.shiftKey) return;
+      if (e.code === 'Digit1') { e.preventDefault(); setLeftTab(1); }
+      else if (e.code === 'Digit2') { e.preventDefault(); setLeftTab(2); }
+      else if (e.code === 'Digit3') { e.preventDefault(); setRightTab(3); }
+      else if (e.code === 'Digit4') { e.preventDefault(); setRightTab(4); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // ─── 우측 패널 Ctrl+Wheel 줌 ─────────────────
   const [panelFontSize, setPanelFontSize] = useState(14);
@@ -324,9 +441,13 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   }, [phase, currentIdx, routineItems]);
 
   const resetRightPanel = () => {
-    setPanelMode('idle');
-    setAiExplanation('');
-    setAiLoading(false);
+    setRightTab(3);
+    setQuizVisible(false);
+    setAnalysisResult(null);
+    setAnalysisLoading(false);
+    setExpandedSections({ functional: false, metaphor: false });
+    setVoteState({ functional: null, metaphor: null });
+    usedMetaphorsRef.current = [];
     setQuizQuestions([]);
     setQuizIdx(0);
     setSelectedAnswer(null);
@@ -337,47 +458,106 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
     setScreenFlash(false);
     setQuizCorrect(0);
     setQuizDone(false);
-    setChatOpen(true);
     setChatMessages([]);
     setChatInput('');
   };
 
-  // ─── AI 설명 요청 ─────────────────────────────
-  const requestExplanation = async (isEasier = false) => {
-    setAiLoading(true);
-    setLoadingMsg(pickMsg(isEasier ? 'easier' : 'explain'));
-    setPanelMode('explaining');
-    setChatOpen(false);
+  // ─── 코드 로드 시 자동 분석 (기능적 해석 + 메타포) ──
+  useEffect(() => {
+    if (!code || phase !== 'active' || !routineItems[currentIdx]) return;
+    let cancelled = false;
+    const run = async () => {
+      setAnalysisLoading(true);
+      setAnalysisResult(null);
+      setExpandedSections({ functional: false, metaphor: false });
+      try {
+        const apiKey = getApiKey();
+        if (!apiKey || cancelled) { if (!cancelled) setAnalysisLoading(false); return; }
+        const item = routineItems[currentIdx];
+        const codeContext = `파일명: ${item.file.name}\n\n${code.substring(0, 3000)}`;
 
+        // Agent 1: 기능적 해석
+        const prompt1 = `${codeContext}\n\n위 코드를 마이크로 단위로 해석해라.\n\n[규칙]\n- 코드의 각 핵심 라인이 무슨 일을 하는지 구체적으로 설명\n- 변수명, 메서드명, 타입명을 반드시 백틱으로 감싸서 포함\n- "값이 어디서 생기고, 어디로 가고, 어떻게 변하는지" 흐름을 짚어라\n- 불필요한 일반 설명 금지 (프로그램 시작점, import 설명 등)\n- package, import 줄은 언급하지 마라\n- 결과는 '### 🧩 기능적 해석'으로 시작\n- 번호 매겨서 단계별로 작성`;
+        const res1Data = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [{ role: 'user', content: prompt1 }], temperature: 0.7, max_tokens: 800 }),
+        });
+        const res1 = (await res1Data.json()).choices?.[0]?.message?.content?.trim() || '';
+        if (cancelled) return;
+
+        // Agent 2: 메타포
+        const prompt2 = `너는 10년차 코딩 강사이자, 비유의 천재다.\n코드의 각 요소를 현실 세계의 무언가에 1:1로 매핑하는 메타포 설명을 만들어라.\n\n[핵심 원칙]\n- 소재는 자유롭게 골라라. 단, 코드 구조/역할과 진짜 비슷한 것으로.\n- 하나의 세계관 안에서 일관되게\n- 코드의 주요 요소(클래스, 변수, 메서드)마다 현실에서 정확히 뭐에 해당하는지 매핑해라.\n\n[출력 형식]\n- 제목/섹션 헤딩 없이 요소별 매핑만 나열\n- 마크다운 헤딩(#, ##, ###) 사용 금지\n- 각 항목의 코드 요소 이름은 반드시 **굵게** 표시 예: **클래스**: 설명`;
+        const res2Data = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [
+            { role: 'user', content: prompt1 },
+            { role: 'assistant', content: res1 },
+            { role: 'user', content: prompt2 },
+          ], temperature: 0.8, max_tokens: 800 }),
+        });
+        const res2 = (await res2Data.json()).choices?.[0]?.message?.content?.trim() || '';
+        if (cancelled) return;
+        setAnalysisResult({ functional: res1, metaphor: res2 });
+      } catch (e) { console.warn('분석 실패:', e); }
+      finally { if (!cancelled) setAnalysisLoading(false); }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [code]);
+
+  // ─── 메타포 셔플 ──────────────────────────────
+  const [metaphorShuffling, setMetaphorShuffling] = useState(false);
+  const usedMetaphorsRef = useRef([]); // 이미 사용한 비유 텍스트 누적
+  const shuffleMetaphor = async () => {
+    if (metaphorShuffling || !analysisResult) return;
+    setMetaphorShuffling(true);
+    // 현재 비유를 사용 목록에 추가
+    usedMetaphorsRef.current = [...usedMetaphorsRef.current, analysisResult.metaphor];
     try {
       const apiKey = getApiKey();
-      if (!apiKey) { setAiExplanation('API 키가 설정되지 않았습니다.'); setAiLoading(false); return; }
+      if (!apiKey) return;
       const item = routineItems[currentIdx];
-      const msgs = [
-        { role: 'system', content: `${EXPLAIN_PROMPT}\n\n파일명: ${item.file.name}\n챕터: ${item.chapterLabel}` },
-        { role: 'user', content: code },
-      ];
-      if (isEasier && aiExplanation) {
-        msgs.push({ role: 'assistant', content: aiExplanation });
-        msgs.push({ role: 'user', content: EASIER_PROMPT });
-      }
+      const usedList = usedMetaphorsRef.current.map((m, i) => `[이전 비유 ${i + 1}]\n${m.substring(0, 300)}`).join('\n\n');
+      const prompt2 = `너는 10년차 코딩 강사이자, 비유의 천재다.
+아래 [이전 비유들]에서 사용한 소재와 완전히 다른 새로운 소재로 비유를 만들어라.
+
+[이전 비유들 — 이 소재들은 절대 재사용 금지]
+${usedList}
+
+[새 비유 규칙]
+- 위 이전 비유들과 소재/직업/장소/세계관이 겹치면 안 됨. 완전히 새로운 것.
+- 코드의 각 주요 요소(클래스, 변수, 메서드)를 현실 세계의 것에 1:1 매핑
+- 하나의 세계관 안에서 일관되게
+- 소재 예시(골라도 되고 아니어도 됨): 배달앱, 편의점, 군대, 주방, 택배, 병원, 게임, 학교 수업, 버스, 공장, 은행, 마트 계산대 등
+
+[출력 형식]
+- 제목/섹션 헤딩 없이 요소별 매핑만 나열
+- 마크다운 헤딩(#, ##, ###) 사용 금지
+- 각 항목의 코드 요소 이름은 반드시 **굵게** 표시 예: **클래스**: 설명`;
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4.1-nano', messages: msgs, temperature: 0.7, max_tokens: 800 }),
+        body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [
+          { role: 'user', content: `파일명: ${item.file.name}\n\n코드:\n${code.substring(0, 3000)}` },
+          { role: 'assistant', content: analysisResult.functional },
+          { role: 'user', content: prompt2 },
+        ], temperature: 1.0, max_tokens: 800 }),
       });
-      const data = await res.json();
-      setAiExplanation(data.choices?.[0]?.message?.content || '설명을 생성할 수 없습니다.');
-    } catch { setAiExplanation('설명 생성에 실패했습니다.'); }
-    finally { setAiLoading(false); }
+      const newMetaphor = (await res.json()).choices?.[0]?.message?.content?.trim() || '';
+      setAnalysisResult(prev => ({ ...prev, metaphor: newMetaphor }));
+      setVoteState(prev => ({ ...prev, metaphor: null }));
+    } catch (e) { console.warn('메타포 셔플 실패:', e); }
+    finally { setMetaphorShuffling(false); }
   };
 
   // ─── 퀴즈 요청 (3문제 세트) ───────────────────
   const requestQuiz = async (isEasier = false) => {
     setQuizLoading(true);
     setLoadingMsg(pickMsg(isEasier ? 'easierQuiz' : 'quiz'));
-    setPanelMode('quiz');
-    setChatOpen(false);
+    setRightTab(4);
+    setQuizVisible(true);
     setQuizQuestions([]);
     setQuizIdx(0);
     setSelectedAnswer(null);
@@ -412,7 +592,7 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
       const jsonStr = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(jsonStr);
       setQuizQuestions(parsed.questions || []);
-      setChatMessages([{ role: 'assistant', content: '현재 문제를 알고 있어요 😊 해설이나 힌트가 필요하면 물어보세요!' }]);
+      setChatMessages([{ role: 'assistant', content: '방금 나온 문제 나도 봤어요. 막히면 물어보세요!' }]);
       setChatSuggestions(['💡 힌트 주세요', '📖 해설 설명해주세요', '🤔 문제가 왜 이렇게 되나요?', '🚩 문제가 이상한 것 같아요']);
     } catch (e) {
       console.warn('퀴즈 생성 실패:', e);
@@ -511,10 +691,10 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: panelMode === 'quiz' ? 'gpt-4o-mini' : 'gpt-4.1-nano',
+          model: quizVisible ? 'gpt-4o-mini' : 'gpt-4.1-nano',
           messages: [
             { role: 'system', content: `${CHAT_SYSTEM}\n\n파일: ${item.file.name}\n코드:\n${code}${
-  panelMode === 'quiz' && curQ
+  quizVisible && curQ
     ? `\n\n---\n현재 출제된 퀴즈 문제:\n문제: ${curQ.question}${curQ.code_with_blank ? '\n코드: ' + curQ.code_with_blank : ''}${curQ.options ? '\n선택지: ' + curQ.options.join(' / ') : ''}\n정답: ${curQ.answer}\n해설: ${curQ.explanation}\n\n학생이 이 문제에 대해 질문하면 위 정보를 바탕으로 친절하게 설명해주세요.`
     : ''
 }` },
@@ -687,19 +867,47 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
 
       {/* 좌=코드 / 우=패널 */}
       <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
-        {/* 좌: Monaco */}
+        {/* 좌: Monaco + 탭 */}
         <div style={{ width: `${splitRatio * 100}%` }} className="shrink-0 flex flex-col border-r border-white/[0.06]">
-          {codeLoading ? (
-            <div className="flex items-center justify-center h-full gap-2">
-              <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-bold text-gray-400">{pickMsg('prepare')}</span>
+          {/* 탭 헤더 */}
+          <div className="shrink-0 flex border-b border-white/[0.06] bg-[#0d0d0d]">
+            <TabButton active={leftTab === 1} shortcut="⇧1" label="수업코드" onClick={() => setLeftTab(1)} />
+            <TabButton active={leftTab === 2} shortcut="⇧2" label="AI코드" onClick={() => setLeftTab(2)} />
+          </div>
+          {leftTab === 1 && (
+            codeLoading ? (
+              <div className="flex items-center justify-center h-full gap-2">
+                <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm font-bold text-gray-400">{pickMsg('prepare')}</span>
+              </div>
+            ) : (
+              <Editor height="100%" language={lang} value={code} theme="night-owl"
+                onMount={(editor, monaco) => {
+                  editorRef.current = editor;
+                  monacoRef.current = monaco;
+
+                  // Night Owl 테마
+                  monaco.editor.defineTheme('night-owl', nightOwlTheme);
+                  monaco.editor.setTheme('night-owl');
+
+                  const dom = editor.getDomNode();
+                  editor.onKeyDown((e) => { if (e.ctrlKey || e.metaKey) dom?.classList.add('ctrl-held'); });
+                  editor.onKeyUp(() => dom?.classList.remove('ctrl-held'));
+                  dom?.addEventListener('mouseleave', () => dom?.classList.remove('ctrl-held'));
+                }}
+                options={{
+                  readOnly: true, fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false,
+                  wordWrap: 'on', lineNumbers: 'on', renderLineHighlight: 'none', tabSize: 4,
+                  padding: { top: 12, bottom: 12 }, scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+                }} />
+            )
+          )}
+          {leftTab === 2 && (
+            <div className="flex items-center justify-center h-full flex-col gap-3 px-6 text-center">
+              <span className="text-4xl">🤖</span>
+              <p className="text-sm font-bold text-gray-400">AI 코드 기능</p>
+              <p className="text-xs text-gray-600">준비 중입니다</p>
             </div>
-          ) : (
-            <Editor height="100%" language={lang} value={code} theme="vs-dark" options={{
-              readOnly: true, fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false,
-              wordWrap: 'on', lineNumbers: 'on', renderLineHighlight: 'none', tabSize: 4,
-              padding: { top: 12, bottom: 12 }, scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
-            }} />
           )}
         </div>
 
@@ -709,46 +917,88 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
           <div className="w-0.5 h-8 bg-gray-600 group-hover:bg-[#f59e0b] rounded-full transition-colors" />
         </div>
 
-        {/* 우: 패널 */}
+        {/* 우: 탭 패널 */}
         <div ref={rightPanelRef} style={{ fontSize: `${panelFontSize}px` }} className="flex-1 min-w-0 flex flex-col relative">
+          {/* 오답 플래시 */}
+          {screenFlash && <div className="absolute inset-0 bg-red-500/30 pointer-events-none z-30 screen-flash-red" />}
 
-          {/* ─── idle: 채팅 모달 (같은 크기로 덮음) ─── */}
-          {panelMode === 'idle' && chatOpen && (
-            <div className="absolute inset-0 z-10 flex flex-col bg-[#0d0d0d]">
-              {/* 채팅 헤더 */}
-              <div className="shrink-0 px-4 py-3 border-b border-white/[0.06]">
-                <p className="text-sm font-bold text-white">코드가 궁금하다면 물어보세요</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">아래에서 자유롭게 질문하거나, 바로 설명을 받아보세요</p>
-              </div>
+          {/* 탭 헤더 */}
+          <div className="shrink-0 flex items-center border-b border-white/[0.06] bg-[#0d0d0d]">
+            <TabButton active={rightTab === 3} shortcut="⇧3" label="해석+채팅" onClick={() => setRightTab(3)} />
+            <TabButton active={rightTab === 4} shortcut="⇧4" label="퀴즈" onClick={() => setRightTab(4)} />
+            {rightTab === 3 && analysisResult && (
+              <span className="ml-auto pr-3 text-[9px] text-gray-600 flex items-center gap-1">
+                <span className="font-mono bg-white/[0.04] px-1 py-0.5 rounded border border-white/[0.08]">F2</span>순서대로 펼치기
+              </span>
+            )}
+          </div>
 
-              {/* 설명/문제 요청 버튼 */}
-              <div className="px-4 py-3 flex gap-2">
-                <button
-                  onClick={() => requestExplanation(false)}
-                  className="flex-1 py-3.5 rounded-xl font-bold text-sm bg-[#f59e0b]/15 text-[#f59e0b] border border-[#f59e0b]/30 hover:-translate-y-0.5 hover:bg-[#f59e0b]/20 transition-all"
-                >
-                  코드 설명해주세요
-                </button>
-                <button
-                  onClick={() => requestQuiz(false)}
-                  className="flex-1 py-3.5 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 hover:bg-[#a855f7]/20 transition-all"
-                >
-                  문제로 확인해볼래요
-                </button>
-              </div>
+          {/* ── 탭 3: 채팅 ── */}
+          {rightTab === 3 && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-auto px-3 py-3 space-y-2 scrollbar-hide">
+                {/* 해석+메타포 아코디언 */}
+                {analysisLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                    <div className="w-3 h-3 border border-[#f59e0b]/40 border-t-[#f59e0b] rounded-full animate-spin shrink-0" />
+                    <span className="text-[11px] text-gray-500">해석 + 메타포 생성 중...</span>
+                  </div>
+                ) : analysisResult ? (
+                  <>
+                    <AccordionSection
+                      title="기능적 해석"
+                      content={analysisResult.functional}
+                      expanded={expandedSections.functional}
+                      onToggle={() => setExpandedSections(prev => ({ ...prev, functional: !prev.functional }))}
+                      accentColor="#4ec9b0"
+                      onTokenClick={highlightCodeToken}
+                    />
+                    <AccordionSection
+                      title="비유 설명"
+                      content={metaphorShuffling ? '새 비유 생성 중...' : analysisResult.metaphor}
+                      expanded={expandedSections.metaphor}
+                      onToggle={() => setExpandedSections(prev => ({ ...prev, metaphor: !prev.metaphor }))}
+                      accentColor="#f59e0b"
+                      onTokenClick={highlightCodeToken}
+                    />
+                    {expandedSections.metaphor && (
+                      <div className="flex items-center gap-2 px-1 pb-1 ml-2.5">
+                        <button
+                          onClick={() => setVoteState(prev => ({ ...prev, metaphor: prev.metaphor === 'up' ? null : 'up' }))}
+                          className={`text-sm transition-all hover:scale-125 px-1.5 py-0.5 rounded-md ${voteState.metaphor === 'up' ? 'bg-green-500/20 scale-110' : 'opacity-40 hover:opacity-80 hover:bg-white/5'}`}
+                          title="따봉">👍</button>
+                        <button
+                          onClick={() => setVoteState(prev => ({ ...prev, metaphor: prev.metaphor === 'down' ? null : 'down' }))}
+                          className={`text-sm transition-all hover:scale-125 px-1.5 py-0.5 rounded-md ${voteState.metaphor === 'down' ? 'bg-red-500/20 scale-110' : 'opacity-40 hover:opacity-80 hover:bg-white/5'}`}
+                          title="언따봉">👎</button>
+                        <button
+                          onClick={shuffleMetaphor}
+                          disabled={metaphorShuffling}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-md border border-[#f59e0b]/20 text-[#f59e0b]/60 hover:text-[#f59e0b] hover:border-[#f59e0b]/40 hover:bg-[#f59e0b]/5 transition-all disabled:opacity-30 flex items-center gap-1"
+                          title="다른 비유로 바꾸기"
+                        >
+                          {metaphorShuffling ? (
+                            <div className="w-2.5 h-2.5 border border-[#f59e0b]/40 border-t-[#f59e0b] rounded-full animate-spin" />
+                          ) : '⟳'} 다른 비유 보기
+                        </button>
+                      </div>
+                    )}
+                    {/* 구분선 */}
+                    <div className="border-t border-white/[0.06] pt-1" />
+                  </>
+                ) : null}
 
-              {/* 채팅 메시지 */}
-              <div className="flex-1 overflow-auto px-4 py-2 space-y-3">
-                {chatMessages.length === 0 && (
-                  <p className="text-center text-gray-600 text-xs mt-8">궁금한 거 질문하세요~</p>
+                {/* 채팅 메시지 */}
+                {chatMessages.length === 0 && !analysisLoading && (
+                  <p className="text-center text-gray-600 text-[11px] py-3">궁금한 거 질문하세요~</p>
                 )}
                 {chatMessages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
+                    <div className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${
                       m.role === 'user' ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20' : 'bg-white/[0.03] text-gray-300 border border-white/[0.06]'
                     }`}>
                       {m.role === 'assistant' ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-xs max-w-none prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert max-w-none text-[11px] prose-p:my-1 prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:text-[11px]">
                           {m.content}
                         </ReactMarkdown>
                       ) : m.content}
@@ -766,31 +1016,36 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                     </div>
                   </div>
                 )}
-                {chatSuggestions.length > 0 && (
-                  <div className="flex flex-wrap gap-2 px-1 mt-2">
-                    {chatSuggestions.map((s, i) => (
-                      <button key={i} onClick={() => sendChatMsg(s)}
-                        className="text-[11px] px-3 py-1.5 rounded-full border border-white/[0.10] text-gray-400 hover:text-gray-200 hover:border-white/20 bg-white/[0.03] hover:bg-white/[0.06] transition-all">
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <div ref={chatEndRef} />
               </div>
 
+              {/* 퀴즈 버튼 (분석 완료 후, 퀴즈 미시작 시) */}
+              {analysisResult && !quizVisible && (
+                <div className="shrink-0 px-3 pt-2 flex justify-end">
+                  <button
+                    onClick={() => requestQuiz(false)}
+                    disabled={chatLoading}
+                    className="bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/30 text-[11px] font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-2"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    레벨 진단 퀴즈 시작
+                  </button>
+                </div>
+              )}
               {/* 채팅 입력 */}
-              <div className="shrink-0 px-4 py-3 border-t border-white/[0.06]">
+              <div className="shrink-0 px-3 py-2 border-t border-white/[0.06]">
                 <div className="flex gap-2">
                   <input
                     value={chatInput}
                     onChange={e => setChatInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
                     placeholder="이 코드에서 궁금한 거 물어보세요..."
-                    className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 outline-none focus:border-[#f59e0b]/30"
+                    className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[11px] text-gray-200 placeholder:text-gray-600 outline-none focus:border-[#f59e0b]/30"
                   />
                   <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
-                    className="px-3 py-2 rounded-lg bg-[#f59e0b]/15 text-[#f59e0b] text-xs font-bold border border-[#f59e0b]/30 disabled:opacity-30 hover:bg-[#f59e0b]/25 transition-all">
+                    className="px-3 py-2 rounded-lg bg-[#f59e0b]/15 text-[#f59e0b] text-[11px] font-bold border border-[#f59e0b]/30 disabled:opacity-30 hover:bg-[#f59e0b]/25 transition-all">
                     전송
                   </button>
                 </div>
@@ -798,344 +1053,222 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
             </div>
           )}
 
-          {/* ─── explaining: AI 설명 ─── */}
-          {panelMode === 'explaining' && (
-            <>
-              <div className="flex-1 overflow-auto px-5 py-4">
-                {aiLoading ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3">
-                    <div className="w-6 h-6 border-2 border-[#f59e0b]/40 border-t-[#f59e0b] rounded-full animate-spin" />
-                    <span className="text-sm font-bold text-gray-400">{loadingMsg}</span>
-                  </div>
-                ) : (
-                  <div className={proseClass}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}
-                      components={{
-                        code: ({ children }) => <code className="text-[#fbbf24] font-bold bg-white/5 px-1 rounded">{children}</code>,
-                        strong: ({ children }) => <span className="text-[#f59e0b] font-semibold">{children}</span>,
-                        h1: ({ children }) => <h1 className="text-base font-black text-white mt-4 mb-2 pb-1 border-b border-white/[0.06]">{children}</h1>,
-                        h2: ({ children }) => <h2 className="text-sm font-bold text-[#f59e0b] mt-3 mb-1.5">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-sm font-bold text-gray-300 mt-2 mb-1">{children}</h3>,
-                      }}
-                    >{aiExplanation}</ReactMarkdown>
-                  </div>
-                )}
-              </div>
-
-              {/* 하단 버튼 */}
-              {!aiLoading && (
-                <div className="shrink-0 px-4 py-3 border-t border-white/[0.06] flex gap-2">
-                  <button onClick={handleUnderstood} className="flex-1 py-3 rounded-xl font-bold text-sm bg-[#4ec9b0]/15 text-[#4ec9b0] border border-[#4ec9b0]/30 hover:-translate-y-0.5 transition-all">
-                    이해했어요
-                  </button>
-                  <button onClick={() => requestExplanation(true)} className="flex-1 py-3 rounded-xl font-bold text-sm bg-[#569cd6]/15 text-[#569cd6] border border-[#569cd6]/30 hover:-translate-y-0.5 transition-all">
-                    더 쉽게 설명해주세요
-                  </button>
-                </div>
-              )}
-
-            </>
-          )}
-
-          {/* ─── quiz: 문제풀이 ─── */}
-          {panelMode === 'quiz' && (
-            <>
-            {screenFlash && <div className="absolute inset-0 bg-red-500/30 pointer-events-none z-30 screen-flash-red rounded-none" />}
-            <div
-              className="flex-1 overflow-auto px-5 py-4 outline-none"
+          {/* ── 탭 4: 퀴즈 전체 ── */}
+          {rightTab === 4 && (
+            <div className="flex-1 overflow-auto px-4 py-4 outline-none scrollbar-hide"
               tabIndex={curQ?.type === 'fill_blank' ? undefined : 0}
               ref={el => { if (el && !quizLoading && curQ && !quizFeedback && curQ.type !== 'fill_blank') el.focus(); }}
               onKeyDown={e => {
-                if (quizFeedback || quizLoading || !curQ) return;
-                if (curQ.type === 'fill_blank') {
-                  if (e.key === 'Tab') { /* 기본 Tab 동작 허용 */ return; }
-                } else {
+                if (quizLoading) return;
+                if (quizFeedback && !quizDone && e.key === 'Enter') { e.preventDefault(); goNextQuestion(); return; }
+                if (quizFeedback || !curQ) return;
+                if (curQ.type !== 'fill_blank') {
                   const num = parseInt(e.key);
-                  if (num >= 1 && num <= (curQ.options?.length || 0)) {
-                    e.preventDefault();
-                    handleAnswer(curQ.options[num - 1]);
-                  }
+                  if (num >= 1 && num <= (curQ.options?.length || 0)) { e.preventDefault(); handleAnswer(curQ.options[num - 1]); }
                 }
               }}
             >
-              {quizLoading ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3">
-                  <div className="w-6 h-6 border-2 border-[#a855f7]/40 border-t-[#a855f7] rounded-full animate-spin" />
-                  <span className="text-sm font-bold text-gray-400">{loadingMsg}</span>
-                </div>
-              ) : quizDone ? (
-                /* ─── 퀴즈 결과 화면 ─── */
-                <div className="flex flex-col items-center justify-center h-full gap-4 px-6">
-                  <div className="text-4xl mb-2">{quizCorrect === quizQuestions.length ? '🎉' : quizCorrect >= 2 ? '👍' : '💪'}</div>
-                  <p className="text-lg font-black text-white">
-                    {quizCorrect === quizQuestions.length ? '완벽해요!' : quizCorrect >= 2 ? '잘했어요!' : '다음엔 더 잘할 수 있어요!'}
-                  </p>
-                  <div className="flex items-center gap-4 mb-2">
-                    <div className="text-center">
-                      <p className="text-2xl font-black text-[#4ec9b0]">{quizCorrect}</p>
-                      <p className="text-[10px] text-gray-500">맞춤</p>
-                    </div>
-                    <div className="w-px h-8 bg-white/10" />
-                    <div className="text-center">
-                      <p className="text-2xl font-black text-red-400">{quizQuestions.length - quizCorrect}</p>
-                      <p className="text-[10px] text-gray-500">틀림</p>
-                    </div>
-                    <div className="w-px h-8 bg-white/10" />
-                    <div className="text-center">
-                      <p className="text-2xl font-black text-[#f59e0b]">{quizHearts}</p>
-                      <p className="text-[10px] text-gray-500">남은 하트</p>
-                    </div>
+                {quizLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3">
+                    <div className="w-6 h-6 border-2 border-[#a855f7]/40 border-t-[#a855f7] rounded-full animate-spin" />
+                    <span className="text-sm font-bold text-gray-400">{loadingMsg}</span>
                   </div>
-                  <button onClick={() => { removeWeakFile(routineItems[currentIdx]?.file?.path); checkWeekendBonus(); goNextItem(); }}
-                    className="w-full max-w-xs py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 transition-all">
-                    다음 코드로 →
-                  </button>
-                </div>
-              ) : curQ ? (
-                <div className="rounded-2xl p-5 transition-all duration-500" style={{
-                  background: `linear-gradient(135deg, rgba(168,85,247,${0.04 + (currentIdx / Math.max(routineItems.length - 1, 1)) * 0.12}) 0%, transparent 100%)`,
-                  border: `1px solid rgba(168,85,247,${0.12 + (currentIdx / Math.max(routineItems.length - 1, 1)) * 0.25})`,
-                  boxShadow: `0 4px 24px rgba(168,85,247,${0.06 + (currentIdx / Math.max(routineItems.length - 1, 1)) * 0.14})`,
-                }}>
-                  {/* 힌트 배너 */}
-                  <div className="flex items-center gap-1.5 mb-3 px-3 py-1.5 rounded-lg bg-[#569cd6]/[0.08] border border-[#569cd6]/15">
-                    <span className="text-[11px]">👈</span>
-                    <span className="text-[10px] text-[#569cd6]/80 font-medium">왼쪽 코드를 보면서 풀어보세요</span>
+                ) : !quizQuestions.length ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-4 px-2">
+                    <p className="text-xs text-gray-500 text-center">설명을 듣고 이해했어요 버튼을<br/>누르거나, 바로 문제를 풀어보세요.</p>
+                    <button
+                      onClick={() => requestQuiz(false)}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 hover:bg-[#a855f7]/20 transition-all"
+                    >
+                      바로 문제 풀기
+                    </button>
                   </div>
-                  {/* 문제 번호 + 하트 */}
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-[10px] font-bold text-gray-500">{quizIdx + 1} / {quizQuestions.length}</span>
-                    {curQ.type === 'ox' && <span className="text-[10px] font-bold text-[#4ec9b0] bg-[#4ec9b0]/10 px-2 py-0.5 rounded-full">O/X</span>}
-                    {curQ.type === 'fill_blank' && <span className="text-[10px] font-bold text-[#c586c0] bg-[#c586c0]/10 px-2 py-0.5 rounded-full">빈칸 채우기</span>}
-                    <span className="ml-auto flex items-center gap-0.5">
-                      {[...Array(3)].map((_, i) => {
-                        const isPopping = i === heartLostIdx;
-                        const isActive = i < quizHearts || isPopping;
+                ) : quizDone ? (
+                  /* ─── 퀴즈 결과 화면 ─── */
+                  <div className="flex flex-col items-center justify-center h-full gap-4 px-2">
+                    <div className="text-4xl mb-2">{quizCorrect === quizQuestions.length ? '🎉' : quizCorrect >= 2 ? '👍' : '💪'}</div>
+                    <p className="text-lg font-black text-white">
+                      {quizCorrect === quizQuestions.length ? '완벽해요!' : quizCorrect >= 2 ? '잘했어요!' : '다음엔 더!'}
+                    </p>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="text-center">
+                        <p className="text-2xl font-black text-[#4ec9b0]">{quizCorrect}</p>
+                        <p className="text-[10px] text-gray-500">맞춤</p>
+                      </div>
+                      <div className="w-px h-8 bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-2xl font-black text-red-400">{quizQuestions.length - quizCorrect}</p>
+                        <p className="text-[10px] text-gray-500">틀림</p>
+                      </div>
+                      <div className="w-px h-8 bg-white/10" />
+                      <div className="text-center">
+                        <p className="text-2xl font-black text-[#f59e0b]">{quizHearts}</p>
+                        <p className="text-[10px] text-gray-500">하트</p>
+                      </div>
+                    </div>
+                    <button onClick={() => { removeWeakFile(routineItems[currentIdx]?.file?.path); goNextItem(); }}
+                      className="w-full py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 transition-all">
+                      다음 코드로 →
+                    </button>
+                  </div>
+                ) : curQ ? (
+                  <div className="rounded-2xl p-4 transition-all duration-500" style={{
+                    background: `linear-gradient(135deg, rgba(168,85,247,${0.04 + (currentIdx / Math.max(routineItems.length - 1, 1)) * 0.12}) 0%, transparent 100%)`,
+                    border: `1px solid rgba(168,85,247,${0.12 + (currentIdx / Math.max(routineItems.length - 1, 1)) * 0.25})`,
+                    boxShadow: `0 4px 24px rgba(168,85,247,${0.06 + (currentIdx / Math.max(routineItems.length - 1, 1)) * 0.14})`,
+                  }}>
+                    {/* 문제 번호 + 하트 */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-[10px] font-bold text-gray-500">{quizIdx + 1} / {quizQuestions.length}</span>
+                      {curQ.type === 'ox' && <span className="text-[10px] font-bold text-[#4ec9b0] bg-[#4ec9b0]/10 px-2 py-0.5 rounded-full">O/X</span>}
+                      {curQ.type === 'fill_blank' && <span className="text-[10px] font-bold text-[#c586c0] bg-[#c586c0]/10 px-2 py-0.5 rounded-full">빈칸</span>}
+                      <span className="ml-auto flex items-center gap-0.5">
+                        {[...Array(3)].map((_, i) => {
+                          const isPopping = i === heartLostIdx;
+                          const isActive = i < quizHearts || isPopping;
+                          return (
+                            <span key={i} className={`text-sm transition-all duration-300 ${isActive ? 'scale-100' : 'scale-75'} ${isPopping ? 'quiz-heart-pop' : ''}`}>
+                              {isActive ? '❤️' : '🖤'}
+                            </span>
+                          );
+                        })}
+                      </span>
+                      {curQ.type !== 'fill_blank' && <span className="text-[8px] text-gray-600">1~{curQ.options?.length}</span>}
+                    </div>
+
+                    {/* 문제 — 코드 포함 시 하이라이팅 */}
+                    {(() => {
+                      const q = curQ.question;
+                      const codeMatch = q.match(/```(\w*)\n?([\s\S]*?)```/);
+                      if (codeMatch) {
+                        const before = q.substring(0, codeMatch.index).trim();
+                        const codeLang = codeMatch[1] || lang;
+                        const codeBody = codeMatch[2].trim();
+                        const after = q.substring(codeMatch.index + codeMatch[0].length).trim();
                         return (
-                          <span key={i} className={`text-sm transition-all duration-300 ${isActive ? 'scale-100' : 'scale-75'} ${isPopping ? 'quiz-heart-pop' : ''}`}>
-                            {isActive ? '❤️' : '🖤'}
-                          </span>
+                          <>
+                            {before && <p className="text-sm text-white font-semibold mb-2 leading-relaxed">{before}</p>}
+                            <div className="quiz-code-ctrl rounded-xl overflow-hidden mb-2 border border-white/[0.14]"
+                              onClick={(e) => { if (!(e.ctrlKey || e.metaKey)) return; const token = e.target.textContent?.trim(); if (token) highlightCodeToken(token); }}>
+                              <SyntaxHighlighter language={codeLang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.5rem', fontSize: '10px', background: '#0d1117', borderRadius: '0.75rem', cursor: 'inherit' }} wrapLongLines>{codeBody}</SyntaxHighlighter>
+                            </div>
+                            {after && <p className="text-sm text-white font-semibold mb-2 leading-relaxed">{after}</p>}
+                          </>
                         );
-                      })}
-                    </span>
-                    {curQ.type !== 'fill_blank' && <span className="text-[8px] text-gray-600">1~{curQ.options?.length} 키</span>}
-                  </div>
+                      }
+                      return <p className="text-sm text-white font-semibold mb-3 leading-relaxed">{q}</p>;
+                    })()}
 
-                  {/* 문제 — 코드 포함 시 하이라이팅 */}
-                  {(() => {
-                    const q = curQ.question;
-                    const codeMatch = q.match(/```(\w*)\n?([\s\S]*?)```/);
-                    if (codeMatch) {
-                      const before = q.substring(0, codeMatch.index).trim();
-                      const codeLang = codeMatch[1] || lang;
-                      const codeBody = codeMatch[2].trim();
-                      const after = q.substring(codeMatch.index + codeMatch[0].length).trim();
-                      return (
-                        <>
-                          {before && <p className="text-base text-white font-semibold mb-3 leading-relaxed">{before}</p>}
-                          <div className="rounded-xl overflow-hidden mb-3 border border-white/[0.14]">
-                            <SyntaxHighlighter language={codeLang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '11px', background: '#0d1117', borderRadius: '0.75rem' }} wrapLongLines>{codeBody}</SyntaxHighlighter>
+                    {/* 빈칸: 코드 + 입력창 */}
+                    {curQ.type === 'fill_blank' ? (
+                      <>
+                        {curQ.code_with_blank && (
+                          <div className="quiz-code-ctrl rounded-xl overflow-hidden mb-3 border border-white/[0.14]"
+                            onClick={(e) => { if (!(e.ctrlKey || e.metaKey)) return; const token = e.target.textContent?.trim(); if (token) highlightCodeToken(token); }}>
+                            <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '10px', background: '#0d1117', borderRadius: '0.75rem', cursor: 'inherit' }} wrapLongLines>
+                              {curQ.code_with_blank}
+                            </SyntaxHighlighter>
                           </div>
-                          {after && <p className="text-base text-white font-semibold mb-4 leading-relaxed">{after}</p>}
-                        </>
-                      );
-                    }
-                    const hasCode = /[{};=()]/.test(q) && q.includes('\n');
-                    if (hasCode) {
-                      const lines = q.split('\n');
-                      const textLines = [], codeLines = [];
-                      let cs = false;
-                      for (const l of lines) { if (!cs && /^[가-힣\s]/.test(l) && !/[{};=]/.test(l)) textLines.push(l); else { cs = true; codeLines.push(l); } }
-                      return (
-                        <>
-                          {textLines.length > 0 && <p className="text-base text-white font-semibold mb-3 leading-relaxed">{textLines.join('\n')}</p>}
-                          <div className="rounded-xl overflow-hidden mb-4 border border-white/[0.14]">
-                            <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '11px', background: '#0d1117', borderRadius: '0.75rem' }} wrapLongLines>{codeLines.join('\n')}</SyntaxHighlighter>
-                          </div>
-                        </>
-                      );
-                    }
-                    return <p className="text-base text-white font-semibold mb-4 leading-relaxed">{q}</p>;
-                  })()}
-
-                  {/* 빈칸: 코드 + 입력창 */}
-                  {curQ.type === 'fill_blank' ? (
-                    <>
-                      {curQ.code_with_blank && (
-                        <div className="rounded-xl overflow-hidden mb-4 border border-white/[0.14]">
-                          <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', fontSize: '12px', background: '#0d1117', borderRadius: '0.75rem' }} wrapLongLines>
-                            {curQ.code_with_blank}
-                          </SyntaxHighlighter>
+                        )}
+                        <div className="flex gap-2 mb-3">
+                          <input
+                            autoFocus
+                            value={fillAnswer}
+                            onChange={e => setFillAnswer(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Tab') e.preventDefault(); if (e.key === 'Enter' && !quizFeedback && fillAnswer.trim()) handleAnswer(fillAnswer); }}
+                            disabled={!!quizFeedback}
+                            placeholder="빈칸에 들어갈 코드..."
+                            className="flex-1 bg-white/[0.04] border border-[#c586c0]/30 rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder:text-gray-600 outline-none focus:border-[#c586c0]/60 disabled:opacity-50"
+                          />
+                          {!quizFeedback && (
+                            <button onClick={() => handleAnswer(fillAnswer)} disabled={!fillAnswer.trim()}
+                              className="px-3 py-2 rounded-lg bg-[#c586c0]/15 text-[#c586c0] text-xs font-bold border border-[#c586c0]/30 disabled:opacity-30 hover:bg-[#c586c0]/25 transition-all">
+                              제출
+                            </button>
+                          )}
                         </div>
-                      )}
-                      <div className="flex gap-2 mb-4">
-                        <input
-                          autoFocus
-                          value={fillAnswer}
-                          onChange={e => setFillAnswer(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Tab') e.preventDefault(); if (e.key === 'Enter' && !quizFeedback && fillAnswer.trim()) handleAnswer(fillAnswer); }}
-                          disabled={!!quizFeedback}
-                          placeholder="빈칸에 들어갈 코드를 입력하세요"
-                          className="flex-1 bg-white/[0.04] border border-[#c586c0]/30 rounded-lg px-3 py-2.5 text-sm text-gray-200 font-mono placeholder:text-gray-600 outline-none focus:border-[#c586c0]/60 focus:ring-1 focus:ring-[#c586c0]/30 disabled:opacity-50"
-                        />
-                        {!quizFeedback && (
-                          <button onClick={() => handleAnswer(fillAnswer)} disabled={!fillAnswer.trim()}
-                            className="px-4 py-2.5 rounded-lg bg-[#c586c0]/15 text-[#c586c0] text-sm font-bold border border-[#c586c0]/30 disabled:opacity-30 hover:bg-[#c586c0]/25 transition-all">
-                            제출
+                      </>
+                    ) : (
+                      /* 객관식 / O/X */
+                      <div className="space-y-2 mb-3">
+                        {curQ.options?.map((opt, i) => {
+                          const colors = ['#4ec9b0', '#569cd6', '#dcdcaa', '#c586c0'];
+                          const c = colors[i % colors.length];
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => handleAnswer(opt)}
+                              disabled={!!quizFeedback}
+                              className={`w-full text-left px-3 py-2.5 rounded-xl border text-[13px] transition-all flex items-center gap-2 ${
+                                quizFeedback
+                                  ? opt === curQ.answer
+                                    ? 'border-[#4ec9b0]/60 bg-[#4ec9b0]/10 text-[#4ec9b0] font-bold'
+                                    : selectedAnswer === opt
+                                    ? 'border-red-500/50 bg-red-500/10 text-red-400'
+                                    : 'border-white/[0.04] text-gray-600'
+                                  : 'border-white/[0.08] text-gray-100 hover:bg-white/[0.06] hover:border-white/[0.25]'
+                              }`}
+                            >
+                              <span className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shrink-0" style={{
+                                background: quizFeedback ? (opt === curQ.answer ? '#4ec9b015' : selectedAnswer === opt ? '#ef444415' : '#ffffff06') : `${c}25`,
+                                color: quizFeedback ? (opt === curQ.answer ? '#4ec9b0' : selectedAnswer === opt ? '#ef4444' : '#555') : c,
+                                border: `1px solid ${quizFeedback ? (opt === curQ.answer ? '#4ec9b040' : selectedAnswer === opt ? '#ef444440' : '#ffffff08') : `${c}50`}`,
+                              }}>
+                                {i + 1}
+                              </span>
+                              <span className="flex-1">{opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* 문제 신고 */}
+                    {!quizFeedback && (
+                      <div className="flex justify-end mb-2">
+                        {reportResult === 'invalid' ? (
+                          <span className="text-[10px] text-[#f59e0b]">⚠️ 새 문제로!</span>
+                        ) : reportResult === 'valid' ? (
+                          <span className="text-[10px] text-[#4ec9b0]">✅ 이상 없어요</span>
+                        ) : reportResult === 'error' ? (
+                          <span className="text-[10px] text-red-400">검증 실패</span>
+                        ) : (
+                          <button onClick={handleReportQuestion} disabled={reportLoading}
+                            className="text-[10px] text-gray-600 hover:text-red-400/70 transition-colors flex items-center gap-1">
+                            {reportLoading
+                              ? <><span className="w-2 h-2 border border-gray-600 border-t-gray-400 rounded-full animate-spin inline-block" /> 검증 중...</>
+                              : '🚩 이상한 문제'}
                           </button>
                         )}
                       </div>
-                    </>
-                  ) : (
-                    /* 객관식 / O/X — 색감 + 번호 키 */
-                    <div className="space-y-3 mb-4">
-                      {curQ.options?.map((opt, i) => {
-                        const colors = ['#4ec9b0', '#569cd6', '#dcdcaa', '#c586c0'];
-                        const c = colors[i % colors.length];
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => handleAnswer(opt)}
-                            disabled={!!quizFeedback}
-                            className={`w-full text-left px-4 py-3.5 rounded-xl border text-[15px] transition-all flex items-center gap-3 ${
-                              quizFeedback
-                                ? opt === curQ.answer
-                                  ? 'border-[#4ec9b0]/60 bg-[#4ec9b0]/10 text-[#4ec9b0] font-bold shadow-[0_0_12px_rgba(78,201,176,0.15)]'
-                                  : selectedAnswer === opt
-                                  ? 'border-red-500/50 bg-red-500/10 text-red-400'
-                                  : 'border-white/[0.04] text-gray-600'
-                                : 'border-white/[0.08] text-gray-100 hover:bg-white/[0.06] hover:border-white/[0.25] hover:shadow-[0_0_8px_rgba(255,255,255,0.04)]'
-                            }`}
-                          >
-                            <span className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-black shrink-0" style={{
-                              background: quizFeedback ? (opt === curQ.answer ? '#4ec9b015' : selectedAnswer === opt ? '#ef444415' : '#ffffff06') : `${c}25`,
-                              color: quizFeedback ? (opt === curQ.answer ? '#4ec9b0' : selectedAnswer === opt ? '#ef4444' : '#555') : c,
-                              border: `1px solid ${quizFeedback ? (opt === curQ.answer ? '#4ec9b040' : selectedAnswer === opt ? '#ef444440' : '#ffffff08') : `${c}50`}`,
-                            }}>
-                              {i + 1}
-                            </span>
-                            <span className="flex-1">{opt}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                    )}
 
-                  {/* 문제 신고 버튼 */}
-                  {!quizFeedback && (
-                    <div className="flex justify-end mb-3">
-                      {reportResult === 'invalid' ? (
-                        <span className="text-[10px] text-[#f59e0b]">⚠️ 맞아요, 새 문제로 교체할게요!</span>
-                      ) : reportResult === 'valid' ? (
-                        <span className="text-[10px] text-[#4ec9b0]">✅ 문제에 이상 없어요</span>
-                      ) : reportResult === 'error' ? (
-                        <span className="text-[10px] text-red-400">검증 실패</span>
-                      ) : (
-                        <button
-                          onClick={handleReportQuestion}
-                          disabled={reportLoading}
-                          className="text-[10px] text-gray-600 hover:text-red-400/70 transition-colors flex items-center gap-1"
-                        >
-                          {reportLoading
-                            ? <><span className="w-2 h-2 border border-gray-600 border-t-gray-400 rounded-full animate-spin inline-block" /> 검증 중...</>
-                            : '🚩 이 문제 이상한 것 같아요'}
+                    {/* 피드백 */}
+                    {quizFeedback && (
+                      <div className={`p-3 rounded-xl mb-2 ${quizFeedback.correct ? 'bg-[#4ec9b0]/[0.06] border border-[#4ec9b0]/20' : 'bg-red-500/[0.06] border border-red-500/20'}`}>
+                        <p className="text-sm font-bold mb-1" style={{ color: quizFeedback.correct ? '#4ec9b0' : '#ef4444' }}>
+                          {quizFeedback.correct ? '정답!' : '아쉬워요!'}
+                        </p>
+                        {curQ.type === 'fill_blank' && !quizFeedback.correct && (
+                          <p className="text-xs text-gray-400 mb-1">정답: <code className="text-[#fbbf24] bg-white/5 px-1 rounded">{curQ.answer}</code></p>
+                        )}
+                        <p className="text-xs text-gray-400">{quizFeedback.explanation}</p>
+                        <button onClick={goNextQuestion}
+                          className="mt-2 w-full py-2 rounded-lg font-bold text-sm bg-[#f59e0b]/15 text-[#f59e0b] border border-[#f59e0b]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                          {quizHearts <= 0 || quizIdx + 1 >= quizQuestions.length ? '결과 보기' : '다음 문제'}
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#f59e0b]/15 border border-[#f59e0b]/25 text-[#f59e0b]/60">Enter</span>
                         </button>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 피드백 */}
-                  {quizFeedback && (
-                    <div className={`p-4 rounded-xl mb-4 ${quizFeedback.correct ? 'bg-[#4ec9b0]/[0.06] border border-[#4ec9b0]/20' : 'bg-red-500/[0.06] border border-red-500/20'}`}>
-                      <p className="text-sm font-bold mb-1" style={{ color: quizFeedback.correct ? '#4ec9b0' : '#ef4444' }}>
-                        {quizFeedback.correct
-                          ? '정답!'
-                          : '아쉬워요!'}
-                      </p>
-                      {curQ.type === 'fill_blank' && !quizFeedback.correct && (
-                        <p className="text-xs text-gray-400 mb-1">정답: <code className="text-[#fbbf24] bg-white/5 px-1 rounded">{curQ.answer}</code></p>
-                      )}
-                      <p className="text-xs text-gray-400">{quizFeedback.explanation}</p>
-                      <button onClick={goNextQuestion}
-                        className="mt-3 w-full py-2.5 rounded-lg font-bold text-sm bg-[#f59e0b]/15 text-[#f59e0b] border border-[#f59e0b]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
-                        {quizHearts <= 0 || quizIdx + 1 >= quizQuestions.length ? '결과 보기' : '다음 문제'}
-                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#f59e0b]/15 border border-[#f59e0b]/25 text-[#f59e0b]/60">F2</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </div>
-            </>
-          )}
-
-          {/* ─── 채팅 토글 (설명/퀴즈 모드에서 접힌 상태) ─── */}
-          {panelMode !== 'idle' && !chatOpen && (
-            <button onClick={() => setChatOpen(true)} tabIndex={-1}
-              className="absolute bottom-16 right-4 px-3 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-[10px] text-gray-400 hover:text-white hover:bg-white/[0.1] transition-all z-20">
-              💬 채팅창 펼치기
-            </button>
-          )}
-
-          {/* ─── 채팅 모달 (설명/퀴즈 모드에서 펼쳤을 때) ─── */}
-          {panelMode !== 'idle' && chatOpen && (
-            <div className="absolute inset-0 z-20 flex flex-col bg-[#0d0d0d]/95 backdrop-blur-sm">
-              <div className="shrink-0 px-4 py-2 border-b border-white/[0.06] flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-white">💬 자유 질문</span>
-                  {panelMode === 'quiz' && curQ && (
-                    <p className="text-[9px] text-[#a855f7]/70 mt-0.5">현재 문제를 알고 있어요 — 해설/힌트 물어보세요</p>
-                  )}
-                </div>
-                <button onClick={() => setChatOpen(false)} className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-white/[0.06] transition">
-                  접기
-                </button>
-              </div>
-              <div className="flex-1 overflow-auto px-4 py-2 space-y-3">
-                {chatMessages.length === 0 && <p className="text-center text-gray-600 text-xs mt-8">코드에 대해 궁금한 거 물어보세요~</p>}
-                {chatMessages.map((m, i) => (
-                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
-                      m.role === 'user' ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20' : 'bg-white/[0.03] text-gray-300 border border-white/[0.06]'
-                    }`}>
-                      {m.role === 'assistant' ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-xs max-w-none prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
-                          {m.content}
-                        </ReactMarkdown>
-                      ) : m.content}
-                    </div>
-                  </div>
-                ))}
-                {chatLoading && (
-                  <div className="flex justify-start">
-                    <div className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                      <div className="flex space-x-1">
-                        <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                        <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                        <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" />
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-                <div ref={chatEndRef} />
-              </div>
-              <div className="shrink-0 px-4 py-3 border-t border-white/[0.06]">
-                <div className="flex gap-2">
-                  <input value={chatInput} onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
-                    placeholder="궁금한 거 물어보세요..." className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-gray-200 placeholder:text-gray-600 outline-none focus:border-[#f59e0b]/30" />
-                  <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
-                    className="px-3 py-2 rounded-lg bg-[#f59e0b]/15 text-[#f59e0b] text-xs font-bold border border-[#f59e0b]/30 disabled:opacity-30 hover:bg-[#f59e0b]/25 transition-all">
-                    전송
-                  </button>
-                </div>
-              </div>
+                ) : null}
             </div>
           )}
         </div>
       </div>
 
       {/* ─── 종료 확인 모달 ─── */}
+
       {exitConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setExitConfirm(false)}>
           <div className="bg-[#1a1a1a] border border-white/[0.08] rounded-2xl p-6 w-[340px] shadow-[0_16px_64px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
