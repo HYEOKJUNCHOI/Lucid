@@ -40,7 +40,7 @@ const Landing = () => {
 
         {/* 핵심 카피 */}
         <p className="text-xl md:text-2xl text-gray-300 font-medium mb-12 leading-relaxed">
-          어떤 코드든, <span className="text-[#4ec9b0] font-bold">끝까지 이해한다</span>
+          고요한 몰입, <span className="text-[#4ec9b0] font-bold">선명한 이해</span>
         </p>
 
         {/* CTA 버튼 */}

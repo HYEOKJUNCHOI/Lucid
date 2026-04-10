@@ -230,7 +230,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
             Lucid
           </h1>
           <p className="text-base text-gray-400 font-medium text-center">
-            어려운 코드를, <span className="text-[#4ec9b0] font-bold">내 언어로</span> 해석하다
+            Focus On, <span className="text-[#4ec9b0] font-bold">Noise Off</span>
           </p>
         </div>
 
