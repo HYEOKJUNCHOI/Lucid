@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, query } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import CustomSelect from '../../components/common/CustomSelect';
+import Toast, { showToast } from '../../components/common/Toast';
 
 // Wilson Score 하한 (95% 신뢰구간) — 좋아요 정렬에 사용
 const wilsonScore = (likes, dislikes) => {
@@ -14,8 +16,23 @@ const wilsonScore = (likes, dislikes) => {
 const MetaphorLibrary = () => {
   const [metaphors, setMetaphors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
   const [sortBy, setSortBy] = useState('wilson'); // 'wilson' | 'likes' | 'recent'
   const [filterConcept, setFilterConcept] = useState('all');
+
+  const handleClearAll = async () => {
+    if (!window.confirm(`메타포 라이브러리의 모든 항목(${metaphors.length}개)을 삭제합니다. 복구 불가능합니다. 계속할까요?`)) return;
+    setClearing(true);
+    try {
+      const snap = await getDocs(collection(db, 'metaphors'));
+      await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'metaphors', d.id))));
+      setMetaphors([]);
+    } catch (e) {
+      showToast('삭제 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -74,6 +91,8 @@ const MetaphorLibrary = () => {
   }
 
   return (
+    <>
+    <Toast />
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -82,27 +101,33 @@ const MetaphorLibrary = () => {
         </h2>
 
         <div className="flex items-center gap-2">
-          {/* 정렬 */}
-          <select
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-            className="text-xs bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-gray-300 focus:outline-none focus:border-[#4ec9b0]/50"
+          {/* 비우기 버튼 */}
+          <button
+            onClick={handleClearAll}
+            disabled={clearing || metaphors.length === 0}
+            className="px-4 py-2 rounded-lg text-sm font-bold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <option value="wilson">Wilson Score 순</option>
-            <option value="likes">좋아요 순</option>
-            <option value="recent">최신 순</option>
-          </select>
+            {clearing ? '삭제 중...' : '전체 비우기'}
+          </button>
+          {/* 정렬 */}
+          <CustomSelect
+            value={sortBy}
+            onChange={setSortBy}
+            className="w-36"
+            options={[
+              { value: 'wilson', label: 'Wilson Score 순' },
+              { value: 'likes',  label: '좋아요 순' },
+              { value: 'recent', label: '최신 순' },
+            ]}
+          />
 
           {/* 개념 필터 */}
-          <select
+          <CustomSelect
             value={filterConcept}
-            onChange={e => setFilterConcept(e.target.value)}
-            className="text-xs bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-gray-300 focus:outline-none focus:border-[#4ec9b0]/50"
-          >
-            {concepts.map(c => (
-              <option key={c} value={c}>{c === 'all' ? '전체 개념' : c}</option>
-            ))}
-          </select>
+            onChange={setFilterConcept}
+            className="w-44"
+            options={concepts.map(c => ({ value: c, label: c === 'all' ? '전체 개념' : c }))}
+          />
         </div>
       </div>
 
@@ -167,6 +192,7 @@ const MetaphorLibrary = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
 

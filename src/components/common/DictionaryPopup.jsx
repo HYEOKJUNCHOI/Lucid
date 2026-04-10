@@ -286,7 +286,7 @@ const DictionaryPopup = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1-nano',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0,
           max_tokens: maxTokens,
@@ -404,7 +404,7 @@ const DictionaryPopup = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1-nano',
           messages: [{
             role: 'user',
             content: `너는 코딩 사전 검수자야. 제출된 모든 필드가 단어의 실제 의미와 일치하는지 엄격하게 판단해.

@@ -42,12 +42,14 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
         const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
         const normalized = raw.map((r, i) => {
-          const name      = (r['이름'] || r['name'] || r['Name'] || '').toString().trim();
-          const email     = (r['이메일'] || r['email'] || r['Email'] || '').toString().trim().toLowerCase();
-          const phone     = (r['전화번호'] || r['phone'] || r['Phone'] || r['연락처'] || '').toString().trim();
-          const groupName = (r['기수'] || r['그룹'] || r['반'] || r['group'] || '').toString().trim();
-          const groupId   = resolveGroupId(groupName);
-          return { _row: i + 2, name, email, phone, groupName, groupId };
+          const name        = (r['이름'] || r['name'] || r['Name'] || '').toString().trim();
+          const email       = (r['이메일'] || r['email'] || r['Email'] || '').toString().trim().toLowerCase();
+          const phone       = (r['전화번호'] || r['phone'] || r['Phone'] || r['연락처'] || '').toString().trim();
+          const groupName   = (r['기수'] || r['그룹'] || r['반'] || r['group'] || '').toString().trim();
+          const groupId     = resolveGroupId(groupName);
+          const rawType     = (r['studentType'] || r['학생유형'] || r['유형'] || '').toString().trim().toLowerCase();
+          const studentType = ['major', 'experienced', 'beginner'].includes(rawType) ? rawType : 'beginner';
+          return { _row: i + 2, name, email, phone, groupName, groupId, studentType };
         }).filter(r => r.name || r.email);
 
         // 유효성 오류
@@ -106,10 +108,10 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
           const existing = snap.data();
           // 기존 그룹 유지 + 새 그룹 병합
           const mergedGroups = [...new Set([...(existing.groupIDs || []), ...newGroupIDs])];
-          await setDoc(ref, { name: r.name, phone: r.phone, groupIDs: mergedGroups }, { merge: true });
+          await setDoc(ref, { name: r.name, phone: r.phone, groupIDs: mergedGroups, studentType: r.studentType }, { merge: true });
           updated++;
         } else {
-          await setDoc(ref, { email: r.email, name: r.name, phone: r.phone, groupIDs: newGroupIDs });
+          await setDoc(ref, { email: r.email, name: r.name, phone: r.phone, groupIDs: newGroupIDs, studentType: r.studentType });
           saved++;
         }
       }
@@ -146,11 +148,11 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
           <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
             <p className="text-gray-400 text-xs font-medium mb-2">엑셀 열 이름 (첫 번째 행)</p>
             <div className="flex gap-2 flex-wrap">
-              {['이름 *', '이메일 *', '전화번호', '기수'].map(col => (
+              {['이름 *', '이메일 *', '전화번호', '기수', 'studentType'].map(col => (
                 <span key={col} className="text-[11px] font-mono bg-black/40 border border-white/10 rounded px-2 py-0.5 text-gray-300">{col}</span>
               ))}
             </div>
-            <p className="text-gray-600 text-[11px] mt-2">* 필수 항목 · 열 순서 무관 · 기수는 시스템에 등록된 그룹명과 일치해야 자동 배정됩니다</p>
+            <p className="text-gray-600 text-[11px] mt-2">* 필수 항목 · 열 순서 무관 · 기수는 시스템에 등록된 그룹명과 일치해야 자동 배정됩니다 · studentType: major/experienced/beginner</p>
           </div>
 
           {/* 드래그 업로드 */}
@@ -205,7 +207,7 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
                 <table className="w-full text-xs">
                   <thead className="bg-white/[0.03] border-b border-white/[0.06] sticky top-0">
                     <tr>
-                      {['#', '이름', '이메일', '전화번호', '기수'].map(h => (
+                      {['#', '이름', '이메일', '전화번호', '기수', '유형'].map(h => (
                         <th key={h} className="px-3 py-2.5 text-left text-gray-500 font-semibold">{h}</th>
                       ))}
                     </tr>
@@ -223,6 +225,13 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
                               ? <span className="text-emerald-400 text-[11px]">✓ {r.groupName}</span>
                               : <span className="text-yellow-500 text-[11px]">✗ {r.groupName}</span>
                           ) : <span className="text-gray-600">—</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {r.studentType === 'major'
+                            ? <span className="text-purple-400 text-[11px]">🎓 전공</span>
+                            : r.studentType === 'experienced'
+                              ? <span className="text-yellow-400 text-[11px]">⚡ 경험자</span>
+                              : <span className="text-gray-500 text-[11px]">처음</span>}
                         </td>
                       </tr>
                     ))}

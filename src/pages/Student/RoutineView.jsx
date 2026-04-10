@@ -187,6 +187,8 @@ const RoutineView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading
   const [fillAnswer, setFillAnswer] = useState(''); // 빈칸 입력
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizHearts, setQuizHearts] = useState(3); // 하트 3개
+  const [heartLostIdx, setHeartLostIdx] = useState(null); // 소멸 애니메이션 중인 하트 인덱스
+  const [screenFlash, setScreenFlash] = useState(false); // 오답 시 화면 붉은 플래시
   const [reportLoading, setReportLoading] = useState(false);
   const [reportResult, setReportResult] = useState(null); // null | 'invalid' | 'valid' | 'error'
   const [quizCorrect, setQuizCorrect] = useState(0); // 맞춘 수
@@ -327,6 +329,8 @@ const RoutineView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading
     setQuizFeedback(null);
     setFillAnswer('');
     setQuizHearts(3);
+    setHeartLostIdx(null);
+    setScreenFlash(false);
     setQuizCorrect(0);
     setQuizDone(false);
     setChatOpen(true);
@@ -376,6 +380,8 @@ const RoutineView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading
     setQuizFeedback(null);
     setFillAnswer('');
     setQuizHearts(3);
+    setHeartLostIdx(null);
+    setScreenFlash(false);
     setQuizCorrect(0);
     setQuizDone(false);
 
@@ -438,6 +444,10 @@ const RoutineView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading
         if (uid && xp > 0) await updateDoc(doc(db, 'users', uid), { totalXP: increment(xp), lastStudiedAt: serverTimestamp() });
       } catch {}
     } else {
+      // 하트 소멸 애니메이션 + 화면 플래시
+      setHeartLostIdx(quizHearts - 1);
+      setScreenFlash(true);
+      setTimeout(() => { setHeartLostIdx(null); setScreenFlash(false); }, 600);
       setQuizHearts(prev => prev - 1);
     }
   };
@@ -812,6 +822,8 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
 
           {/* ─── quiz: 문제풀이 ─── */}
           {panelMode === 'quiz' && (
+            <>
+            {screenFlash && <div className="absolute inset-0 bg-red-500/30 pointer-events-none z-30 screen-flash-red rounded-none" />}
             <div
               className="flex-1 overflow-auto px-5 py-4 outline-none"
               tabIndex={curQ?.type === 'fill_blank' ? undefined : 0}
@@ -879,11 +891,15 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                     {curQ.type === 'ox' && <span className="text-[10px] font-bold text-[#4ec9b0] bg-[#4ec9b0]/10 px-2 py-0.5 rounded-full">O/X</span>}
                     {curQ.type === 'fill_blank' && <span className="text-[10px] font-bold text-[#c586c0] bg-[#c586c0]/10 px-2 py-0.5 rounded-full">빈칸 채우기</span>}
                     <span className="ml-auto flex items-center gap-0.5">
-                      {[...Array(3)].map((_, i) => (
-                        <span key={i} className={`text-sm transition-all ${i < quizHearts ? 'text-red-400 scale-100' : 'text-gray-700 scale-75'}`}>
-                          {i < quizHearts ? '❤️' : '🖤'}
-                        </span>
-                      ))}
+                      {[...Array(3)].map((_, i) => {
+                        const isPopping = i === heartLostIdx;
+                        const isActive = i < quizHearts || isPopping;
+                        return (
+                          <span key={i} className={`text-sm transition-all duration-300 ${isActive ? 'scale-100' : 'scale-75'} ${isPopping ? 'quiz-heart-pop' : ''}`}>
+                            {isActive ? '❤️' : '🖤'}
+                          </span>
+                        );
+                      })}
                     </span>
                     {curQ.type !== 'fill_blank' && <span className="text-[8px] text-gray-600">1~{curQ.options?.length} 키</span>}
                   </div>
@@ -899,11 +915,11 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                       const after = q.substring(codeMatch.index + codeMatch[0].length).trim();
                       return (
                         <>
-                          {before && <p className="text-sm text-gray-200 font-semibold mb-3 leading-relaxed">{before}</p>}
-                          <div className="rounded-xl overflow-hidden mb-3 border border-white/[0.06]">
-                            <SyntaxHighlighter language={codeLang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '11px', background: '#1e1e1e', borderRadius: '0.75rem' }} wrapLongLines>{codeBody}</SyntaxHighlighter>
+                          {before && <p className="text-base text-white font-semibold mb-3 leading-relaxed">{before}</p>}
+                          <div className="rounded-xl overflow-hidden mb-3 border border-white/[0.14]">
+                            <SyntaxHighlighter language={codeLang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '11px', background: '#0d1117', borderRadius: '0.75rem' }} wrapLongLines>{codeBody}</SyntaxHighlighter>
                           </div>
-                          {after && <p className="text-sm text-gray-200 font-semibold mb-4 leading-relaxed">{after}</p>}
+                          {after && <p className="text-base text-white font-semibold mb-4 leading-relaxed">{after}</p>}
                         </>
                       );
                     }
@@ -915,22 +931,22 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                       for (const l of lines) { if (!cs && /^[가-힣\s]/.test(l) && !/[{};=]/.test(l)) textLines.push(l); else { cs = true; codeLines.push(l); } }
                       return (
                         <>
-                          {textLines.length > 0 && <p className="text-sm text-gray-200 font-semibold mb-3 leading-relaxed">{textLines.join('\n')}</p>}
-                          <div className="rounded-xl overflow-hidden mb-4 border border-white/[0.06]">
-                            <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '11px', background: '#1e1e1e', borderRadius: '0.75rem' }} wrapLongLines>{codeLines.join('\n')}</SyntaxHighlighter>
+                          {textLines.length > 0 && <p className="text-base text-white font-semibold mb-3 leading-relaxed">{textLines.join('\n')}</p>}
+                          <div className="rounded-xl overflow-hidden mb-4 border border-white/[0.14]">
+                            <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '0.75rem', fontSize: '11px', background: '#0d1117', borderRadius: '0.75rem' }} wrapLongLines>{codeLines.join('\n')}</SyntaxHighlighter>
                           </div>
                         </>
                       );
                     }
-                    return <p className="text-sm text-gray-200 font-semibold mb-4 leading-relaxed">{q}</p>;
+                    return <p className="text-base text-white font-semibold mb-4 leading-relaxed">{q}</p>;
                   })()}
 
                   {/* 빈칸: 코드 + 입력창 */}
                   {curQ.type === 'fill_blank' ? (
                     <>
                       {curQ.code_with_blank && (
-                        <div className="rounded-xl overflow-hidden mb-4 border border-white/[0.06]">
-                          <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', fontSize: '12px', background: '#1e1e1e', borderRadius: '0.75rem' }} wrapLongLines>
+                        <div className="rounded-xl overflow-hidden mb-4 border border-white/[0.14]">
+                          <SyntaxHighlighter language={lang} style={vscDarkPlus} customStyle={{ margin: 0, padding: '1rem', fontSize: '12px', background: '#0d1117', borderRadius: '0.75rem' }} wrapLongLines>
                             {curQ.code_with_blank}
                           </SyntaxHighlighter>
                         </div>
@@ -955,7 +971,7 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                     </>
                   ) : (
                     /* 객관식 / O/X — 색감 + 번호 키 */
-                    <div className="space-y-2.5 mb-4">
+                    <div className="space-y-3 mb-4">
                       {curQ.options?.map((opt, i) => {
                         const colors = ['#4ec9b0', '#569cd6', '#dcdcaa', '#c586c0'];
                         const c = colors[i % colors.length];
@@ -964,20 +980,20 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                             key={i}
                             onClick={() => handleAnswer(opt)}
                             disabled={!!quizFeedback}
-                            className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all flex items-center gap-3 ${
+                            className={`w-full text-left px-4 py-3.5 rounded-xl border text-[15px] transition-all flex items-center gap-3 ${
                               quizFeedback
                                 ? opt === curQ.answer
                                   ? 'border-[#4ec9b0]/60 bg-[#4ec9b0]/10 text-[#4ec9b0] font-bold shadow-[0_0_12px_rgba(78,201,176,0.15)]'
                                   : selectedAnswer === opt
                                   ? 'border-red-500/50 bg-red-500/10 text-red-400'
                                   : 'border-white/[0.04] text-gray-600'
-                                : 'border-white/[0.08] text-gray-300 hover:bg-white/[0.04] hover:border-white/[0.20] hover:shadow-[0_0_8px_rgba(255,255,255,0.04)]'
+                                : 'border-white/[0.08] text-gray-100 hover:bg-white/[0.06] hover:border-white/[0.25] hover:shadow-[0_0_8px_rgba(255,255,255,0.04)]'
                             }`}
                           >
                             <span className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-black shrink-0" style={{
-                              background: quizFeedback ? (opt === curQ.answer ? '#4ec9b015' : selectedAnswer === opt ? '#ef444415' : '#ffffff06') : `${c}15`,
+                              background: quizFeedback ? (opt === curQ.answer ? '#4ec9b015' : selectedAnswer === opt ? '#ef444415' : '#ffffff06') : `${c}25`,
                               color: quizFeedback ? (opt === curQ.answer ? '#4ec9b0' : selectedAnswer === opt ? '#ef4444' : '#555') : c,
-                              border: `1px solid ${quizFeedback ? (opt === curQ.answer ? '#4ec9b040' : selectedAnswer === opt ? '#ef444440' : '#ffffff08') : `${c}30`}`,
+                              border: `1px solid ${quizFeedback ? (opt === curQ.answer ? '#4ec9b040' : selectedAnswer === opt ? '#ef444440' : '#ffffff08') : `${c}50`}`,
                             }}>
                               {i + 1}
                             </span>
@@ -1033,6 +1049,7 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                 </div>
               ) : null}
             </div>
+            </>
           )}
 
           {/* ─── 채팅 토글 (설명/퀴즈 모드에서 접힌 상태) ─── */}

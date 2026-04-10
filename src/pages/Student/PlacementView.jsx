@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getApiKey } from '../../lib/apiKey';
+import Toast, { showToast } from '../../components/common/Toast';
 
 // ─── 배점 ──────────────────────────────────────────
 const SCORE_MAP = { easy: 5, normal: 10, hard: 15 };
@@ -62,7 +63,7 @@ const PlacementView = ({ teacher, repo, chapters, chapterFilesMap, onBack, onPla
   // ─── 배치고사 시작 ─────────────────────────────────
   const startPlacement = async () => {
     const apiKey = getApiKey();
-    if (!apiKey) { alert('API 키가 설정되지 않았습니다.'); return; }
+    if (!apiKey) { showToast('API 키가 설정되지 않았습니다.', 'warn'); return; }
 
     setPhase('loading');
     setLoadingMsg('랜덤 파일 선택 중...');
@@ -89,7 +90,7 @@ const PlacementView = ({ teacher, repo, chapters, chapterFilesMap, onBack, onPla
       }
 
       if (pool.length === 0) {
-        alert('파일을 불러올 수 없습니다. 챕터를 먼저 열어주세요.');
+        showToast('파일을 불러올 수 없습니다. 챕터를 먼저 열어주세요.', 'warn');
         setPhase('intro');
         return;
       }
@@ -161,7 +162,7 @@ ${combinedCode}
       setPhase('quiz');
     } catch (e) {
       console.error('배치고사 생성 실패:', e);
-      alert('문제 생성에 실패했습니다. 다시 시도해주세요.');
+      showToast('문제 생성에 실패했습니다. 다시 시도해주세요.', 'error');
       setPhase('intro');
     }
   };
@@ -204,6 +205,9 @@ ${combinedCode}
       </span>
     );
   };
+
+  // ─── RENDER ────────────────────────────────────────
+  const renderPhase = () => {
 
   // ─── INTRO ─────────────────────────────────────────
   if (phase === 'intro') return (
@@ -430,6 +434,14 @@ ${combinedCode}
   }
 
   return null;
+  }; // end renderPhase
+
+  return (
+    <>
+      <Toast />
+      {renderPhase()}
+    </>
+  );
 };
 
 export default PlacementView;

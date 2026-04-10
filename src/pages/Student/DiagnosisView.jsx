@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { getApiKey } from '../../lib/apiKey';
+import Toast, { showToast } from '../../components/common/Toast';
 
 const LANG_NAMES_D = ['python', 'java', 'javascript', 'js', 'sql', 'html', 'css', 'bash', 'c', 'cpp', 'kotlin'];
 const renderQuestionD = (q) => {
@@ -112,8 +113,8 @@ const DiagnosisView = ({ teacher, repo, chapters, chapterFilesMap, onBack }) => 
   // ─── 진단 시작 ─────────────────────────────────────
   const startDiagnosis = async () => {
     const apiKey = getApiKey();
-    if (!apiKey) { alert('API 키가 설정되지 않았습니다.'); return; }
-    if (!chapters || chapters.length === 0) { alert('챕터를 먼저 불러와주세요.'); return; }
+    if (!apiKey) { showToast('API 키가 설정되지 않았습니다.', 'warn'); return; }
+    if (!chapters || chapters.length === 0) { showToast('챕터를 먼저 불러와주세요.', 'warn'); return; }
 
     setPhase('loading');
     setLoadingProgress(0);
@@ -138,7 +139,7 @@ const DiagnosisView = ({ teacher, repo, chapters, chapterFilesMap, onBack }) => 
       // 파일 없는 챕터 제거
       const valid = chapterData.filter(c => c.files.length > 0);
       if (valid.length === 0) {
-        alert('파일을 불러올 수 없습니다. 챕터를 먼저 열어주세요.');
+        showToast('파일을 불러올 수 없습니다. 챕터를 먼저 열어주세요.', 'warn');
         setPhase('intro');
         return;
       }
@@ -189,7 +190,7 @@ ${code}
       );
 
       if (allQuestions.length < 3) {
-        alert('문제 생성에 실패했습니다. 다시 시도해주세요.');
+        showToast('문제 생성에 실패했습니다. 다시 시도해주세요.', 'error');
         setPhase('intro');
         return;
       }
@@ -203,7 +204,7 @@ ${code}
       setPhase('quiz');
     } catch (e) {
       console.error('전체 레벨 진단 실패:', e);
-      alert('진단 생성에 실패했습니다. 다시 시도해주세요.');
+      showToast('진단 생성에 실패했습니다. 다시 시도해주세요.', 'error');
       setPhase('intro');
     }
   };
@@ -227,6 +228,9 @@ ${code}
       }
     }, 1600);
   };
+
+  // ─── RENDER ────────────────────────────────────────
+  const renderPhase = () => {
 
   // ─── INTRO ─────────────────────────────────────────
   if (phase === 'intro') return (
@@ -465,6 +469,14 @@ ${code}
   }
 
   return null;
+  }; // end renderPhase
+
+  return (
+    <>
+      <Toast />
+      {renderPhase()}
+    </>
+  );
 };
 
 export default DiagnosisView;

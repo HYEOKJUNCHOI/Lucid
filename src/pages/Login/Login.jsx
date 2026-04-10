@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import Toast, { showToast } from '../../components/common/Toast';
 
 /* ── 아이콘 ── */
 const GoogleIcon = () => (
@@ -187,7 +188,8 @@ const TypingBlock = ({ lines, posStyle, startDelay = 0 }) => {
 };
 
 /* ── 메인 컴포넌트 ── */
-const Login = ({ loginLoading, loginError, onLogin }) => {
+// loginLoading: null | 'google' | 'github'
+const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
   // 위치와 순서를 고정
   const positions = useMemo(() => makePositions(), []);
   const codeOrder = useMemo(() => Array.from({ length: positions.length }, () => Math.floor(Math.random() * CODE_POOLS.length)), [positions]);
@@ -195,16 +197,10 @@ const Login = ({ loginLoading, loginError, onLogin }) => {
 
   return (
     <div className="relative flex items-center justify-center min-h-svh bg-theme-bg overflow-hidden text-gray-200">
+      <Toast />
       
       {/* 백그라운드 디자인 - GPT 계열 다크그린/그레이 베이스 (채도를 확 낮춤) */}
       <div className="absolute inset-0 z-0">
-
-        {/* 은은한 모노톤 빛번짐 효과 (GPT 스러운 절제) */}
-        <div className="absolute inset-0 flex justify-center items-center pointer-events-none opacity-50">
-          <div className="absolute w-[600px] h-[600px] bg-theme-sidebar/50 rounded-full blur-[120px] animate-aurora -top-20 -left-20 mix-blend-screen" />
-          <div className="absolute w-[500px] h-[500px] bg-white/5 rounded-full blur-[100px] animate-aurora top-20 right-0 mix-blend-screen" style={{ animationDelay: '2s' }} />
-          <div className="absolute w-[400px] h-[400px] bg-theme-sidebar/50 rounded-full blur-[120px] animate-aurora -bottom-10 right-20 mix-blend-screen" style={{ animationDelay: '5s' }} />
-        </div>
 
         {/* 타이핑되는 코드들 - 화면 전체 분포 */}
         {positions.map((pos, i) => (
@@ -241,16 +237,16 @@ const Login = ({ loginLoading, loginError, onLogin }) => {
         <div className="flex flex-col gap-4 w-full">
           <button
             onClick={onLogin}
-            disabled={loginLoading}
+            disabled={loginLoading !== null}
             className="group relative overflow-hidden w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3.5 px-4 rounded-xl shadow-lg hover:-translate-y-0.5 hover:shadow-xl hover:shadow-white/10 transition-all duration-300 disabled:cursor-wait disabled:transform-none"
           >
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
             <GoogleIcon />
-            {loginLoading ? '인증 중...' : 'Google로 시작하기'}
+            {loginLoading === 'google' ? '인증 중...' : 'Google로 시작하기'}
           </button>
           
           <button
-            onClick={() => alert('카카오 로그인은 v2에서 지원 예정입니다.')}
+            onClick={() => showToast('카카오 로그인은 v2에서 지원 예정입니다.', 'warn')}
             className="w-full flex items-center justify-center gap-3 bg-[#FEE500]/90 text-[#191919] font-semibold py-3.5 px-4 rounded-xl hover:bg-[#FEE500] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300"
           >
             <KakaoIcon />
@@ -258,11 +254,12 @@ const Login = ({ loginLoading, loginError, onLogin }) => {
           </button>
           
           <button
-            onClick={() => alert('GitHub 로그인은 v2에서 지원 예정입니다.')}
-            className="w-full flex items-center justify-center gap-3 bg-black/50 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 backdrop-blur-md hover:bg-black/80 hover:-translate-y-0.5 hover:border-gray-500 hover:shadow-lg transition-all duration-300"
+            onClick={onGithubLogin}
+            disabled={loginLoading !== null}
+            className="w-full flex items-center justify-center gap-3 bg-black/50 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 backdrop-blur-md hover:bg-black/80 hover:-translate-y-0.5 hover:border-gray-500 hover:shadow-lg transition-all duration-300 disabled:cursor-wait disabled:transform-none"
           >
             <GithubIcon />
-            GitHub로 시작하기
+            {loginLoading === 'github' ? '인증 중...' : 'GitHub로 시작하기'}
           </button>
         </div>
 

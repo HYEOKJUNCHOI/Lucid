@@ -8,11 +8,13 @@ import LevelUpView from './LevelUpView';
 import QuestView from './QuestView';
 import PlacementView from './PlacementView';
 import DiagnosisView from './DiagnosisView';
+import FreeStudyView from './FreeStudyView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
-import { calcLevel, xpToNextLevel, LEVEL_TABLE, getDailyXP, claimLoginXP, checkStreak, getStreakFreezes, isWeekend, getRewardStatus, DAILY_XP_CAP, generateFreeStudyCode, syncVisitedFile, loadProgressFromFirestore, syncUserStatus, getBeanCount } from '../../services/learningService';
+import { calcLevel, xpToNextLevel, LEVEL_TABLE, getDailyXP, claimLoginXP, checkStreak, getStreakFreezes, isWeekend, getRewardStatus, DAILY_XP_CAP, syncVisitedFile, loadProgressFromFirestore, syncUserStatus, getBeanCount } from '../../services/learningService';
 import { onQuestComplete } from '../../services/learningService';
 import { getApiKey } from '../../lib/apiKey';
+import Toast, { showToast } from '../../components/common/Toast';
 
 
 const StudentPage = ({ user, userData, onLogout }) => {
@@ -142,9 +144,6 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [selectedChapter, setSelectedChapter] = useState(null); // 2패널: 선택된 챕터
   const [chapterHover, setChapterHover] = useState(null); // 챕터 호버 미리보기 { name, files, top, left }
   const [freezeHover, setFreezeHover] = useState(null); // 얼리기 호버 툴팁 { top, left }
-  const [freeStudyTopic, setFreeStudyTopic] = useState(''); // 자유 예습 주제
-  const [freeStudyCode, setFreeStudyCode] = useState(null);   // 생성된 코드
-  const [freeStudyLoading, setFreeStudyLoading] = useState(false); // 생성 중
 
   // 레포 목록 로드
   useEffect(() => {
@@ -223,7 +222,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
       // API 쿼터 사전 체크 (챕터 수 × 3 정도 필요)
       const remaining = await checkGitHubRateLimit(headers);
       if (remaining < 10) {
-        alert(`GitHub API 호출 한도가 거의 소진되었습니다 (남은 횟수: ${remaining}). 잠시 후 다시 시도해주세요.`);
+        showToast(`GitHub API 한도 거의 소진 (남은 횟수: ${remaining}). 잠시 후 다시 시도해주세요.`, 'warn');
         setChaptersLoading(false);
         return;
       }
@@ -1057,7 +1056,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
       <main className="flex-1 overflow-hidden p-2 pt-16 md:pt-2 md:p-2 flex justify-center bg-theme-bg">
         <div className="w-full max-w-[95%] xl:max-w-[1400px] h-full flex flex-col justify-center pb-2">
 
-          {groupIDs.length === 0 ? (
+          {!userData ? null : groupIDs.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-6 text-center animate-fade-in-up mt-20 md:mt-0">
               <div className="bg-theme-card/90 border border-theme-border rounded-[2rem] p-10 max-w-md w-full shadow-2xl backdrop-blur-xl">
                 <div className="w-16 h-16 mx-auto mb-6 bg-theme-primary/10 rounded-full flex items-center justify-center">
@@ -1093,134 +1092,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
               onFileSelect={(file, ch) => { handleFileSelect(file, ch); setMode('chapter'); }}
             />
 
-          ) : mode === 'freeStudy' && freeStudyCode ? (
-            // ─── 자유 예습: 코드 생성 완료 → ChatView ────────────
-            <div className="w-full h-full relative">
-              <ChatView
-                teacher={teacher}
-                repo={repo}
-                concept={{ type: 'freeStudy', path: `freeStudy_${freeStudyTopic}`, name: freeStudyTopic, code: freeStudyCode }}
-                onComplete={() => { setMode(null); setFreeStudyTopic(''); setFreeStudyCode(null); }}
-                onBack={() => { setFreeStudyCode(null); setFreeStudyTopic(''); }}
-              />
-              {/* 주제 재입력 버튼 */}
-              <button
-                onClick={() => { setFreeStudyCode(null); setFreeStudyTopic(''); }}
-                className="absolute top-3 right-28 text-[10px] flex items-center gap-1 px-2.5 py-1 rounded-lg z-20 transition-all"
-                style={{ color: 'rgba(56,189,248,0.7)', border: '1px solid rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.05)' }}
-                onMouseEnter={e => { e.currentTarget.style.color = '#38bdf8'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.5)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'rgba(56,189,248,0.7)'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.2)'; }}
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                주제 재입력
-              </button>
-            </div>
-
           ) : mode === 'freeStudy' ? (
-            // ─── 자유 예습: 스켈레톤 + 모달 ────────────────────
-            <div className="w-full h-full relative overflow-hidden flex">
-              {/* 왼쪽: 코드 에디터 (50%) */}
-              <div className="w-1/2 bg-[#1e1e1e] flex flex-col border-r border-white/[0.06] relative">
-                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/[0.06] bg-[#252526]">
-                  <div className="w-24 h-4 rounded bg-white/[0.08]" />
-                  <div className="w-16 h-4 rounded bg-white/[0.06]" />
-                  <div className="w-20 h-4 rounded bg-white/[0.06]" />
-                </div>
-                <div className="flex-1 p-6 flex flex-col gap-3">
-                  {[80,60,90,45,70,55,85,40,65,75,50].map((w,i) => (
-                    <div key={i} className="h-3.5 rounded bg-white/[0.04]" style={{ width: `${w}%`, marginLeft: i % 3 === 1 ? '2rem' : i % 3 === 2 ? '4rem' : 0 }} />
-                  ))}
-                </div>
-
-                {/* 코드 생성 중 로딩 */}
-                {freeStudyLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: 'rgba(14,14,20,0.7)', backdropFilter: 'blur(4px)' }}>
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'rgba(56,189,248,0.6)', borderTopColor: 'transparent' }} />
-                      <p className="text-[11px] font-bold" style={{ color: 'rgba(56,189,248,0.7)' }}>{freeStudyTopic} 코드 생성 중...</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* 주제 입력 모달 — 왼쪽 패널 중앙 */}
-                {!freeStudyTopic && !freeStudyLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: 'rgba(14,14,20,0.6)', backdropFilter: 'blur(4px)' }}>
-                    <div className="w-72 rounded-2xl p-6" style={{ background: 'linear-gradient(160deg, #1c1c2e, #18182a)', border: '1px solid rgba(56,189,248,0.2)', boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(56,189,248,0.06)' }}>
-                      <p className="text-[11px] font-bold text-center mb-1" style={{ color: 'rgba(56,189,248,0.7)' }}>자유 예습</p>
-                      <p className="text-[13px] font-black text-white text-center mb-4">배우고 싶은 주제는?</p>
-                      <input
-                        autoFocus
-                        type="text"
-                        defaultValue=""
-                        onKeyDown={async e => {
-                          if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                            const topic = e.currentTarget.value.trim();
-                            setFreeStudyTopic(topic);
-                            setFreeStudyLoading(true);
-                            try {
-                              const code = await generateFreeStudyCode(topic, getApiKey());
-                              setFreeStudyCode(code);
-                            } catch {
-                              setFreeStudyCode('// 코드 생성에 실패했습니다. 다시 시도해주세요.');
-                            } finally {
-                              setFreeStudyLoading(false);
-                            }
-                          }
-                          if (e.key === 'Escape') { setMode(null); setFreeStudyTopic(''); setFreeStudyCode(null); }
-                        }}
-                        placeholder="예: 배열 기초, 싱글톤, 상속..."
-                        className="w-full rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 outline-none text-center transition-all"
-                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(56,189,248,0.25)' }}
-                        onFocus={e => { e.currentTarget.style.border = '1px solid rgba(56,189,248,0.6)'; e.currentTarget.style.boxShadow = '0 0 16px rgba(56,189,248,0.12)'; }}
-                        onBlur={e => { e.currentTarget.style.border = '1px solid rgba(56,189,248,0.25)'; e.currentTarget.style.boxShadow = 'none'; }}
-                      />
-                      <p className="text-[9px] text-center mt-2.5" style={{ color: 'rgba(255,255,255,0.2)' }}>Enter로 시작 · Esc로 돌아가기</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 오른쪽: 채팅 영역 (50%) */}
-              <div className="w-1/2 flex flex-col bg-[#181818]">
-                <div className="px-5 py-3 border-b border-white/[0.06] flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-[#4ec9b0]/60" />
-                    <div className="w-32 h-4 rounded bg-white/[0.08]" />
-                  </div>
-                  {/* 주제어 재입력 버튼 */}
-                  {freeStudyTopic && (
-                    <button
-                      onClick={() => setFreeStudyTopic('')}
-                      className="text-[10px] flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all"
-                      style={{ color: 'rgba(56,189,248,0.7)', border: '1px solid rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.05)' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#38bdf8'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.5)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.color = 'rgba(56,189,248,0.7)'; e.currentTarget.style.borderColor = 'rgba(56,189,248,0.2)'; }}
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                      주제 재입력
-                    </button>
-                  )}
-                </div>
-                <div className="flex-1 p-5 flex flex-col gap-4">
-                  {[1,2,3,4].map(i => (
-                    <div key={i} className="flex flex-col gap-2">
-                      <div className="h-3 rounded bg-white/[0.06] w-3/4" />
-                      <div className="h-3 rounded bg-white/[0.04] w-full" />
-                      <div className="h-3 rounded bg-white/[0.04] w-5/6" />
-                    </div>
-                  ))}
-                </div>
-                <div className="px-4 py-3 border-t border-white/[0.06]">
-                  <div className="h-10 rounded-xl bg-white/[0.04] border border-white/[0.06]" />
-                </div>
-              </div>
-
-              {/* 돌아가기 */}
-              <button onClick={() => { setMode(null); setFreeStudyTopic(''); }} className="absolute top-3 right-4 text-[11px] text-gray-600 hover:text-white transition z-20 flex items-center gap-1">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                돌아가기
-              </button>
-            </div>
+            // ─── 자유 학습 ────────────────────────────────────────
+            <FreeStudyView onBack={() => setMode(null)} />
 
           ) : mode === 'levelup' ? (
             // ─── 레벨업 문제지옥 ─────────────────────────────────
@@ -1532,7 +1406,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
               )}
 
               {/* 눌러보라는 화살표 힌트 */}
-              <div className="flex items-center gap-2 mb-3 animate-bounce-slow">
+              <div className="flex items-center gap-2 mb-3 -mt-3 pb-[3px] animate-bounce-slow">
                 <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
@@ -1578,7 +1452,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
                 {/* 자유 예습 카드 */}
                 <button
-                  onClick={() => { setFreeStudyTopic(''); setMode('freeStudy'); }}
+                  onClick={() => setMode('freeStudy')}
                   className="group relative bg-gradient-to-br from-[#38bdf8]/[0.10] to-[#818cf8]/[0.04] border border-[#38bdf8]/25 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(56,189,248,0.08)] hover:-translate-y-2 hover:border-[#38bdf8]/55 hover:from-[#38bdf8]/[0.18] hover:to-[#818cf8]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(56,189,248,0.22)]"
                 >
                   <div className="flex items-start gap-4 mb-4">
@@ -1707,6 +1581,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
           </div>
         </div>
       )}
+      <Toast />
     </div>
   );
 };

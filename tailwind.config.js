@@ -10,13 +10,13 @@ export default {
     extend: {
       colors: {
         theme: {
-          bg: '#050505',       // IDE Deep Dark
-          sidebar: '#111111',  // IDE Sidebar Dark
-          card: '#1e1e1e',     // IDE Editor Dark
-          border: '#333333',   // IDE Border
-          primary: '#4ec9b0',  // VSCode Cyan (클래스/강조색)
-          secondary: '#858585',// VSCode Comment/Muted
-          icon: '#569cd6',     // VSCode Blue (메서드/포인트색)
+          bg: '#0e1512',       // Dark Forest
+          sidebar: '#121a16',  // Forest Sidebar
+          card: '#172019',     // Forest Card
+          border: '#1f2e25',   // Forest Border
+          primary: '#4ec9b0',  // Teal accent
+          secondary: '#7a9e8e',// Muted teal-gray
+          icon: '#5bb89a',     // Soft teal
         }
       },
       fontFamily: {

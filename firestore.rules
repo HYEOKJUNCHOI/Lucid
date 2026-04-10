@@ -14,9 +14,16 @@ service cloud.firestore {
       allow write: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
 
-    // 사전 등록 학생: admin만 읽기/쓰기
-    match /invited_students/{doc} {
+    // 사전 등록 학생: admin은 전체 읽기/쓰기, 신규 가입자는 "본인 이메일" 문서만 get 허용
+    // (신규 학생이 최초 로그인 시 자신의 사전등록 정보를 읽어 groupIDs/이름을 자동 세팅하기 위함)
+    match /invited_students/{email} {
       allow read, write: if request.auth != null && isAdmin();
+      allow get: if request.auth != null
+                 && request.auth.token.email != null
+                 && email == request.auth.token.email.lower();
+      allow delete: if request.auth != null
+                    && request.auth.token.email != null
+                    && email == request.auth.token.email.lower();
     }
 
     // 그룹 / 강사: 로그인 유저 읽기, admin 쓰기
@@ -42,6 +49,12 @@ service cloud.firestore {
     // 챕터 라벨 캐시
     match /chapterLabels/{doc} {
       allow read, write: if request.auth != null;
+    }
+
+    // 좌석 배치도: 로그인 유저 읽기, admin만 쓰기
+    match /seating/{doc} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null && isAdmin();
     }
   }
 }

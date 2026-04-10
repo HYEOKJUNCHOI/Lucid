@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LucidLoader from '../../components/common/LucidLoader';
+import Toast, { showToast } from '../../components/common/Toast';
 
 const TeacherManagement = () => {
   const [teachers, setTeachers] = useState([]);
@@ -46,7 +47,7 @@ const TeacherManagement = () => {
     );
 
     if (isDuplicate) {
-      alert('이미 동일한 이름이나 레포지토리를 사용하는 강사가 존재합니다.');
+      showToast('이미 동일한 이름이나 레포지토리를 사용하는 강사가 존재합니다.', 'warn');
       return;
     }
 
@@ -62,7 +63,7 @@ const TeacherManagement = () => {
       setNewUsername('');
     } catch (err) {
       console.error('강사 추가 실패:', err);
-      alert('추가 실패');
+      showToast('추가 실패', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -74,7 +75,7 @@ const TeacherManagement = () => {
       await deleteDoc(doc(db, 'teachers', id));
     } catch (err) {
       console.error('강사 삭제 실패:', err);
-      alert('삭제 실패');
+      showToast('삭제 실패', 'error');
     }
   };
 
@@ -97,7 +98,7 @@ const TeacherManagement = () => {
     );
 
     if (isDuplicate) {
-      alert('해당 이름이나 레포지토리는 이미 다른 강사가 사용 중입니다.');
+      showToast('해당 이름이나 레포지토리는 이미 다른 강사가 사용 중입니다.', 'warn');
       return;
     }
 
@@ -110,13 +111,15 @@ const TeacherManagement = () => {
       setEditingId(null);
     } catch (err) {
       console.error('강사 수정 실패:', err);
-      alert('수정에 실패했습니다.');
+      showToast('수정에 실패했습니다.', 'error');
     } finally {
       setIsUpdating(false);
     }
   };
 
   return (
+    <>
+    <Toast />
     <div className="flex flex-col gap-8 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
@@ -251,6 +254,7 @@ const TeacherManagement = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 
