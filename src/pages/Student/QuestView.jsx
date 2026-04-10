@@ -120,53 +120,58 @@ O/X 문제의 경우 options는 ["⭕ 맞다","❌ 틀리다"]로.
 파일: ${fileName}`;
 };
 
-// ─── 아코디언 섹션 (라이트) ─────────────────────
-const AccordionSection = ({ title, content, expanded, onToggle, accentColor = '#f59e0b', onTokenClick }) => (
-  <div>
-    <button
-      onClick={onToggle}
-      className="w-full flex items-center gap-1.5 py-1.5 text-left group"
-    >
-      <span className="text-[9px] transition-transform duration-200" style={{ color: '#4b5563', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
-      <span className="text-[11px] font-semibold transition-colors" style={{ color: expanded ? accentColor : '#6b7280' }}>
-        {title}
-      </span>
-    </button>
-    {expanded && (
-      <div className="pl-3 pb-2 border-l border-white/[0.08] ml-1 mt-0.5">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}
-          className="prose prose-invert max-w-none text-[11px] prose-p:my-1 prose-p:leading-relaxed prose-li:my-0 prose-code:bg-white/10 prose-code:px-1 prose-code:rounded prose-code:text-[#fbbf24] prose-code:before:content-none prose-code:after:content-none prose-strong:font-semibold prose-h3:text-[11px] prose-h3:font-bold prose-h3:text-gray-300 prose-h3:mt-2 prose-h3:mb-1"
-          components={{
-            code: ({ children }) => {
-              const txt = String(children).trim();
-              return (
-                <code
-                  className="code-token-clickable text-[10px] bg-white/5 px-1 rounded"
-                  style={{ color: '#9cdcfe', cursor: 'inherit' }}
-                  onClick={(e) => { if ((e.ctrlKey || e.metaKey) && onTokenClick) { e.preventDefault(); onTokenClick(txt); } }}
-                >{children}</code>
-              );
-            },
-            strong: ({ children }) => <span className="font-semibold" style={{ color: accentColor }}>{children}</span>,
-            h1: () => null,
-            h2: () => null,
-            h3: () => null,
-          }}
-        >{content}</ReactMarkdown>
-      </div>
-    )}
-  </div>
-);
+// ─── 아코디언 섹션 (ChatView 카드 스타일) ────────
+const AccordionSection = ({ title, content, expanded, onToggle, accentColor = '#f59e0b', variant = 'amber', onTokenClick }) => {
+  const variantMap = {
+    sky:     { border: 'hover:border-sky-500/30',     bg: 'hover:bg-sky-500/5',     shadow: 'hover:shadow-[0_0_20px_rgba(56,189,248,0.08)]',   strong: '#7dd3fc' },
+    emerald: { border: 'hover:border-emerald-500/30', bg: 'hover:bg-emerald-500/5', shadow: 'hover:shadow-[0_0_20px_rgba(16,185,129,0.08)]',   strong: '#6ee7b7' },
+    amber:   { border: 'hover:border-amber-500/30',   bg: 'hover:bg-amber-500/5',   shadow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.08)]',   strong: '#fcd34d' },
+  };
+  const v = variantMap[variant] || variantMap.amber;
+  return (
+    <div className={`group relative rounded-xl border border-white/[0.06] ${v.border} bg-white/[0.02] ${v.bg} transition-all duration-300 shadow-sm ${v.shadow} mb-3`}>
+      {/* 헤더 */}
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+        <span className="text-[12px] font-bold tracking-wide transition-colors" style={{ color: expanded ? accentColor : '#9ca3af' }}>{title}</span>
+        <span className="text-[10px] text-gray-600 transition-transform duration-200 ml-2 shrink-0" style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+      </button>
+      {/* 본문 */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-white/[0.06]">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}
+            className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:my-2 prose-li:my-0.5 prose-code:bg-white/10 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none"
+            components={{
+              code: ({ children }) => {
+                const txt = String(children).trim();
+                return (
+                  <code
+                    className="code-token-clickable text-[11px] bg-white/5 px-1.5 rounded"
+                    style={{ color: '#9cdcfe', cursor: 'inherit' }}
+                    onClick={(e) => { if ((e.ctrlKey || e.metaKey) && onTokenClick) { e.preventDefault(); onTokenClick(txt); } }}
+                  >{children}</code>
+                );
+              },
+              strong: ({ children }) => <span className="font-semibold" style={{ color: v.strong }}>{children}</span>,
+              h1: () => null, h2: () => null, h3: () => null,
+            }}
+          >{content}</ReactMarkdown>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ─── Chrome 스타일 탭 버튼 ─────────────────────
 const TabButton = ({ active, shortcut, label, onClick }) => (
   <button
     onClick={onClick}
-    className={`relative px-3 py-2.5 text-[11px] font-bold transition-all flex items-center gap-1.5 border-b-2 whitespace-nowrap ${
-      active ? 'text-white border-[#f59e0b]' : 'text-gray-500 border-transparent hover:text-gray-300'
+    className={`relative flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold whitespace-nowrap rounded-t-lg -mb-px transition-all select-none ${
+      active
+        ? 'chrome-tab-active bg-[#0d0d0d] text-white border border-white/[0.10] border-b-[#0d0d0d] z-10'
+        : 'chrome-tab-inactive text-gray-500 border border-transparent hover:text-gray-300'
     }`}
   >
-    <span className="text-[9px] px-1 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-gray-500 font-mono">{shortcut}</span>
+    <span className={`text-[9px] px-1 py-0.5 rounded font-mono border ${active ? 'bg-white/[0.08] border-white/[0.14] text-gray-300' : 'bg-white/[0.03] border-white/[0.07] text-gray-600'}`}>{shortcut}</span>
     {label}
   </button>
 );
@@ -195,6 +200,9 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   });
   const [code, setCode] = useState('');
   const [codeLoading, setCodeLoading] = useState(false);
+  const [isTypingMode, setIsTypingMode] = useState(false);
+  const [typingCode, setTypingCode] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
   const [earnedXP, setEarnedXP] = useState(0);
 
   // 원두 드랍 상태
@@ -205,21 +213,48 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   const monacoRef = useRef(null);
   const highlightDecorRef = useRef([]);
 
+  // 키워드·타입명·예약어 — Ctrl+클릭 무시 목록
+  const SKIP_HIGHLIGHT = new Set([
+    // Java 키워드
+    'public','private','protected','static','final','abstract','synchronized','native','transient','volatile',
+    'void','class','interface','enum','extends','implements','new','return',
+    'if','else','for','while','do','break','continue','switch','case','default',
+    'try','catch','finally','throw','throws','import','package','this','super',
+    'null','true','false','instanceof',
+    // Java 기본 타입
+    'int','long','double','float','boolean','char','byte','short',
+    // 자주 등장하는 클래스명 (타입으로만 쓰여서 의미없는 점프)
+    'String','Integer','Long','Double','Float','Boolean','Character','Byte','Short',
+    'Object','System','Math','Arrays','ArrayList','LinkedList','List','Map','HashMap',
+    'HashSet','Set','Queue','Stack','Scanner','Random',
+    // JS/TS 키워드
+    'const','let','var','function','async','await','return','if','else','for','while',
+    'import','export','default','from','class','extends','new','this','super',
+    'typeof','instanceof','null','undefined','true','false','try','catch','finally',
+    'throw','switch','case','break','continue',
+  ]);
+
   // 코드 토큰 Ctrl+Click → Monaco 에디터 하이라이트
   const highlightCodeToken = (token) => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco || !code) return;
-    const searchText = token.replace(/\(\)$/, '');
+    const searchText = token.replace(/\(\)$/, '').trim();
+    // 키워드·타입·단순 기호는 무시
+    if (!searchText || SKIP_HIGHLIGHT.has(searchText) || searchText.length <= 1) return;
     const model = editor.getModel();
     if (!model) return;
     const matches = model.findMatches(searchText, false, false, true, null, false);
     if (matches.length === 0) return;
-    const match = matches[0];
-    const line = match.range.startLineNumber;
+    // 변수 선언부(= 가 있는 줄)를 우선, 없으면 첫 번째
+    const best = matches.find(m => {
+      const lineContent = model.getLineContent(m.range.startLineNumber);
+      return lineContent.includes('=') || lineContent.includes('println') || lineContent.includes('print(');
+    }) || matches[0];
+    const line = best.range.startLineNumber;
     editor.revealLineInCenter(line);
     highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, [
-      { range: match.range, options: { inlineClassName: 'code-token-highlight' } },
+      { range: best.range, options: { inlineClassName: 'code-token-highlight' } },
       { range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className: 'code-line-highlight' } },
     ]);
     setTimeout(() => { highlightDecorRef.current = editor.deltaDecorations(highlightDecorRef.current, []); }, 1500);
@@ -328,13 +363,19 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
   }, [rightTab, quizVisible, analysisResult, quizFeedback, quizDone, quizHearts, quizIdx, quizQuestions.length]);
 
   // ─── Shift+1/2/3/4 단축키 ──────────────────
+  const shiftHandlerRef = useRef({});
   useEffect(() => {
     const handler = (e) => {
       if (!e.shiftKey) return;
       if (e.code === 'Digit1') { e.preventDefault(); setLeftTab(1); }
       else if (e.code === 'Digit2') { e.preventDefault(); setLeftTab(2); }
       else if (e.code === 'Digit3') { e.preventDefault(); setRightTab(3); }
-      else if (e.code === 'Digit4') { e.preventDefault(); setRightTab(4); }
+      else if (e.code === 'Digit4') {
+        e.preventDefault();
+        const { quizVisible: qv, code: c, requestQuiz: rq } = shiftHandlerRef.current;
+        setRightTab(4);
+        if (!qv && c) rq();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -447,6 +488,7 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
     setAnalysisLoading(false);
     setExpandedSections({ functional: false, metaphor: false });
     setVoteState({ functional: null, metaphor: null });
+    setChatMessages([]);
     usedMetaphorsRef.current = [];
     setQuizQuestions([]);
     setQuizIdx(0);
@@ -500,6 +542,8 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
         const res2 = (await res2Data.json()).choices?.[0]?.message?.content?.trim() || '';
         if (cancelled) return;
         setAnalysisResult({ functional: res1, metaphor: res2 });
+        // 채팅창에 분석 메시지 추가 (접힌 상태)
+        setChatMessages([{ role: 'assistant', isAnalysis: true, functional: res1, metaphor: res2, funcOpen: false, metaOpen: false }]);
       } catch (e) { console.warn('분석 실패:', e); }
       finally { if (!cancelled) setAnalysisLoading(false); }
     };
@@ -546,7 +590,12 @@ ${usedList}
         ], temperature: 1.0, max_tokens: 800 }),
       });
       const newMetaphor = (await res.json()).choices?.[0]?.message?.content?.trim() || '';
-      setAnalysisResult(prev => ({ ...prev, metaphor: newMetaphor }));
+      setAnalysisResult(prev => {
+        const updated = { ...prev, metaphor: newMetaphor };
+        // 채팅 메시지도 업데이트
+        setChatMessages(msgs => msgs.map(m => m.isAnalysis ? { ...m, metaphor: newMetaphor } : m));
+        return updated;
+      });
       setVoteState(prev => ({ ...prev, metaphor: null }));
     } catch (e) { console.warn('메타포 셔플 실패:', e); }
     finally { setMetaphorShuffling(false); }
@@ -599,6 +648,16 @@ ${usedList}
       setQuizQuestions([{ type: 'multiple_choice', question: '문제 생성에 실패했습니다. 다음으로 넘어갈게요.', options: ['확인'], answer: '확인', explanation: '' }]);
     } finally { setQuizLoading(false); }
   };
+
+  // shiftHandlerRef: requestQuiz 정의 이후에 최신값 주입
+  shiftHandlerRef.current = { quizVisible, code, requestQuiz };
+
+  // 피드백 표시되면 퀴즈 패널에 포커스 → Enter로 다음 문제 가능
+  useEffect(() => {
+    if (quizFeedback && rightTab === 4) {
+      setTimeout(() => document.getElementById('quiz-panel')?.focus(), 50);
+    }
+  }, [quizFeedback, rightTab]);
 
   // ─── 퀴즈 답 처리 ────────────────────────────
   const handleAnswer = async (answer) => {
@@ -870,9 +929,45 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
         {/* 좌: Monaco + 탭 */}
         <div style={{ width: `${splitRatio * 100}%` }} className="shrink-0 flex flex-col border-r border-white/[0.06]">
           {/* 탭 헤더 */}
-          <div className="shrink-0 flex border-b border-white/[0.06] bg-[#0d0d0d]">
+          <div className="shrink-0 flex items-end gap-0.5 px-2 pt-1.5 border-b border-white/[0.10] bg-[#080c08]">
             <TabButton active={leftTab === 1} shortcut="⇧1" label="수업코드" onClick={() => setLeftTab(1)} />
             <TabButton active={leftTab === 2} shortcut="⇧2" label="AI코드" onClick={() => setLeftTab(2)} />
+            <div className="ml-auto flex items-center gap-1.5 pb-1.5 pr-1">
+              <button
+                onClick={() => {
+                  if (!isTypingMode) {
+                    const lines = code.split('\n');
+                    const prefill = lines.filter(l => /^\s*(package |import )/.test(l)).join('\n');
+                    setTypingCode(prefill ? prefill + '\n\n' : '');
+                    setIsEditMode(false);
+                    setIsTypingMode(true);
+                  } else {
+                    setIsTypingMode(false);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold transition-all ${
+                  isTypingMode
+                    ? 'bg-[#a78bfa]/10 border-[#a78bfa]/30 text-[#a78bfa]'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-400 hover:text-white'
+                }`}
+              >
+                <span>⌨️</span>{isTypingMode ? '타자연습 중' : '타자연습'}
+              </button>
+              <button
+                onClick={() => { setIsEditMode(v => !v); setIsTypingMode(false); }}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[10px] font-bold transition-all ${
+                  isEditMode
+                    ? 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-400 hover:text-white'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-gray-400 hover:text-white'
+                }`}
+              >
+                {isEditMode ? (
+                  <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>읽기 전용</>
+                ) : (
+                  <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>읽기 전용</>
+                )}
+              </button>
+            </div>
           </div>
           {leftTab === 1 && (
             codeLoading ? (
@@ -881,7 +976,11 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                 <span className="text-sm font-bold text-gray-400">{pickMsg('prepare')}</span>
               </div>
             ) : (
-              <Editor height="100%" language={lang} value={code} theme="night-owl"
+              <Editor height="100%"
+                language={lang}
+                value={isTypingMode ? typingCode : code}
+                onChange={isTypingMode ? (v) => setTypingCode(v ?? '') : isEditMode ? (v) => setCode(v ?? '') : undefined}
+                theme="night-owl"
                 onMount={(editor, monaco) => {
                   editorRef.current = editor;
                   monacoRef.current = monaco;
@@ -896,8 +995,12 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                   dom?.addEventListener('mouseleave', () => dom?.classList.remove('ctrl-held'));
                 }}
                 options={{
-                  readOnly: true, fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false,
-                  wordWrap: 'on', lineNumbers: 'on', renderLineHighlight: 'none', tabSize: 4,
+                  readOnly: !isTypingMode && !isEditMode,
+                  fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false,
+                  wordWrap: 'on', lineNumbers: 'on',
+                  renderLineHighlight: (isTypingMode || isEditMode) ? 'line' : 'none',
+                  cursorStyle: (isTypingMode || isEditMode) ? 'line' : 'block',
+                  tabSize: 4, folding: false, foldingHighlight: false,
                   padding: { top: 12, bottom: 12 }, scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
                 }} />
             )
@@ -923,11 +1026,11 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
           {screenFlash && <div className="absolute inset-0 bg-red-500/30 pointer-events-none z-30 screen-flash-red" />}
 
           {/* 탭 헤더 */}
-          <div className="shrink-0 flex items-center border-b border-white/[0.06] bg-[#0d0d0d]">
+          <div className="shrink-0 flex items-end gap-0.5 px-2 pt-1.5 border-b border-white/[0.10] bg-[#080c08]">
             <TabButton active={rightTab === 3} shortcut="⇧3" label="해석+채팅" onClick={() => setRightTab(3)} />
-            <TabButton active={rightTab === 4} shortcut="⇧4" label="퀴즈" onClick={() => setRightTab(4)} />
+            <TabButton active={rightTab === 4} shortcut="⇧4" label="퀴즈" onClick={() => { setRightTab(4); if (!quizVisible && code) requestQuiz(); }} />
             {rightTab === 3 && analysisResult && (
-              <span className="ml-auto pr-3 text-[9px] text-gray-600 flex items-center gap-1">
+              <span className="ml-auto pr-3 mb-1.5 text-[9px] text-gray-600 flex items-center gap-1 self-center">
                 <span className="font-mono bg-white/[0.04] px-1 py-0.5 rounded border border-white/[0.08]">F2</span>순서대로 펼치기
               </span>
             )}
@@ -937,74 +1040,88 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
           {rightTab === 3 && (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-1 overflow-auto px-3 py-3 space-y-2 scrollbar-hide">
-                {/* 해석+메타포 아코디언 */}
-                {analysisLoading ? (
+                {/* 분석 로딩 */}
+                {analysisLoading && (
                   <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
                     <div className="w-3 h-3 border border-[#f59e0b]/40 border-t-[#f59e0b] rounded-full animate-spin shrink-0" />
-                    <span className="text-[11px] text-gray-500">해석 + 메타포 생성 중...</span>
+                    <span className="text-[11px] text-gray-500">해석 + 비유 생성 중...</span>
                   </div>
-                ) : analysisResult ? (
-                  <>
-                    <AccordionSection
-                      title="기능적 해석"
-                      content={analysisResult.functional}
-                      expanded={expandedSections.functional}
-                      onToggle={() => setExpandedSections(prev => ({ ...prev, functional: !prev.functional }))}
-                      accentColor="#4ec9b0"
-                      onTokenClick={highlightCodeToken}
-                    />
-                    <AccordionSection
-                      title="비유 설명"
-                      content={metaphorShuffling ? '새 비유 생성 중...' : analysisResult.metaphor}
-                      expanded={expandedSections.metaphor}
-                      onToggle={() => setExpandedSections(prev => ({ ...prev, metaphor: !prev.metaphor }))}
-                      accentColor="#f59e0b"
-                      onTokenClick={highlightCodeToken}
-                    />
-                    {expandedSections.metaphor && (
-                      <div className="flex items-center gap-2 px-1 pb-1 ml-2.5">
-                        <button
-                          onClick={() => setVoteState(prev => ({ ...prev, metaphor: prev.metaphor === 'up' ? null : 'up' }))}
-                          className={`text-sm transition-all hover:scale-125 px-1.5 py-0.5 rounded-md ${voteState.metaphor === 'up' ? 'bg-green-500/20 scale-110' : 'opacity-40 hover:opacity-80 hover:bg-white/5'}`}
-                          title="따봉">👍</button>
-                        <button
-                          onClick={() => setVoteState(prev => ({ ...prev, metaphor: prev.metaphor === 'down' ? null : 'down' }))}
-                          className={`text-sm transition-all hover:scale-125 px-1.5 py-0.5 rounded-md ${voteState.metaphor === 'down' ? 'bg-red-500/20 scale-110' : 'opacity-40 hover:opacity-80 hover:bg-white/5'}`}
-                          title="언따봉">👎</button>
-                        <button
-                          onClick={shuffleMetaphor}
-                          disabled={metaphorShuffling}
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-md border border-[#f59e0b]/20 text-[#f59e0b]/60 hover:text-[#f59e0b] hover:border-[#f59e0b]/40 hover:bg-[#f59e0b]/5 transition-all disabled:opacity-30 flex items-center gap-1"
-                          title="다른 비유로 바꾸기"
-                        >
-                          {metaphorShuffling ? (
-                            <div className="w-2.5 h-2.5 border border-[#f59e0b]/40 border-t-[#f59e0b] rounded-full animate-spin" />
-                          ) : '⟳'} 다른 비유 보기
-                        </button>
-                      </div>
-                    )}
-                    {/* 구분선 */}
-                    <div className="border-t border-white/[0.06] pt-1" />
-                  </>
-                ) : null}
+                )}
 
                 {/* 채팅 메시지 */}
                 {chatMessages.length === 0 && !analysisLoading && (
                   <p className="text-center text-gray-600 text-[11px] py-3">궁금한 거 질문하세요~</p>
                 )}
-                {chatMessages.map((m, i) => (
-                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${
-                      m.role === 'user' ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20' : 'bg-white/[0.03] text-gray-300 border border-white/[0.06]'
-                    }`}>
-                      {m.role === 'assistant' ? (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert max-w-none text-[11px] prose-p:my-1 prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:text-[11px]">
-                          {m.content}
-                        </ReactMarkdown>
-                      ) : m.content}
+                {chatMessages.map((m, i) => {
+                  if (m.isAnalysis) {
+                    const codeComponents = {
+                      code: ({ children }) => {
+                        const txt = String(children).trim();
+                        return <code className="code-token-clickable text-[11px] bg-white/5 px-1.5 rounded" style={{ color: '#9cdcfe', cursor: 'inherit' }}
+                          onClick={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); highlightCodeToken(txt); } }}>{children}</code>;
+                      },
+                      h1: () => null, h2: () => null, h3: () => null,
+                    };
+                    const prose = "prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-p:my-2 prose-li:my-0.5 prose-code:bg-white/10 prose-code:px-1.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none";
+                    return (
+                      <div key={i} className="space-y-2">
+                        {/* 기능적 해석 카드 */}
+                        <div className="group relative rounded-xl border border-white/[0.06] hover:border-sky-500/30 bg-white/[0.02] hover:bg-sky-500/5 transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(56,189,248,0.08)]">
+                          <button onClick={() => setChatMessages(prev => prev.map((x, j) => j === i ? { ...x, funcOpen: !x.funcOpen } : x))}
+                            className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+                            <span className="text-[12px] font-bold" style={{ color: m.funcOpen ? '#7dd3fc' : '#9ca3af' }}>기능적 해석</span>
+                            <span className="text-[10px] text-gray-600 transition-transform duration-200" style={{ transform: m.funcOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                          </button>
+                          {m.funcOpen && (
+                            <div className="px-4 pb-4 border-t border-white/[0.06]">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} className={prose}
+                                components={{ ...codeComponents, strong: ({ children }) => <span className="font-semibold text-sky-300">{children}</span> }}
+                              >{m.functional}</ReactMarkdown>
+                            </div>
+                          )}
+                        </div>
+                        {/* 비유 설명 카드 */}
+                        <div className="group relative rounded-xl border border-white/[0.06] hover:border-emerald-500/30 bg-white/[0.02] hover:bg-emerald-500/5 transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.08)]">
+                          <button onClick={() => setChatMessages(prev => prev.map((x, j) => j === i ? { ...x, metaOpen: !x.metaOpen } : x))}
+                            className="w-full flex items-center justify-between px-4 py-2.5 text-left">
+                            <span className="text-[12px] font-bold" style={{ color: m.metaOpen ? '#6ee7b7' : '#9ca3af' }}>비유 설명</span>
+                            <span className="text-[10px] text-gray-600 transition-transform duration-200" style={{ transform: m.metaOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>▶</span>
+                          </button>
+                          {m.metaOpen && (
+                            <div className="px-4 pb-4 border-t border-white/[0.06]">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} className={prose}
+                                components={{ ...codeComponents, strong: ({ children }) => <span className="font-semibold text-emerald-400">{children}</span> }}
+                              >{metaphorShuffling ? '새 비유 생성 중...' : m.metaphor}</ReactMarkdown>
+                              <div className="flex items-center gap-2 mt-3 pt-2 border-t border-white/[0.06]">
+                                <button onClick={() => setVoteState(prev => ({ ...prev, metaphor: prev.metaphor === 'up' ? null : 'up' }))}
+                                  className={`text-sm transition-all hover:scale-125 px-1.5 py-0.5 rounded-md ${voteState.metaphor === 'up' ? 'bg-green-500/20 scale-110' : 'opacity-40 hover:opacity-80 hover:bg-white/5'}`}>👍</button>
+                                <button onClick={() => setVoteState(prev => ({ ...prev, metaphor: prev.metaphor === 'down' ? null : 'down' }))}
+                                  className={`text-sm transition-all hover:scale-125 px-1.5 py-0.5 rounded-md ${voteState.metaphor === 'down' ? 'bg-red-500/20 scale-110' : 'opacity-40 hover:opacity-80 hover:bg-white/5'}`}>👎</button>
+                                <button onClick={shuffleMetaphor} disabled={metaphorShuffling}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-md border border-[#f59e0b]/20 text-[#f59e0b]/60 hover:text-[#f59e0b] hover:border-[#f59e0b]/40 hover:bg-[#f59e0b]/5 transition-all disabled:opacity-30 flex items-center gap-1">
+                                  {metaphorShuffling ? <div className="w-2.5 h-2.5 border border-[#f59e0b]/40 border-t-[#f59e0b] rounded-full animate-spin" /> : '⟳'} 다른 비유 보기
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${
+                        m.role === 'user' ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20' : 'bg-white/[0.03] text-gray-300 border border-white/[0.06]'
+                      }`}>
+                        {m.role === 'assistant' ? (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert max-w-none text-[11px] prose-p:my-1 prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
+                            {m.content}
+                          </ReactMarkdown>
+                        ) : m.content}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {chatLoading && (
                   <div className="flex justify-start">
                     <div className="px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
@@ -1056,11 +1173,13 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
           {/* ── 탭 4: 퀴즈 전체 ── */}
           {rightTab === 4 && (
             <div className="flex-1 overflow-auto px-4 py-4 outline-none scrollbar-hide"
-              tabIndex={curQ?.type === 'fill_blank' ? undefined : 0}
+              tabIndex={0}
               ref={el => { if (el && !quizLoading && curQ && !quizFeedback && curQ.type !== 'fill_blank') el.focus(); }}
+              id="quiz-panel"
               onKeyDown={e => {
                 if (quizLoading) return;
                 if (quizFeedback && !quizDone && e.key === 'Enter') { e.preventDefault(); goNextQuestion(); return; }
+                if (quizFeedback && quizDone && e.key === 'Enter') { e.preventDefault(); return; }
                 if (quizFeedback || !curQ) return;
                 if (curQ.type !== 'fill_blank') {
                   const num = parseInt(e.key);

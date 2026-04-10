@@ -1,26 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LucidLoader from '../../components/common/LucidLoader';
+import CustomSelect from '../../components/common/CustomSelect';
+import FifaCard, { getActivityTier } from '../../components/admin/FifaCard';
+import Toast, { showToast } from '../../components/common/Toast';
 
-// 활성도 티어
-const getActivityTier = (lastStudiedAt) => {
-  if (!lastStudiedAt) return { color: '#ef4444', border: 'border-[#ef4444]/50', glow: 'shadow-[0_0_10px_rgba(239,68,68,0.3)]', bg: 'bg-[#ef4444]/[0.08]', label: '미접속' };
-  const days = (Date.now() - (lastStudiedAt?.toDate ? lastStudiedAt.toDate().getTime() : new Date(lastStudiedAt).getTime())) / 86400000;
-  if (days < 1)  return { color: '#4ec9b0', border: 'border-[#4ec9b0]/60', glow: 'shadow-[0_0_12px_rgba(78,201,176,0.35)]',  bg: 'bg-[#4ec9b0]/[0.08]', label: '오늘' };
-  if (days < 3)  return { color: '#569cd6', border: 'border-[#569cd6]/60', glow: 'shadow-[0_0_10px_rgba(86,156,214,0.3)]',  bg: 'bg-[#569cd6]/[0.08]', label: '3일내' };
-  if (days < 7)  return { color: '#dcdcaa', border: 'border-[#dcdcaa]/50', glow: 'shadow-[0_0_10px_rgba(220,220,170,0.25)]', bg: 'bg-[#dcdcaa]/[0.06]', label: '7일내' };
-  return         { color: '#ef4444', border: 'border-[#ef4444]/50', glow: 'shadow-[0_0_10px_rgba(239,68,68,0.3)]', bg: 'bg-[#ef4444]/[0.08]', label: '이탈위험' };
-};
-
-// 5테이블 × 2줄 = 10테이블, 각 4석 = 40석
-// seatId 형식: "R{row}T{table}S{seat}" (row:1-5, table:1-2, seat:1-4)
 const ROWS = 5;
 const TABLES_PER_ROW = 2;
-const SEATS_PER_TABLE = 4; // 1×4
-
-// 강사 테이블은 칠판 아래 별도 UI로 표시 — 학생 좌석에 강사석 없음
-const TEACHER_SEATS = new Set();
+const SEATS_PER_TABLE = 4;
 
 const generateSeatIds = () => {
   const ids = [];
@@ -30,24 +19,121 @@ const generateSeatIds = () => {
         ids.push(`R${r}T${t}S${s}`);
   return ids;
 };
+const ALL_SEAT_IDS = generateSeatIds();
+
+const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
+
+// OpenAI 기반 레벨 분산 재배치
+const aiAssignSeats = async (students, tableCount, seatsPerTable) => {
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_KEY_MISSING');
+
+  const studentData = students.map(u => ({
+    id: u.id,
+    name: u.displayName || u.email,
+    level: u.level || 1,
+    type: u.studentType || 'beginner',
+  }));
+
+  const prompt = `
+당신은 학원 좌석 배치 최적화 AI입니다.
+학생 목록과 테이블 구성이 주어지면, 각 테이블에 레벨이 고르게 분산되도록 배치하세요.
+
+규칙:
+1. 각 테이블에 전공자(type: major)를 최소 1명 포함 (가능한 경우)
+2. 레벨이 고르게 분산되도록 배치 (높은 레벨과 낮은 레벨이 같은 테이블에)
+3. 총 테이블: ${tableCount}개, 테이블당 자리: ${seatsPerTable}개
+
+학생 목록 (JSON):
+${JSON.stringify(studentData, null, 2)}
+
+응답 형식 (JSON만, 설명 없이):
+{
+  "assignments": [
+    { "studentId": "...", "tableIndex": 0, "seatIndex": 0 },
+    ...
+  ]
+}
+tableIndex: 0 ~ ${tableCount - 1}, seatIndex: 0 ~ ${seatsPerTable - 1}
+`;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) throw new Error('OPENAI_API_ERROR');
+  const data = await res.json();
+  return JSON.parse(data.choices[0].message.content);
+};
+
+// ── 대기석 아이템 ──────────────────────────────────────────────
+const PoolItem = ({ u, onDragStart, onDragEnd, large }) => {
+  const tier = getActivityTier(u.lastStudiedAt);
+  const badge =
+    u.studentType === 'major'       ? { label: '전공', color: 'text-amber-400 bg-amber-400/15' } :
+    u.studentType === 'experienced' ? { label: '경험', color: 'text-blue-400 bg-blue-400/15' } :
+                                      { label: '일반', color: 'text-white/40 bg-white/10' };
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`flex items-center bg-white/[0.05] border border-white/[0.08] cursor-grab active:cursor-grabbing hover:bg-white/[0.1] hover:border-white/20 transition-all select-none ${large ? 'px-4 py-3 rounded-xl' : 'px-2 py-1.5 rounded-lg'}`}
+    >
+      {/* 좌: 활성 dot + 이름 */}
+      <div className={`flex items-center flex-1 min-w-0 ${large ? 'gap-2.5' : 'gap-1.5'}`}>
+        <div className={`rounded-full shrink-0 ${large ? 'w-2.5 h-2.5' : 'w-1.5 h-1.5'}`} style={{ background: tier.color }} />
+        <span className={`font-semibold text-white/80 ${large ? 'text-[20px] font-bold text-white/90' : 'text-[11px]'}`}>{u.displayName || u.email}</span>
+      </div>
+      {/* 우: 뱃지 */}
+      <div className={`flex justify-end shrink-0 ${large ? 'ml-2' : ''}`}>
+        <span className={`rounded font-bold ${badge.color} ${large ? 'px-2.5 py-1 text-[12px]' : 'px-1.5 py-0.5 text-[9px]'}`}>{badge.label}</span>
+      </div>
+    </div>
+  );
+};
 
 const SeatChart = () => {
-  const [users, setUsers]     = useState([]);
-  const [groups, setGroups]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedGroup, setSelectedGroup] = useState('');
-  // seatMap: { seatId: userId }
-  const [seatMap, setSeatMap] = useState({});
-  const [saving, setSaving]   = useState(false);
-  // 배정 팝업
-  const [activeSeat, setActiveSeat] = useState(null); // seatId
-  const [search, setSearch]   = useState('');
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [users, setUsers]       = useState([]);
+  const [groups, setGroups]     = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [selectedGroup, setSelectedGroup] = useState(
+    () => searchParams.get('group') || ''
+  );
+  const [seatMap, setSeatMap]         = useState({});
+  const [saving, setSaving]           = useState(false);
+  const [draggingSeat, setDraggingSeat] = useState(null);
+  const [draggingPool, setDraggingPool] = useState(null);
+  const [aiLoading, setAiLoading]     = useState(false);
+  const [seatMode, setSeatMode]       = useState(false);
+  const [seatScale, setSeatScale]     = useState(1);
+  const [winW, setWinW]               = useState(window.innerWidth);
+  const frameRef                      = useRef();
+  // 드래그 상태를 ref로도 동기 추적 (stale closure 방지)
+  const draggingSeatRef  = useRef(null);
+  const draggingPoolRef  = useRef(null);
 
+  // ── 데이터 로드 ──────────────────────────────────────────────
   useEffect(() => {
-    let ul = false, gl = false;
-    const check = () => { if (ul && gl) setLoading(false); };
+    let ul = false, gl = false, tl = false;
+    const check = () => { if (ul && gl && tl) setLoading(false); };
     const unU = onSnapshot(collection(db, 'users'), s => {
-      setUsers(s.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.role !== 'admin'));
+      setUsers(s.docs.map(d => ({ id: d.id, ...d.data() })).filter(u =>
+        u.role !== 'admin' || (u.groupIDs && u.groupIDs.length > 0)
+      ));
       ul = true; check();
     }, () => { ul = true; check(); });
     const unG = onSnapshot(collection(db, 'groups'), s => {
@@ -56,10 +142,41 @@ const SeatChart = () => {
       if (gs.length > 0 && !selectedGroup) setSelectedGroup(gs[0].id);
       gl = true; check();
     }, () => { gl = true; check(); });
-    return () => { unU(); unG(); };
+    const unT = onSnapshot(collection(db, 'teachers'), s => {
+      setTeachers(s.docs.map(d => ({ id: d.id, ...d.data() })));
+      tl = true; check();
+    }, () => { tl = true; check(); });
+    return () => { unU(); unG(); unT(); };
   }, []);
 
-  // 그룹 바뀔 때 Firestore에서 좌석 불러오기
+  useEffect(() => {
+    const onResize = () => setWinW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') setSeatMode(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // 프레임 전체(대기석+강의장+버튼) auto-scale
+  useEffect(() => {
+    if (!seatMode) { setSeatScale(1); return; }
+    setSeatScale(1);
+    const id = setTimeout(() => {
+      if (!frameRef.current) return;
+      const el = frameRef.current;
+      const availH = window.innerHeight - 52 - 24;
+      const availW = window.innerWidth - 32;
+      const scale = Math.min(availH / el.offsetHeight, availW / el.offsetWidth, 1);
+      setSeatScale(scale);
+    }, 60);
+    return () => clearTimeout(id);
+  }, [seatMode, winW]);
+
+  // ── 그룹별 좌석 로드 ─────────────────────────────────────────
   useEffect(() => {
     if (!selectedGroup) return;
     const load = async () => {
@@ -71,6 +188,8 @@ const SeatChart = () => {
     load();
   }, [selectedGroup]);
 
+
+  // ── 저장 ────────────────────────────────────────────────────
   const saveSeatMap = async (newMap) => {
     setSaving(true);
     try {
@@ -79,146 +198,229 @@ const SeatChart = () => {
     finally { setSaving(false); }
   };
 
-  const assignSeat = (seatId, userId) => {
-    // 같은 유저가 다른 자리에 있으면 제거
-    const cleaned = Object.fromEntries(Object.entries(seatMap).filter(([, v]) => v !== userId));
-    const newMap = userId ? { ...cleaned, [seatId]: userId } : { ...cleaned };
-    if (!userId) delete newMap[seatId];
-    setSeatMap(newMap);
-    saveSeatMap(newMap);
-    setActiveSeat(null);
-    setSearch('');
-  };
-
   const clearSeat = (seatId) => {
     const newMap = { ...seatMap };
     delete newMap[seatId];
     setSeatMap(newMap);
     saveSeatMap(newMap);
-    setActiveSeat(null);
   };
-
-  const groupStudents = users.filter(u => u.groupIDs?.includes(selectedGroup));
-  const assignedUserIds = new Set(Object.values(seatMap));
-  const unassignedStudents = groupStudents.filter(u => !assignedUserIds.has(u.id));
-  const searchedStudents = (search
-    ? groupStudents.filter(u => (u.displayName || '').includes(search) || (u.email || '').includes(search))
-    : unassignedStudents
-  ).slice(0, 20);
 
   const getUserById = (uid) => users.find(u => u.id === uid);
 
-  // 사진 업로드 (base64 → Firestore)
-  const handlePhotoUpload = async (userId, file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const base64 = e.target.result;
-      try {
-        await updateDoc(doc(db, 'users', userId), { photoBase64: base64 });
-      } catch (err) { console.error('사진 저장 실패:', err); }
-    };
-    reader.readAsDataURL(file);
+  const groupStudents   = users.filter(u => u.groupIDs?.includes(selectedGroup));
+  const assignedUserIds = new Set(Object.values(seatMap));
+  const unassigned      = groupStudents.filter(u => !assignedUserIds.has(u.id));
+
+  const currentGroup   = groups.find(g => g.id === selectedGroup);
+  const currentTeacher = currentGroup?.teacherId
+    ? teachers.find(t => t.id === currentGroup.teacherId)
+    : null;
+
+  // ── AI 재배치 ───────────────────────────────────────────────
+  const handleAIAssign = async () => {
+    if (groupStudents.length === 0) return;
+    setAiLoading(true);
+    try {
+      const totalTables = ROWS * TABLES_PER_ROW;
+      const result = await aiAssignSeats(groupStudents, totalTables, SEATS_PER_TABLE);
+      const newMap = {};
+
+      result.assignments?.forEach(({ studentId, tableIndex, seatIndex }) => {
+        const row   = Math.floor(tableIndex / TABLES_PER_ROW) + 1;
+        const table = (tableIndex % TABLES_PER_ROW) + 1;
+        const seat  = seatIndex + 1;
+        const seatId = `R${row}T${table}S${seat}`;
+        if (row <= ROWS && table <= TABLES_PER_ROW && seat <= SEATS_PER_TABLE) {
+          newMap[seatId] = studentId;
+        }
+      });
+
+      setSeatMap(newMap);
+      saveSeatMap(newMap);
+    } catch (err) {
+      if (err.message === 'OPENAI_KEY_MISSING') {
+        showToast('.env에 VITE_OPENAI_API_KEY를 설정해주세요', 'warn');
+      } else {
+        showToast('AI 재배치 중 오류가 발생했습니다', 'error');
+        console.error(err);
+      }
+    } finally {
+      setAiLoading(false);
+    }
   };
 
-  // 자리 렌더
-  const renderSeat = (seatId) => {
-    // 강사석
-    if (TEACHER_SEATS.has(seatId)) {
-      return (
-        <div key={seatId} className="w-full rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/[0.07] text-center py-3">
-          <span className="text-[9px] font-bold text-[#f59e0b]">강사</span>
-        </div>
-      );
+  // ── 랜덤 배치 ──────────────────────────────────────────────
+  const handleRandomAssign = () => {
+    const pool = shuffle(groupStudents);
+    const newMap = {};
+
+    const tableSeats = {};
+    ALL_SEAT_IDS.forEach(id => {
+      const m = id.match(/R(\d+)T(\d+)S/);
+      const key = `R${m[1]}T${m[2]}`;
+      if (!tableSeats[key]) tableSeats[key] = [];
+      tableSeats[key].push(id);
+    });
+
+    const anchors   = [...shuffle(pool.filter(u => u.studentType === 'major')),
+                       ...shuffle(pool.filter(u => u.studentType === 'experienced'))];
+    const beginners = shuffle(pool.filter(u => !u.studentType || u.studentType === 'beginner'));
+    const tableKeys = shuffle(Object.keys(tableSeats));
+
+    const grps = anchors.map(() => []);
+    beginners.forEach((b, i) => {
+      if (anchors.length > 0) grps[i % anchors.length].push(b);
+    });
+
+    const assignedIds = new Set();
+    anchors.forEach((anchor, i) => {
+      if (assignedIds.has(anchor.id)) return;
+      const key = tableKeys[i];
+      if (!key) return;
+      const seats = shuffle(tableSeats[key]);
+      let si = 0;
+      newMap[seats[si++]] = anchor.id;
+      assignedIds.add(anchor.id);
+      grps[i].forEach(b => {
+        if (si < seats.length && !assignedIds.has(b.id)) {
+          newMap[seats[si++]] = b.id;
+          assignedIds.add(b.id);
+        }
+      });
+    });
+
+    if (anchors.length === 0) {
+      const seats = shuffle(ALL_SEAT_IDS);
+      beginners.forEach((u, i) => { if (i < seats.length) newMap[seats[i]] = u.id; });
     }
 
-    const uid = seatMap[seatId];
-    const student = uid ? getUserById(uid) : null;
-    const tier = student ? getActivityTier(student.lastStudiedAt) : null;
-    const isActive = activeSeat === seatId;
-    const level = student ? Math.floor((student.visitedFilesCount || 0) / 5) + 1 : null;
+    setSeatMap(newMap);
+    saveSeatMap(newMap);
+  };
 
-    if (student && tier) {
-      const fifaBg = level >= 10 ? 'linear-gradient(160deg,#1a1200,#4a3200 60%,#c8860a)'
-                   : level >= 7  ? 'linear-gradient(160deg,#001a2e,#003a5c 60%,#1e8bc3)'
-                   : level >= 5  ? 'linear-gradient(160deg,#001a16,#003328 60%,#0d9974)'
-                   : level >= 3  ? 'linear-gradient(160deg,#1a1600,#3a3200 60%,#9a8600)'
-                   : level >= 2  ? 'linear-gradient(160deg,#111,#252525 60%,#555)'
-                   :               'linear-gradient(160deg,#1a0d00,#3a2000 60%,#8b5a00)';
-      const shine  = level >= 10 ? '#ffd700' : level >= 7 ? '#60c8ff' : level >= 5 ? '#4ec9b0' : level >= 3 ? '#dcdcaa' : level >= 2 ? '#aaaaaa' : '#ce9178';
+  // ── 이미지 압축 (Canvas 180px / JPEG 75%) ───────────────────
+  const compressImage = (file) =>
+    new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 640;
+          const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+          const canvas = document.createElement('canvas');
+          canvas.width  = Math.round(img.width  * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.88));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
 
+  // ── 사진 업로드 ─────────────────────────────────────────────
+  const handlePhotoUpload = async (userId, file) => {
+    if (!file) return;
+    try {
+      const compressed = await compressImage(file);
+      await updateDoc(doc(db, 'users', userId), { photoBase64: compressed });
+    } catch (err) {
+      console.error('사진 저장 실패:', err);
+      showToast('사진 저장에 실패했습니다', 'error');
+    }
+  };
+
+  const handlePhotoDelete = async (userId) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { photoBase64: null });
+    } catch (err) {
+      console.error('사진 삭제 실패:', err);
+      showToast('사진 삭제에 실패했습니다', 'error');
+    }
+  };
+
+  // ── 드래그 시작 헬퍼 ────────────────────────────────────────
+  const startDragSeat = (seatId) => {
+    draggingSeatRef.current = seatId;
+    setDraggingSeat(seatId);
+  };
+  const endDragSeat = () => {
+    draggingSeatRef.current = null;
+    setDraggingSeat(null);
+  };
+  const startDragPool = (uid) => {
+    draggingPoolRef.current = uid;
+    setDraggingPool(uid);
+  };
+  const endDragPool = () => {
+    draggingPoolRef.current = null;
+    setDraggingPool(null);
+  };
+
+  // ── 드롭 처리 ───────────────────────────────────────────────
+  const handleDrop = (targetSeatId, e) => {
+    e.preventDefault();
+    const pool = draggingPoolRef.current;
+    const seat = draggingSeatRef.current;
+    const m = { ...seatMap };
+
+    if (pool) {
+      Object.keys(m).forEach(k => { if (m[k] === pool) delete m[k]; });
+      m[targetSeatId] = pool;
+    } else if (seat && seat !== targetSeatId) {
+      const u1 = m[seat];
+      const u2 = m[targetSeatId];
+      if (u1) m[targetSeatId] = u1; else delete m[targetSeatId];
+      if (u2) m[seat]  = u2; else delete m[seat];
+    }
+
+    setSeatMap(m);
+    saveSeatMap(m);
+    draggingSeatRef.current = null;
+    draggingPoolRef.current = null;
+    setDraggingSeat(null);
+    setDraggingPool(null);
+  };
+
+  // ── 자리 렌더 ───────────────────────────────────────────────
+  const renderSeat = (seatId, minimal = false) => {
+    const uid      = seatMap[seatId];
+    const student  = uid ? getUserById(uid) : null;
+    const isDragging = (draggingSeat || draggingPool) && draggingSeat !== seatId;
+
+    if (student) {
       return (
-        <div
-          key={seatId}
-          className={`relative rounded-xl overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.04] cursor-pointer ${isActive ? 'ring-2 ring-white/40' : ''}`}
-          style={{ background: fifaBg, boxShadow: `0 2px 12px rgba(0,0,0,0.6), 0 0 0 1px ${shine}25`, aspectRatio: '2/3' }}
-          onClick={() => setActiveSeat(isActive ? null : seatId)}
-        >
-          {/* 포일 */}
-          <div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(ellipse at 30% 20%, ${shine}18 0%, transparent 65%)` }} />
-
-          {/* 레벨 */}
-          <div className="absolute top-1.5 left-2 leading-none">
-            <span className="text-base font-black" style={{ color: shine, textShadow: `0 0 8px ${shine}` }}>{level}</span>
-          </div>
-
-          {/* 활성도 점 */}
-          <div className="absolute top-1.5 right-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${tier.label === '오늘' ? 'animate-pulse' : ''}`}
-              style={{ background: tier.color, boxShadow: `0 0 4px ${tier.color}` }} />
-          </div>
-
-          {/* 아바타 */}
-          <div className="absolute flex items-center justify-center" style={{ inset: '22% 0 32% 0' }}>
-            {student.photoBase64 ? (
-              <label className="w-full h-full cursor-pointer group/p" title="사진 변경">
-                <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(student.id, e.target.files[0])} />
-                <img src={student.photoBase64} alt="" className="w-full h-full object-cover object-top"
-                  style={{ maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)' }} />
-              </label>
+        <div key={seatId} className="relative w-full h-full group">
+          <button
+            onClick={e => { e.stopPropagation(); clearSeat(seatId); }}
+            className="absolute -top-3 left-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[#ef4444] text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-400 flex items-center justify-center"
+          >
+            {seatMode ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 14L4 9l5-5"/>
+                <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+              </svg>
             ) : (
-              <label className="cursor-pointer" title="사진 추가">
-                <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoUpload(student.id, e.target.files[0])} />
-                <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                  style={{ background: `${shine}20`, border: `1px solid ${shine}35` }}>
-                  <span className="text-xl font-black" style={{ color: shine }}>{(student.displayName||'?')[0]}</span>
-                </div>
-              </label>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19V5"/>
+                <path d="M5 12l7-7 7 7"/>
+              </svg>
             )}
-          </div>
+          </button>
 
-          {/* 하단 */}
-          <div className="absolute bottom-0 left-0 right-0 px-1.5 pb-1.5 pt-4"
-            style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%)' }}>
-            <p className="text-center text-[9px] font-black text-white truncate tracking-wide"
-              style={{ textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
-              {(student.displayName || '?').toUpperCase()}
-            </p>
-            {student.studentType === 'major' && (
-              <p className="text-center text-[7px] font-bold text-purple-300" style={{ textShadow: '0 0 4px rgba(168,85,247,0.6)' }}>🎓 전공</p>
-            )}
-            {student.studentType === 'experienced' && (
-              <p className="text-center text-[7px] font-bold text-yellow-300" style={{ textShadow: '0 0 4px rgba(250,204,21,0.6)' }}>⚡ 경험자</p>
-            )}
-            {(!student.studentType || student.studentType === 'beginner') && (
-              <p className="text-center text-[7px] font-bold text-gray-500">일반</p>
-            )}
-            <div className="h-px my-1" style={{ background: `linear-gradient(to right, transparent, ${shine}50, transparent)` }} />
-            <div className="grid grid-cols-3 text-center">
-              {[['출석', student.streak||0], ['파일', student.visitedFilesCount||0], ['XP', (student.visitedFilesCount||0)*100]].map(([l,v]) => (
-                <div key={l}>
-                  <div className="text-[9px] font-black" style={{ color: shine }}>{v}</div>
-                  <div className="text-[6px] text-white/30 font-bold">{l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* X 해제 */}
-          {isActive && (
-            <button onClick={e => { e.stopPropagation(); clearSeat(seatId); }}
-              className="absolute -top-1 -right-1 w-4 h-4 bg-[#ef4444] rounded-full flex items-center justify-center text-white text-[9px] font-black z-10 hover:bg-red-400">×</button>
-          )}
+          <FifaCard
+            student={student}
+            faded={draggingSeat === seatId}
+            draggable
+            onDragStart={() => startDragSeat(seatId)}
+            onDragEnd={endDragSeat}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => handleDrop(seatId, e)}
+            onPhotoUpload={minimal ? undefined : (file => handlePhotoUpload(student.id, file))}
+            onPhotoDelete={minimal ? undefined : (() => handlePhotoDelete(student.id))}
+            minimal={minimal}
+            compact={seatMode}
+          />
         </div>
       );
     }
@@ -226,190 +428,312 @@ const SeatChart = () => {
     return (
       <button
         key={seatId}
-        onClick={() => setActiveSeat(isActive ? null : seatId)}
-        className={`w-full rounded-lg border border-dashed transition-all text-center py-3 ${
-          isActive
-            ? 'border-white/30 bg-white/[0.05]'
+        onDragOver={e => e.preventDefault()}
+        onDrop={e => handleDrop(seatId, e)}
+        className={`w-full h-full rounded-xl border border-dashed transition-all flex flex-col items-center justify-center ${
+          isDragging
+            ? 'border-[#4ec9b0]/60 bg-[#4ec9b0]/[0.07]'
             : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'
         }`}
       >
-        <span className="text-[10px] text-gray-700">빈 자리</span>
+        <span className="text-[10px] text-gray-600">
+          {isDragging ? '놓기' : '빈 자리'}
+        </span>
       </button>
     );
   };
 
+  // ── 강의장 레이아웃 ───────────────────────────────────────────
+  // T 번호: 행 기준 — T1/T2, T3/T4, T5/T6, T7/T8, T9/T10
+  const renderTableBox = (tNum) => {
+    const row   = Math.ceil(tNum / 2);
+    const table = tNum % 2 === 1 ? 1 : 2;
+    return (
+      <div key={tNum} className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-2">
+        <div className="text-center text-[9px] text-gray-400 font-bold mb-1.5">T{tNum}</div>
+        <div className="flex gap-1.5 items-stretch">
+          {[1,2,3,4].map(seat => {
+            const seatId    = `R${row}T${table}S${seat}`;
+            const globalNum = table === 1 ? seat : seat + 4;
+            return (
+              <div key={seatId} className="flex flex-col items-center gap-0.5 w-[120px] shrink-0">
+                <span className="text-[8px] text-gray-400 font-bold shrink-0">{globalNum}</span>
+                <div className={`w-full flex-1 ${seatMode ? 'min-h-[110px]' : 'min-h-[144px]'}`}>
+                  {renderSeat(seatId)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderClassroom = () => {
+    if (seatMode) {
+      // 자리배치 모드: 왼쪽 컬럼 / 중앙통로 하나 / 오른쪽 컬럼
+      const aisleW = '60px';
+      return (
+        <div>
+          <div className="flex items-stretch gap-5">
+            <div className="flex flex-col gap-3">
+              {[1,3,5,7,9].map(tNum => renderTableBox(tNum))}
+            </div>
+            <div className="flex items-center justify-center shrink-0 rounded-xl border border-white/[0.05] bg-white/[0.01]"
+              style={{ width: aisleW }}>
+              <span className="text-[12px] font-bold text-gray-600" style={{ writingMode: 'vertical-rl', letterSpacing: '0.15em' }}>중앙통로</span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {[2,4,6,8,10].map(tNum => renderTableBox(tNum))}
+            </div>
+          </div>
+          <div className="mt-3 flex items-stretch gap-5">
+            <div className="flex gap-1.5 items-stretch p-2">
+              <div className="flex flex-col items-center justify-center py-3 rounded-lg border border-white/20 bg-white/[0.04]"
+                style={{ width: '222px' }}>
+                <span className="text-[10px]">🚪</span>
+                <span className="text-[15px] font-bold text-gray-300">출입구</span>
+              </div>
+              <div style={{ width: '222px' }} />
+            </div>
+            <div className="shrink-0" style={{ width: aisleW }} />
+            <div className="invisible bg-white/[0.02] border border-white/[0.05] rounded-xl p-2">
+              <div className="flex gap-1.5">
+                {[1,2,3,4].map(i => <div key={i} className="w-[120px] min-h-[1px]" />)}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 일반 뷰: 중앙통로 포함 3컬럼
+    return (
+      <div>
+        <div className="flex items-stretch gap-5">
+          <div className="flex flex-col gap-3">
+            {[1,3,5,7,9].map(tNum => renderTableBox(tNum))}
+          </div>
+          <div className="flex items-center justify-center shrink-0 rounded-xl border border-white/[0.05] bg-white/[0.01]"
+            style={{ width: '60px' }}>
+            <span className="text-[12px] font-bold text-gray-600" style={{ writingMode: 'vertical-rl', letterSpacing: '0.15em' }}>중앙통로</span>
+          </div>
+          <div className="flex flex-col gap-3">
+            {[2,4,6,8,10].map(tNum => renderTableBox(tNum))}
+          </div>
+        </div>
+        <div className="mt-3 flex items-stretch gap-5">
+          <div className="flex gap-1.5 items-stretch p-2">
+            <div className="flex flex-col items-center justify-center py-3 rounded-lg border border-white/20 bg-white/[0.04]"
+              style={{ width: '222px' }}>
+              <span className="text-[10px]">🚪</span>
+              <span className="text-[15px] font-bold text-gray-300">출입구</span>
+            </div>
+            <div style={{ width: '222px' }} />
+          </div>
+          <div className="shrink-0" style={{ width: '60px' }} />
+          <div className="invisible bg-white/[0.02] border border-white/[0.05] rounded-xl p-2">
+            <div className="flex gap-1.5">
+              {[1,2,3,4].map(i => <div key={i} className="w-[120px] min-h-[1px]" />)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── 범례 ────────────────────────────────────────────────────
+  const Legend = () => (
+    <div className="flex items-center gap-4 text-[10px] text-gray-500">
+      {[['#4ec9b0','오늘'],['#569cd6','3일내'],['#dcdcaa','7일내'],['#ef4444','이탈위험']].map(([c,l]) => (
+        <div key={l} className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full" style={{ background: c }} />
+          <span>{l}</span>
+        </div>
+      ))}
+    </div>
+  );
+
   if (loading) return <LucidLoader text="Loading Seats..." />;
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in">
-      {/* 헤더 */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white">좌석 배치도</h2>
-          <p className="text-gray-400 text-sm mt-1">강의장 B — 2테이블 × 5줄 (40석 · 강사 테이블 별도)</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {saving && <span className="text-xs text-gray-500 animate-pulse">저장 중...</span>}
-          <select
-            value={selectedGroup}
-            onChange={e => setSelectedGroup(e.target.value)}
-            className="bg-[#111] border border-white/[0.08] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-[#4ec9b0]/40"
-          >
-            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </select>
-        </div>
-      </div>
+    <>
+      <Toast />
 
-      {/* 범례 */}
-      <div className="flex items-center gap-4 text-[10px] text-gray-500 flex-wrap">
-        {[['#4ec9b0','오늘'],['#569cd6','3일내'],['#dcdcaa','7일내'],['#ef4444','이탈위험']].map(([c,l]) => (
-          <div key={l} className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full" style={{ background: c }} />
-            <span>{l}</span>
-          </div>
-        ))}
-        <div className="ml-auto text-gray-600">
-          배정 {Object.keys(seatMap).length} / 40석 · 미배정 {unassignedStudents.length}명
-        </div>
-      </div>
+      {/* ── 자리배치 모드 ──────────────────────────────────────── */}
+      {seatMode && (
+        <div className="fixed inset-0 z-[500] bg-[#0e1512] flex flex-col overflow-hidden">
 
-      <div className="flex gap-6">
-        {/* 강의장 */}
-        <div className="flex-1 min-w-0">
-          {/* 1행: 칠판 — 전체 너비 */}
-          <div className="mb-2 flex items-center justify-center py-2.5 rounded-xl border border-[#569cd6]/25 bg-[#569cd6]/[0.05]">
-            <span className="text-[10px] font-bold tracking-widest text-[#569cd6] uppercase">⬜ 칠판</span>
-          </div>
-
-          {/* 2행: 강사 테이블 — T2 위, 오른쪽 정렬 */}
-          <div className="mb-3 grid grid-cols-2 gap-6">
-            <div /> {/* T1 위 빈 공간 */}
-            <div className="flex justify-end">
-              <div className="flex items-center justify-center px-5 py-2 rounded-xl border border-[#f59e0b]/40 bg-[#f59e0b]/[0.08]">
-                <span className="text-[10px] font-bold text-[#f59e0b] whitespace-nowrap">👨‍🏫 강사</span>
-              </div>
+          {/* 상단 슬림 바 */}
+          <div className="flex items-center justify-between px-4 h-[52px] border-b border-white/[0.06] shrink-0">
+            <div className="flex items-center gap-4 text-[10px] text-gray-500">
+              <span className="text-white font-bold text-sm mr-1">🪑 자리배치 모드</span>
+              <Legend />
+            </div>
+            <div className="flex items-center gap-2">
+              {saving && <span className="text-xs text-gray-500 animate-pulse">저장 중...</span>}
+              <CustomSelect value={selectedGroup} onChange={val => setSelectedGroup(val)}
+                className="w-40" options={groups.map(g => ({ value: g.id, label: g.name }))} />
+              <button onClick={() => setSeatMode(false)}
+                className="ml-1 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-white text-xs font-bold transition-all">
+                ↩ 나가기
+              </button>
             </div>
           </div>
 
-          {/* 좌석 그리드: 2줄 × 5테이블 */}
-          <div className="flex flex-col gap-3">
-            {[1,2,3,4,5].map(row => (
-              <div key={row} className="flex gap-4 items-center">
-                {/* 줄 번호 */}
-                <div className="w-5 shrink-0 text-center">
-                  <span className="text-[10px] text-gray-700 font-bold">{row}</span>
-                </div>
-                {/* 2테이블 (좌/우) */}
-                <div className="flex-1 grid grid-cols-2 gap-6">
-                  {[1,2].map(table => (
-                    <div key={table} className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-2">
-                      {/* 테이블 번호 */}
-                      <div className="text-center text-[9px] text-gray-700 font-bold mb-1.5">
-                        T{(row - 1) * 2 + table}
-                      </div>
-                      {/* 1×4 가로 배열 (자리번호: T1=1~4, T2=5~8) */}
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[1,2,3,4].map(seat => {
-                          const seatId = `R${row}T${table}S${seat}`;
-                          const globalNum = table === 1 ? seat : seat + 4;
-                          return (
-                            <div key={seatId} className="flex flex-col items-center gap-0.5">
-                              <span className="text-[8px] text-gray-700 font-bold">{globalNum}</span>
-                              {renderSeat(seatId)}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* 본문: 프레임 전체 auto-scale, 오른쪽 정렬 */}
+          <div className="flex-1 flex justify-center items-start pt-3 pr-4 pl-4 overflow-auto">
+            <div ref={frameRef} style={{ zoom: seatScale, transformOrigin: 'top right' }}>
+              {/* 전체: 대기석 고정 + 오른쪽 공간 중앙정렬 */}
+              <div className="flex gap-3">
 
-          {/* 출입구 */}
-          <div className="mt-4 text-center">
-            <span className="text-[10px] text-gray-700">🚪 출입구</span>
-          </div>
-        </div>
-
-        {/* 학생 배정 패널 */}
-        <div className="w-52 shrink-0">
-          <div className="sticky top-0 flex flex-col gap-3">
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <p className="text-xs font-bold text-gray-400 mb-2">
-                {activeSeat ? `📍 ${activeSeat} 배정` : '자리를 클릭하세요'}
-              </p>
-              {activeSeat && (
-                <>
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="이름 검색..."
-                    className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/40 mb-2"
-                  />
-                  <div className="flex flex-col gap-1 max-h-80 overflow-y-auto">
-                    {seatMap[activeSeat] && (
-                      <button
-                        onClick={() => clearSeat(activeSeat)}
-                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-[#ef4444] bg-[#ef4444]/[0.06] border border-[#ef4444]/20 hover:bg-[#ef4444]/10 transition font-bold"
-                      >
-                        ✕ 배정 해제
-                      </button>
-                    )}
-                    {searchedStudents.map(u => {
-                      const tier = getActivityTier(u.lastStudiedAt);
-                      const isAssigned = assignedUserIds.has(u.id);
-                      return (
-                        <button
-                          key={u.id}
-                          onClick={() => assignSeat(activeSeat, u.id)}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition border ${
-                            isAssigned
-                              ? 'border-white/[0.04] bg-white/[0.02] text-gray-600'
-                              : 'border-white/[0.06] bg-white/[0.03] text-white hover:bg-white/[0.07]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tier.color }} />
-                            <span className="truncate font-semibold">{u.displayName || u.email}</span>
-                            {u.studentType === 'major' && <span className="text-[8px] text-purple-400 shrink-0">🎓</span>}
-                            {u.studentType === 'experienced' && <span className="text-[8px] text-yellow-400 shrink-0">⚡</span>}
-                            {(!u.studentType || u.studentType === 'beginner') && <span className="text-[8px] text-gray-600 shrink-0">일반</span>}
-                            {isAssigned && <span className="text-[9px] text-gray-600 ml-auto shrink-0">배정됨</span>}
-                          </div>
-                        </button>
-                      );
-                    })}
-                    {searchedStudents.length === 0 && (
-                      <p className="text-xs text-gray-600 text-center py-3">학생 없음</p>
+                {/* 대기석 */}
+                <div
+                  className={`w-[180px] shrink-0 flex flex-col gap-1 p-2.5 rounded-xl border transition-all ${
+                    draggingSeat ? 'border-[#ef4444]/50 bg-[#ef4444]/[0.04]' : 'border-white/[0.08] bg-white/[0.02]'
+                  }`}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault();
+                    if (draggingSeatRef.current) { clearSeat(draggingSeatRef.current); endDragSeat(); }
+                    endDragPool();
+                  }}
+                >
+                  <p className="text-[15px] text-gray-400 font-bold text-center shrink-0 mb-2">
+                    🪑 대기석{unassigned.length > 0 ? ` · ${unassigned.length}명` : ''}
+                  </p>
+                  {draggingSeat && <p className="text-[15px] text-[#ef4444] text-center shrink-0">여기에 놓기</p>}
+                  <div className="flex flex-col gap-3 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                    {unassigned.map(u => <PoolItem key={u.id} u={u} onDragStart={() => startDragPool(u.id)} onDragEnd={endDragPool} large />)}
+                    {unassigned.length === 0 && (
+                      <span className="text-[9px] text-gray-600 text-center mt-2">전원 배정됨</span>
                     )}
                   </div>
-                </>
-              )}
-              {!activeSeat && (
-                <div className="flex flex-col gap-1 mt-2">
-                  <p className="text-[10px] text-gray-600 mb-1">미배정 학생 ({unassignedStudents.length}명)</p>
-                  {unassignedStudents.slice(0, 15).map(u => {
-                    const tier = getActivityTier(u.lastStudiedAt);
-                    return (
-                      <div key={u.id} className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px] text-gray-500">
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: tier.color }} />
-                        <span className="truncate">{u.displayName || u.email}</span>
-                        {u.studentType === 'major' && <span className="text-[9px] text-purple-400 shrink-0">🎓</span>}
-                        {u.studentType === 'experienced' && <span className="text-[9px] text-yellow-400 shrink-0">⚡</span>}
-                        {(!u.studentType || u.studentType === 'beginner') && <span className="text-[9px] text-gray-600 shrink-0">일반</span>}
-                      </div>
-                    );
-                  })}
                 </div>
-              )}
+
+                {/* 큰 둥근 컨테이너: 칠판+강사+그리드 */}
+                <div className="flex gap-3 items-start">
+                <div className="border border-white/[0.08] rounded-2xl p-3 flex flex-col gap-3 bg-white/[0.01]">
+                  <div className="flex items-stretch gap-3">
+                    <div className="flex-[4] flex items-center justify-center py-[15px] rounded-xl border border-[#569cd6]/25 bg-[#569cd6]/[0.05]">
+                      <span className="text-[15px] font-bold tracking-widest text-[#569cd6] uppercase">⬜ 칠판</span>
+                    </div>
+                    <div className="w-[248px] flex items-center justify-center py-[15px] rounded-xl border border-[#f59e0b]/40 bg-[#f59e0b]/[0.08] shrink-0">
+                      <span className="text-[15px] font-bold text-[#f59e0b]">👨‍🏫 강사</span>
+                    </div>
+                  </div>
+                  <div>{renderClassroom()}</div>
+                </div>
+                {/* 랜덤 배치 버튼 — 윗패딩으로 T2 시트 레벨에 맞춤 */}
+                <div style={{ paddingTop: '123px' }}>
+                  <button onClick={handleRandomAssign}
+                    className="flex flex-col items-center justify-center gap-2 rounded-xl bg-[#4ec9b0]/10 hover:bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 text-[12px] text-[#4ec9b0] font-bold transition-all"
+                    style={{ width: '108px', height: '110px' }}>
+                    <span className="text-2xl">🎲</span>
+                    <span>랜덤 배치</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+      )}
+
+      {/* ── 일반 뷰 ─────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 animate-fade-in w-fit mx-auto">
+
+        {/* ── 고정 헤더 블록 ───────────────────────────────────── */}
+        <div className="sticky top-0 z-[200] flex flex-col gap-0 pt-0 pb-3" style={{ background: '#0e1512', boxShadow: '0 -200px 0 200px #0e1512' }}>
+
+          {/* 헤더 + 범례 */}
+          <div className="flex items-start justify-between gap-3">
+            {/* 왼쪽: 제목 + 부제 */}
+            <div className="flex flex-col gap-2">
+              <h2 className="text-2xl font-bold text-white">좌석 배치도</h2>
+              <div className="flex items-center gap-2 text-[16px] text-gray-400 font-medium">
+                <span>🏫 B강의장</span>
+                {currentTeacher && (
+                  <>
+                    <span className="text-gray-600">|</span>
+                    <span>👨‍🏫 {currentTeacher.name}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            {/* 오른쪽: 국비 + 나가기 */}
+            <div className="flex items-center gap-2 shrink-0">
+              {saving && <span className="text-xs text-gray-500 animate-pulse">저장 중...</span>}
+              <CustomSelect value={selectedGroup} onChange={val => setSelectedGroup(val)}
+                className="w-44" options={groups.map(g => ({ value: g.id, label: g.name }))} />
+              <button onClick={() => navigate('/admin?tab=dashboard')}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-sm text-white/70 font-bold transition-all h-full">
+                ↩ 뒤로가기
+              </button>
+            </div>
+          </div>
+
+          {/* 칠판 / [대기석 + 강사] */}
+          <div className="flex flex-col gap-2 w-full">
+            {/* 범례 + 랜덤 + 자리배치 모드 */}
+            <div className="flex items-center gap-2 justify-between">
+              <Legend />
+              <div className="flex items-center gap-2">
+              <button onClick={handleRandomAssign}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#4ec9b0]/10 hover:bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 text-sm text-[#4ec9b0] font-bold transition-all">
+                🎲 랜덤 배치
+              </button>
+              <button onClick={() => setSeatMode(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-sm text-purple-400 font-bold transition-all">
+                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                자리배치 모드
+              </button>
+              </div>
+            </div>
+            <div className="w-full flex items-center justify-center py-2.5 rounded-xl border border-[#569cd6]/25 bg-[#569cd6]/[0.05]">
+              <span className="text-[10px] font-bold tracking-widest text-[#569cd6] uppercase">⬜ 칠판</span>
+            </div>
+            <div className="flex gap-3 items-stretch">
+              <div
+                className={`flex-1 py-2 px-3 rounded-xl border transition-all ${
+                  draggingSeat ? 'border-[#ef4444]/60 bg-[#ef4444]/[0.04]' : 'border-white/[0.06] bg-white/[0.015]'
+                }`}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  if (draggingSeat) { clearSeat(draggingSeat); setDraggingSeat(null); }
+                  setDraggingPool(null);
+                }}
+              >
+                <p className="text-[10px] text-gray-500 font-semibold mb-1.5 text-center">
+                  🪑 대기석{unassigned.length > 0 ? ` · ${unassigned.length}명` : ''}
+                  {draggingSeat && <span className="ml-2 text-[#ef4444]">여기에 놓으면 대기석으로</span>}
+                </p>
+                <div className="flex gap-1.5 flex-wrap justify-center">
+                  {unassigned.slice(0, 10).map(u => <PoolItem key={u.id} u={u} onDragStart={() => startDragPool(u.id)} onDragEnd={endDragPool} />)}
+                  {unassigned.length > 10 && (
+                    <div className="flex items-center px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.06] text-[11px] text-gray-500 font-bold select-none">
+                      +{unassigned.length - 10}명
+                    </div>
+                  )}
+                  {unassigned.length === 0 && <span className="text-[10px] text-gray-600">전원 배정됨</span>}
+                </div>
+              </div>
+              <div className="w-[248px] flex items-center justify-center py-2.5 rounded-xl border border-[#f59e0b]/40 bg-[#f59e0b]/[0.08] shrink-0">
+                <span className="text-[10px] font-bold text-[#f59e0b]">👨‍🏫 강사</span>
+              </div>
+            </div>
+          </div>
+
+        </div>{/* ── /고정 헤더 블록 end ── */}
+
+        {/* 강의장 */}
+        <div>{renderClassroom()}</div>
+
+      </div>
+    </>
   );
 };
 

@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LucidSelect from '../../components/common/LucidSelect';
 import LucidLoader from '../../components/common/LucidLoader';
+import Toast, { showToast } from '../../components/common/Toast';
 
 const GroupManagement = () => {
+  const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,6 +21,34 @@ const GroupManagement = () => {
   const [editingGroupId, setEditingGroupId] = useState(null);
   const [editTeacherId, setEditTeacherId] = useState('');
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
+
+  // 강사 등록 모달 상태
+  const [showTeacherModal, setShowTeacherModal] = useState(false);
+  const [newTeacherName, setNewTeacherName] = useState('');
+  const [newTeacherUsername, setNewTeacherUsername] = useState('');
+  const [addingTeacher, setAddingTeacher] = useState(false);
+
+  const handleAddTeacher = async (e) => {
+    e.preventDefault();
+    if (!newTeacherName.trim() || !newTeacherUsername.trim()) return;
+    const isDuplicate = teachers.some(t =>
+      t.name === newTeacherName.trim() ||
+      (t.githubUsername && t.githubUsername === newTeacherUsername.trim())
+    );
+    if (isDuplicate) { showToast('이미 동일한 이름이나 유저네임을 사용하는 강사가 존재합니다.', 'warn'); return; }
+    setAddingTeacher(true);
+    try {
+      const newRef = doc(collection(db, 'teachers'));
+      await setDoc(newRef, { name: newTeacherName.trim(), githubUsername: newTeacherUsername.trim() });
+      setNewTeacherName('');
+      setNewTeacherUsername('');
+      setShowTeacherModal(false);
+    } catch (err) {
+      showToast('강사 등록 실패', 'error');
+    } finally {
+      setAddingTeacher(false);
+    }
+  };
 
   // 그룹 데이터 및 강사 목록 실시간 모니터링
   useEffect(() => {
@@ -53,7 +84,7 @@ const GroupManagement = () => {
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!newGroupName.trim() || !selectedTeacherId) {
-      alert('그룹 이름과 담당 강사를 모두 선택해 주세요.');
+      showToast('그룹 이름과 담당 강사를 모두 선택해 주세요.', 'warn');
       return;
     }
     
@@ -68,7 +99,7 @@ const GroupManagement = () => {
       setSelectedTeacherId('');
     } catch (err) {
       console.error('그룹 추가 실패:', err);
-      alert('추가 실패');
+      showToast('추가 실패', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -87,7 +118,7 @@ const GroupManagement = () => {
       setEditingGroupId(null);
     } catch (err) {
       console.error('그룹 수정 실패:', err);
-      alert('수정 실패');
+      showToast('수정 실패', 'error');
     } finally {
       setIsUpdatingGroup(false);
     }
@@ -99,16 +130,34 @@ const GroupManagement = () => {
       await deleteDoc(doc(db, 'groups', id));
     } catch (err) {
       console.error('그룹 삭제 실패:', err);
-      alert('삭제 실패');
+      showToast('삭제 실패', 'error');
     }
   };
 
   return (
+    <>
     <div className="flex flex-col gap-8 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white">그룹(반) 관리</h2>
+          <h2 className="text-2xl font-bold text-white">수업 등록</h2>
           <p className="text-gray-400 text-sm mt-1">학생들이 소속될 그룹을 생성하고 담당 강사를 매핑합니다.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTeacherModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500 border border-purple-500/30 text-purple-400 hover:text-white font-bold text-sm transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            강사 등록
+          </button>
+          <button
+            onClick={() => navigate('/admin?tab=dashboard')}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-white/70 font-bold text-sm transition-all"
+          >
+            ↩ 뒤로가기
+          </button>
         </div>
       </div>
 
@@ -131,7 +180,7 @@ const GroupManagement = () => {
             options={teachers.map(t => ({
               value: t.id,
               label: t.name,
-              sublabel: t.githubRepo || 'No GitHub Repo'
+              sublabel: t.githubUsername || ''
             }))}
             value={selectedTeacherId}
             onChange={(val) => setSelectedTeacherId(val)}
@@ -229,7 +278,59 @@ const GroupManagement = () => {
           </div>
         )}
       </div>
+
+      {/* 강사 등록 모달 */}
+      {showTeacherModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md shadow-2xl animate-fade-in-up">
+            <div className="px-6 py-5 border-b border-[#2a2a2a] flex justify-between items-center">
+              <h3 className="text-lg font-bold text-white">강사 등록</h3>
+              <button onClick={() => setShowTeacherModal(false)} className="text-gray-500 hover:text-white transition">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleAddTeacher} className="p-6 flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold text-gray-500 uppercase">강사 성함</label>
+                <input
+                  type="text"
+                  placeholder="예: 홍길동"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                  value={newTeacherName}
+                  onChange={(e) => setNewTeacherName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold text-gray-500 uppercase">GitHub 유저네임</label>
+                <input
+                  type="text"
+                  placeholder="예: code1218"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                  value={newTeacherUsername}
+                  onChange={(e) => setNewTeacherUsername(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowTeacherModal(false)} className="px-5 py-2.5 text-sm text-gray-400 hover:text-white transition">취소</button>
+                <button
+                  type="submit"
+                  disabled={addingTeacher || !newTeacherName.trim() || !newTeacherUsername.trim()}
+                  className="px-6 py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-bold text-sm rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addingTeacher ? '등록 중...' : '등록'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
+    <Toast />
+    </>
   );
 };
 

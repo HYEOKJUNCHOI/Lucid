@@ -19,7 +19,7 @@ const SUBJECTS = [
 ];
 
 const BONUS_SUBJECTS = [
-  { id: 'git',    label: 'Git/GitHub', color: '#6b7280', icon: '🔀' },
+  { id: 'git',    label: 'Git/GitHub', color: '#9ca3af', icon: '🔀' },
   { id: 'docker', label: 'Docker',     color: '#2563eb', icon: '🐳' },
   { id: 'jegi',   label: '정보처리기사', color: '#f59e0b', icon: '📝' },
 ];

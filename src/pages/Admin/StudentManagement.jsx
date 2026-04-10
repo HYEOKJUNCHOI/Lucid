@@ -1,14 +1,29 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, onSnapshot, doc, updateDoc, setDoc, query, where, getDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import LucidLoader from '../../components/common/LucidLoader';
 import ExcelUploadModal from '../../components/admin/ExcelUploadModal';
+import CustomSelect from '../../components/common/CustomSelect';
+import Toast, { showToast } from '../../components/common/Toast';
 
 const StudentManagement = () => {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // 정렬 상태: { col: 'name'|'email'|'cohort', dir: 'asc'|'desc' }
+  const [sortState, setSortState] = useState({ col: null, dir: 'asc' });
+
+  const handleColSort = (col) => {
+    setSortState(prev =>
+      prev.col === col
+        ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { col, dir: 'asc' }
+    );
+  };
 
   // 다중 선택 상태
   const [checkedIds, setCheckedIds] = useState([]);
@@ -21,6 +36,7 @@ const StudentManagement = () => {
   const [inviteName, setInviteName] = useState('');
   const [invitePhone, setInvitePhone] = useState('');
   const [inviteStudentType, setInviteStudentType] = useState('beginner');
+  const [inviteRole, setInviteRole] = useState('student');
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const [originalGroupIds, setOriginalGroupIds] = useState([]);
@@ -81,9 +97,26 @@ const StudentManagement = () => {
     ...users.map(u => ({ ...u, isRegistered: true })),
     ...invites
       // 대소문자 구분 없이 이미 가입한 유저는 제외 (중복 방지)
-      .filter(inv => !users.some(u => u.email?.toLowerCase() === inv.email?.toLowerCase()))
+      .filter(inv => !users.some(u => u.email?.toLowerCase() === (inv.email || inv.id)?.toLowerCase()))
       .map(inv => ({ id: `invite_${inv.email}`, email: inv.email, displayName: inv.name ? `${inv.name}` : '이름 미상', phone: inv.phone, groupIDs: inv.groupIDs, isRegistered: false }))
   ];
+
+  // 정렬된 목록
+  const sortedList = [...combinedList].sort((a, b) => {
+    const { col, dir } = sortState;
+    if (!col) return 0;
+    let cmp = 0;
+    if (col === 'name') {
+      cmp = (a.displayName || '').localeCompare(b.displayName || '', 'ko');
+    } else if (col === 'email') {
+      cmp = (a.email || '').localeCompare(b.email || '', 'en');
+    } else if (col === 'cohort') {
+      const gA = groups.find(g => g.id === (a.groupIDs || [])[0])?.name || '';
+      const gB = groups.find(g => g.id === (b.groupIDs || [])[0])?.name || '';
+      cmp = gA.localeCompare(gB, 'ko');
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
 
   /* ------------------- 다중 선택 제어 ------------------- */
   const toggleCheck = (id) => {
@@ -91,10 +124,10 @@ const StudentManagement = () => {
   };
 
   const toggleCheckAll = () => {
-    if (checkedIds.length === combinedList.length && combinedList.length > 0) {
+    if (checkedIds.length === sortedList.length && sortedList.length > 0) {
       setCheckedIds([]);
     } else {
-      setCheckedIds(combinedList.map(item => item.id));
+      setCheckedIds(sortedList.map(item => item.id));
     }
   };
 
@@ -118,13 +151,18 @@ const StudentManagement = () => {
     setInvitePhone(userObj.phone || '');
     setInviteEmail(userObj.email || '');
     setInviteStudentType(userObj.studentType || 'beginner');
+    setInviteRole(userObj.role || 'student');
     setIsModalOpen(true);
   };
 
   const openBatchAssign = () => {
     if (checkedIds.length === 0) return;
     setAssignMode('batch');
-    setSelectedGroupIds([]); // 일괄 배정 시 기본적으로 선택 해제된 상태에서 덮어씌움
+    // 선택된 학생들이 공통으로 속한 그룹을 디폴트 체크
+    const selectedStudents = combinedList.filter(c => checkedIds.includes(c.id));
+    const allGroupIds = selectedStudents.flatMap(s => s.groupIDs || []);
+    const commonGroupIds = [...new Set(allGroupIds)];
+    setSelectedGroupIds(commonGroupIds);
     setIsModalOpen(true);
   };
 
@@ -145,6 +183,7 @@ const StudentManagement = () => {
     setInviteName('');
     setInvitePhone('');
     setInviteStudentType('beginner');
+    setInviteRole('student');
     setSelectedGroupIds([]);
     setOriginalGroupIds([]);
   };
@@ -178,6 +217,7 @@ const StudentManagement = () => {
             displayName: inviteName.trim(),
             phone: invitePhone.trim(),
             studentType: inviteStudentType,
+            role: inviteRole,
           });
         } else {
           // 미가입 유저: invited_students 문서 업데이트
@@ -210,51 +250,44 @@ const StudentManagement = () => {
       }
       else if (assignMode === 'invite') {
         if (!inviteEmail.trim() || !inviteName.trim()) {
-           alert("학생 이름과 이메일은 필수입니다.");
+           showToast('학생 이름과 이메일은 필수입니다.', 'warn');
            setSaving(false);
            return;
         }
         const lowerEmail = inviteEmail.trim().toLowerCase();
 
-        // 이미 가입한 유저인지 확인 (모든 유저 대상)
+        // 이미 가입한 유저인지 확인
         const q = query(collection(db, 'users'), where('email', '==', lowerEmail));
         const userSnap = await getDocs(q);
-
         if (!userSnap.empty) {
-          const userDoc = userSnap.docs[0];
-          const currentGroups = userDoc.data().groupIDs || [];
-          const mergedGroups = [...new Set([...currentGroups, ...selectedGroupIds])];
-
-          await updateDoc(doc(db, 'users', userDoc.id), {
-            groupIDs: mergedGroups,
-            displayName: inviteName.trim(),
-            phone: invitePhone.trim(),
-            studentType: inviteStudentType,
-          });
-        } else {
-          const inviteRef = doc(db, 'invited_students', lowerEmail);
-          const inviteSnap = await getDoc(inviteRef);
-          let finalGroups = selectedGroupIds;
-
-          if (inviteSnap.exists()) {
-            const currentInviteGroups = inviteSnap.data().groupIDs || [];
-            finalGroups = [...new Set([...currentInviteGroups, ...selectedGroupIds])];
-          }
-
-          await setDoc(inviteRef, {
-            email: lowerEmail,
-            name: inviteName.trim(),
-            phone: invitePhone.trim(),
-            groupIDs: finalGroups,
-            studentType: inviteStudentType,
-          }, { merge: true });
+          showToast('이미 가입된 학생입니다. 목록에서 수정해 주세요.', 'warn');
+          setSaving(false);
+          return;
         }
+
+        // 이미 사전등록된 이메일인지 확인
+        const inviteRef = doc(db, 'invited_students', lowerEmail);
+        const inviteSnap = await getDoc(inviteRef);
+        if (inviteSnap.exists()) {
+          showToast('이미 사전등록된 이메일입니다. 목록에서 수정해 주세요.', 'warn');
+          setSaving(false);
+          return;
+        }
+
+        // 신규 등록
+        await setDoc(inviteRef, {
+          email: lowerEmail,
+          name: inviteName.trim(),
+          phone: invitePhone.trim(),
+          groupIDs: selectedGroupIds,
+          studentType: inviteStudentType,
+        });
       }
-      alert('성공적으로 저장되었습니다!');
+      showToast('성공적으로 저장되었습니다!', 'success');
       closeAssignModal();
     } catch (err) {
       console.error('그룹 배정 실패:', err);
-      alert('저장 중 권한 문제나 네트워크 오류가 발생했습니다.');
+      showToast('저장 중 오류가 발생했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -287,7 +320,7 @@ const StudentManagement = () => {
       setCheckedIds(prev => prev.filter(id => !ids.includes(id)));
     } catch (err) {
       console.error('삭제 실패:', err);
-      alert('삭제 중 오류가 발생했습니다.');
+      showToast('삭제 중 오류가 발생했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -339,7 +372,7 @@ const StudentManagement = () => {
               </button>
               <button
                 onClick={() => handleDeleteStudents(checkedIds)}
-                className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white font-bold text-sm border border-red-500/20 rounded-lg transition-all flex items-center gap-2"
+                className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white font-bold text-sm border border-red-500/20 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -366,13 +399,19 @@ const StudentManagement = () => {
             </svg>
             신규 학생 등록
           </button>
+          <button
+            onClick={() => navigate('/admin?tab=dashboard')}
+            className="px-4 py-2.5 bg-white/[0.06] hover:bg-white/[0.12] text-white/70 font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5"
+          >
+            ↩ 뒤로가기
+          </button>
         </div>
       </div>
 
       <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden">
         {loading ? (
           <LucidLoader text="Initializing Students..." />
-        ) : combinedList.length === 0 ? (
+        ) : sortedList.length === 0 ? (
           <div className="p-8 text-center text-gray-500 text-sm">등록되거나 가입한 학생이 없습니다. 상단에서 학생 정보를 등록해주세요.</div>
         ) : (
           <div className="w-full overflow-x-auto text-left">
@@ -380,21 +419,41 @@ const StudentManagement = () => {
               <thead className="bg-[#111111] border-b border-white/5 text-[11px] font-bold uppercase tracking-wider text-gray-500">
                 <tr>
                   <th className="px-6 py-5 w-12 text-center">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="w-4 h-4 rounded border-white/10 bg-black/50 text-[#4ec9b0] focus:ring-[#4ec9b0] focus:ring-offset-0"
-                      checked={checkedIds.length === combinedList.length && combinedList.length > 0}
+                      checked={checkedIds.length === sortedList.length && sortedList.length > 0}
                       onChange={toggleCheckAll}
                     />
                   </th>
-                  <th className="px-6 py-5 font-bold">학생 성명</th>
-                  <th className="px-6 py-5 font-bold">로그인 이메일</th>
-                  <th className="px-6 py-5 font-bold">소속 그룹(반)</th>
+                  {[
+                    { col: 'name',   label: '학생 성명' },
+                    { col: 'email',  label: '로그인 이메일' },
+                    { col: 'cohort', label: '소속 그룹(반)' },
+                  ].map(({ col, label }) => (
+                    <th
+                      key={col}
+                      className="px-6 py-5 font-bold cursor-pointer select-none group"
+                      onClick={() => handleColSort(col)}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className={sortState.col === col ? 'text-white' : ''}>{label}</span>
+                        <span className="flex flex-col leading-none gap-[1px]">
+                          <svg className={`w-2.5 h-2.5 transition-colors ${sortState.col === col && sortState.dir === 'asc' ? 'text-[#4ec9b0]' : 'text-gray-600 group-hover:text-gray-400'}`} viewBox="0 0 10 6" fill="currentColor">
+                            <path d="M5 0L10 6H0z"/>
+                          </svg>
+                          <svg className={`w-2.5 h-2.5 transition-colors ${sortState.col === col && sortState.dir === 'desc' ? 'text-[#4ec9b0]' : 'text-gray-600 group-hover:text-gray-400'}`} viewBox="0 0 10 6" fill="currentColor">
+                            <path d="M5 6L0 0H10z"/>
+                          </svg>
+                        </span>
+                      </div>
+                    </th>
+                  ))}
                   <th className="px-6 py-5 font-bold text-right">설정</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-sm text-gray-300">
-                {combinedList.map(u => {
+                {sortedList.map(u => {
                   const isUnassigned = !u.groupIDs || u.groupIDs.length === 0;
                   const isChecked = checkedIds.includes(u.id);
 
@@ -415,13 +474,13 @@ const StudentManagement = () => {
                              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-[#4ec9b0]/10 text-[#4ec9b0] border border-[#4ec9b0]/20">사전등록</span>
                           )}
                           {u.studentType === 'major' && (
-                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">🎓 전공</span>
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(197,120,20,0.25)', color: '#fde68a', border: '1px solid rgba(245,158,11,0.4)' }}>★ 전공</span>
                           )}
                           {u.studentType === 'experienced' && (
-                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">⚡ 경험자</span>
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(37,99,235,0.25)', color: '#bfdbfe', border: '1px solid rgba(37,99,235,0.4)' }}>⚡ 경험자</span>
                           )}
                           {(!u.studentType || u.studentType === 'beginner') && (
-                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-white/[0.04] text-gray-500 border border-white/10">일반</span>
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black" style={{ background: 'rgba(156,163,175,0.15)', color: '#f3f4f6', border: '1px solid rgba(156,163,175,0.2)' }}>일반</span>
                           )}
                         </div>
                       </td>
@@ -551,7 +610,7 @@ const StudentManagement = () => {
                     </div>
                   )}
                   <div>
-                    <label className="block text-sm font-bold text-gray-300 mb-1.5">연락처 (선택)</label>
+                    <label className="block text-sm font-bold text-gray-300 mb-1.5">연락처</label>
                     <input
                       type="text"
                       value={invitePhone}
@@ -562,16 +621,31 @@ const StudentManagement = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-gray-300 mb-1.5">학생 유형</label>
-                    <select
+                    <CustomSelect
                       value={inviteStudentType}
-                      onChange={(e) => setInviteStudentType(e.target.value)}
-                      className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-theme-primary focus:ring-1 focus:ring-theme-primary transition"
-                    >
-                      <option value="beginner">처음 — 비전공 입문자</option>
-                      <option value="experienced">⚡ 경험자 — 비전공 유경험자</option>
-                      <option value="major">🎓 전공자 — CS/개발 전공</option>
-                    </select>
+                      onChange={setInviteStudentType}
+                      options={[
+                        { value: 'beginner',    label: '일반 — 비전공 입문자' },
+                        { value: 'experienced', label: '⚡ 경험자 — 비전공 유경험자' },
+                        { value: 'major',       label: '★ 전공 — CS/개발 전공' },
+                      ]}
+                    />
                   </div>
+                  {assignMode === 'single' && selectedUser?.isRegistered && (
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-purple-500/5 border border-purple-500/20">
+                      <div>
+                        <p className="text-sm font-bold text-gray-300">관리자 권한</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">활성화 시 관리자 페이지에 접근 가능</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setInviteRole(inviteRole === 'admin' ? 'student' : 'admin')}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${inviteRole === 'admin' ? 'bg-purple-500' : 'bg-gray-700'}`}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${inviteRole === 'admin' ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -646,6 +720,8 @@ const StudentManagement = () => {
         onComplete={() => setShowExcelModal(false)}
       />
     )}
+
+    <Toast />
     </>
   );
 };
