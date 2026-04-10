@@ -39,7 +39,7 @@ const FifaCard = ({ student }) => {
   const theme   = getFifaTheme(level);
   const streak  = student.streak || 0;
   const dailyXP = student.dailyXP || 0;
-  const weeklyRoutine = student.weeklyRoutineClear || 0;
+  const weeklyQuest = student.weeklyQuestClear || student.weeklyRoutineClear || 0;
   const initials = (student.displayName || '?')[0].toUpperCase();
 
   return (
@@ -56,45 +56,53 @@ const FifaCard = ({ student }) => {
       <div className="absolute inset-0 rounded-2xl pointer-events-none"
         style={{ background: `radial-gradient(ellipse at 30% 20%, ${theme.foil} 0%, transparent 60%)` }} />
 
-      {/* 상단: 레벨 + 티어 */}
-      <div className="absolute top-3 left-3 flex flex-col items-center leading-none">
+      {/* 상단 좌: studentType 뱃지 */}
+      <div className="absolute top-3 left-2 flex flex-col items-start">
+        {student.studentType === 'major' && (
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
+            style={{ background: 'rgba(168,85,247,0.25)', color: '#d8b4fe', border: '1px solid rgba(168,85,247,0.4)' }}>
+            🎓 전공
+          </span>
+        )}
+        {student.studentType === 'experienced' && (
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
+            style={{ background: 'rgba(250,204,21,0.2)', color: '#fde68a', border: '1px solid rgba(250,204,21,0.4)' }}>
+            ⚡ 경험자
+          </span>
+        )}
+        {(!student.studentType || student.studentType === 'beginner') && (
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
+            style={{ background: 'rgba(255,255,255,0.06)', color: '#9ca3af', border: '1px solid rgba(255,255,255,0.1)' }}>
+            일반
+          </span>
+        )}
+      </div>
+
+      {/* 상단 우: 레벨 + 활성도 점 인라인 */}
+      <div className="absolute top-3 right-2 flex items-end gap-1 leading-none">
+        <div className={`w-2.5 h-2.5 rounded-full mb-0.5 ${activity.label === '오늘' ? 'animate-pulse' : ''}`}
+          style={{ background: activity.color, boxShadow: `0 0 8px ${activity.color}` }} />
         <span className="text-2xl font-black drop-shadow-lg" style={{ color: theme.shine, textShadow: `0 0 12px ${theme.shine}` }}>
           {level}
         </span>
-        <span className="text-[8px] font-black tracking-wider mt-0.5" style={{ color: theme.shine, opacity: 0.85 }}>
-          {badge.label.toUpperCase()}
-        </span>
       </div>
 
-      {/* 우상단: 활성도 점 + studentType 뱃지 */}
-      <div className="absolute top-3 right-2 flex flex-col items-end gap-1">
-        <div className={`w-2 h-2 rounded-full ${activity.label === '오늘' ? 'animate-pulse' : ''}`}
-          style={{ background: activity.color, boxShadow: `0 0 6px ${activity.color}` }} />
-        {student.studentType === 'major' && (
-          <span className="text-[7px] font-black text-purple-300 leading-none" style={{ textShadow: '0 0 4px rgba(168,85,247,0.8)' }}>🎓</span>
-        )}
-        {student.studentType === 'experienced' && (
-          <span className="text-[7px] font-black text-yellow-300 leading-none" style={{ textShadow: '0 0 4px rgba(250,204,21,0.8)' }}>⚡</span>
-        )}
-        {(!student.studentType || student.studentType === 'beginner') && (
-          <span className="text-[7px] font-black text-gray-400 leading-none">일반</span>
-        )}
-      </div>
-
-      {/* 아바타 */}
-      <div className="absolute inset-0 flex items-center justify-center" style={{ top: '15%', bottom: '32%' }}>
-        {student.photoBase64 ? (
-          <img src={student.photoBase64} alt={student.displayName}
-            className="w-full h-full object-cover object-top"
-            style={{ maskImage: 'linear-gradient(to bottom, black 60%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 60%, transparent 100%)' }} />
-        ) : (
-          <div className="flex items-center justify-center w-16 h-16 rounded-full"
-            style={{ background: `radial-gradient(circle, ${theme.shine}30, ${theme.shine}10)`, border: `2px solid ${theme.shine}40` }}>
-            <span className="text-4xl font-black" style={{ color: theme.shine, textShadow: `0 0 20px ${theme.shine}` }}>
-              {initials}
-            </span>
-          </div>
-        )}
+      {/* 아바타 — 원형 */}
+      <div className="absolute inset-0 flex items-center justify-center" style={{ top: '12%', bottom: '34%' }}>
+        <div className="w-16 h-16 rounded-full overflow-hidden flex items-center justify-center shrink-0"
+          style={{ border: `2.5px solid ${theme.shine}80`, boxShadow: `0 0 14px ${theme.shine}50` }}>
+          {student.photoBase64 ? (
+            <img src={student.photoBase64} alt={student.displayName}
+              className="w-full h-full object-cover object-center" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center"
+              style={{ background: `radial-gradient(circle, ${theme.shine}30, ${theme.shine}10)` }}>
+              <span className="text-2xl font-black" style={{ color: theme.shine, textShadow: `0 0 12px ${theme.shine}` }}>
+                {initials}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 하단 패널 */}
@@ -107,11 +115,11 @@ const FifaCard = ({ student }) => {
           {(student.displayName || '이름 없음').toUpperCase()}
         </p>
 
-        {/* 루틴 진행 바 (주간) */}
+        {/* 퀘스트 진행 바 (주간) */}
         <div className="flex items-center gap-1 mb-1.5 px-0.5">
           {[1,2,3,4,5].map(i => (
             <div key={i} className="flex-1 h-0.5 rounded-full" style={{
-              background: i <= weeklyRoutine ? theme.shine : `${theme.shine}20`
+              background: i <= weeklyQuest ? theme.shine : `${theme.shine}20`
             }} />
           ))}
         </div>
@@ -124,7 +132,7 @@ const FifaCard = ({ student }) => {
           {[
             { val: streak,       label: '연속' },
             { val: dailyXP,      label: '오늘XP' },
-            { val: weeklyRoutine + '/5', label: '루틴' },
+            { val: weeklyQuest + '/5', label: '퀘스트' },
           ].map(({ val, label }) => (
             <div key={label}>
               <div className="text-[11px] font-black leading-none" style={{ color: theme.shine }}>{val}</div>
@@ -302,7 +310,7 @@ const StudentDashboard = () => {
           <span>🎓 전공</span>
           <span>⚡ 경험자</span>
           <span>일반</span>
-          <span className="text-gray-700">루틴 바 = 주간 5일</span>
+          <span className="text-gray-700">퀘스트 바 = 주간 5일</span>
         </div>
       </div>
 

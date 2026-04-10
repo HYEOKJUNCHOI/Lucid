@@ -5,13 +5,13 @@ import { db } from '../../lib/firebase';
 import ChatView from './ChatView';
 import ResultView from './ResultView';
 import LevelUpView from './LevelUpView';
-import RoutineView from './RoutineView';
+import QuestView from './QuestView';
 import PlacementView from './PlacementView';
 import DiagnosisView from './DiagnosisView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
-import { calcLevel, xpToNextLevel, LEVEL_TABLE, getDailyXP, claimLoginXP, checkStreak, getStreakFreezes, isWeekend, getRewardStatus, DAILY_XP_CAP, generateFreeStudyCode, syncVisitedFile, loadProgressFromFirestore, syncUserStatus } from '../../services/learningService';
-import { onRoutineComplete } from '../../services/learningService';
+import { calcLevel, xpToNextLevel, LEVEL_TABLE, getDailyXP, claimLoginXP, checkStreak, getStreakFreezes, isWeekend, getRewardStatus, DAILY_XP_CAP, generateFreeStudyCode, syncVisitedFile, loadProgressFromFirestore, syncUserStatus, getBeanCount } from '../../services/learningService';
+import { onQuestComplete } from '../../services/learningService';
 import { getApiKey } from '../../lib/apiKey';
 
 
@@ -44,16 +44,17 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [mode, setMode] = useState(() => {
     const p = window.location.pathname;
     if (p === '/home/chapter') return 'chapter';
-    if (p === '/home/routine') return 'routine';
+    if (p === '/home/quest') return 'quest';
     if (p === '/home/levelup') return 'levelup';
     return null;
   });
   const [sidebarMini, setSidebarMini] = useState(false); // 사이드바 미니모드
   const [homeConfirm, setHomeConfirm] = useState(false); // 홈 이동 확인 모달
-  const [routineDoneModal, setRoutineDoneModal] = useState(null); // { xp, count }
+  const [questDoneModal, setQuestDoneModal] = useState(null); // { xp, count }
 
-  const [dailyXP, setDailyXP] = useState({ total: 0, routine: 0, levelup: 0, login: 0 });
+  const [dailyXP, setDailyXP] = useState({ total: 0, quest: 0, levelup: 0, login: 0 });
   const [freezeCount, setFreezeCount] = useState(0);
+  const [beanCount, setBeanCount] = useState(() => getBeanCount());
   const [loginXPClaimed, setLoginXPClaimed] = useState(false);
 
   // 연속 출석 + 접속 XP + 얼리기 (하루에 한 번만)
@@ -91,7 +92,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   // mode 변경 시 URL 동기화
   useEffect(() => {
-    const pathMap = { chapter: '/home/chapter', routine: '/home/routine', levelup: '/home/levelup' };
+    const pathMap = { chapter: '/home/chapter', quest: '/home/quest', levelup: '/home/levelup' };
     const target = pathMap[mode] || '/home';
     if (location.pathname !== target) navigate(target, { replace: true });
   }, [mode]);
@@ -617,7 +618,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
             <div className="flex flex-col gap-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-[9px] mt-px">📅</span>
-                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}>주말 토·일 모두<br /><span style={{ color: 'rgba(255,255,255,0.7)' }}>루틴 완료</span> 시 1개</p>
+                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}>주말 토·일 모두<br /><span style={{ color: 'rgba(255,255,255,0.7)' }}>퀘스트 완료</span> 시 1개</p>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[9px] mt-px">🔥</span>
@@ -752,6 +753,11 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   <div className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.06] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition" title={`얼리기 ${freezeCount}개`}>
                     <span className="text-[15px] font-black text-[#569cd6] leading-none">{freezeCount}</span>
                     <span className="text-[8px] font-bold text-gray-500">얼리기</span>
+                  </div>
+                  {/* 원두 */}
+                  <div className="w-12 h-12 rounded-xl bg-[#f59e0b]/[0.06] border border-[#f59e0b]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#f59e0b]/40 transition" title={`원두 ${beanCount}개`}>
+                    <span className="text-[15px] font-black text-[#f59e0b] leading-none">{beanCount}</span>
+                    <span className="text-[8px] font-bold text-gray-500">원두</span>
                   </div>
                   {/* D-day */}
                   <div className="w-12 h-12 rounded-xl bg-[#ce9178]/[0.06] border border-[#ce9178]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#ce9178]/40 transition" title={`수료까지 D-${daysLeft}`}>
@@ -914,27 +920,35 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     </div>
                     <div className="flex justify-between text-[8px] text-gray-600 mt-1 px-0.5">
                       <span>접속 {dailyXP.login > 0 ? '✓' : '-'}</span>
-                      <span>루틴 {dailyXP.routine}/{200}</span>
+                      <span>퀘스트 {dailyXP.quest}/{200}</span>
                       <span>문제 {dailyXP.levelup}/{250}</span>
                     </div>
                   </div>
 
-                  {/* 보상 계단 */}
+                  {/* 얼리기 + 원두 */}
                   <div className="p-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                    <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">보상 현황</p>
-                    {rewards.map((r, i) => (
-                      <div key={i} className="flex items-center gap-2 mb-1 last:mb-0">
-                        <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] shrink-0 ${r.achieved ? 'bg-[#4ec9b0]/20 text-[#4ec9b0]' : 'bg-white/[0.04] text-gray-600'}`}>
-                          {r.achieved ? '✓' : ''}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                            <div className="h-full bg-[#4ec9b0] rounded-full transition-all" style={{ width: `${r.progress}%` }} />
-                          </div>
-                        </div>
-                        <span className="text-[13px] shrink-0">{r.reward}</span>
+                    <div className="flex items-center gap-2">
+                      {/* 얼리기 */}
+                      <div className="flex-1 flex flex-col items-center gap-0.5 py-1">
+                        <span className="text-base leading-none">🧊</span>
+                        <span className="text-sm font-black text-[#569cd6] leading-none">{freezeCount}</span>
+                        <span className="text-[8px] font-semibold text-gray-500">얼리기</span>
                       </div>
-                    ))}
+                      <div className="w-px h-8 bg-white/[0.06]" />
+                      {/* 원두 */}
+                      <div className="flex-1 flex flex-col items-center gap-0.5 py-1">
+                        <span className="text-base leading-none">🫘</span>
+                        <span className="text-sm font-black text-[#f59e0b] leading-none">{beanCount}</span>
+                        <span className="text-[8px] font-semibold text-gray-500">원두</span>
+                      </div>
+                    </div>
+                    {beanCount > 0 && (
+                      <div className="flex gap-0.5 mt-1.5 justify-center">
+                        {[...Array(5)].map((_, i) => (
+                          <div key={i} className={`h-0.5 flex-1 rounded-full ${i < beanCount ? 'bg-[#f59e0b]/70' : 'bg-white/[0.06]'}`} />
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                 </>
@@ -1056,9 +1070,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
               </div>
             </div>
 
-          ) : mode === 'routine' ? (
-            // ─── 오늘의 루틴 ─────────────────────────────────────
-            <RoutineView
+          ) : mode === 'quest' ? (
+            // ─── 오늘의 퀘스트 ────────────────────────────────────
+            <QuestView
               teacher={teacher}
               repo={repo}
               chapters={chapters}
@@ -1066,7 +1080,16 @@ const StudentPage = ({ user, userData, onLogout }) => {
               chaptersLoading={chaptersLoading}
               visitedFiles={visitedFiles}
               userData={userData}
-              onBack={(completed) => { setMode(null); setStep(0); if (completed) setRoutineDoneModal(completed); }}
+              onBack={(completed) => {
+                setMode(null); setStep(0);
+                setBeanCount(getBeanCount()); // 원두 지갑 동기화
+                if (completed) {
+                  // onQuestComplete()가 이미 localStorage streak을 +1 했으므로 즉시 반영
+                  const newStreak = parseInt(localStorage.getItem('lucid_streak') || '0');
+                  setStreak(newStreak);
+                  setQuestDoneModal(completed);
+                }
+              }}
               onFileSelect={(file, ch) => { handleFileSelect(file, ch); setMode('chapter'); }}
             />
 
@@ -1480,7 +1503,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   <span className="text-xl">⚠️</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-[#f59e0b]">내일이 마지막 기회예요</p>
-                    <p className="text-[11px] text-gray-400">오늘 루틴을 안 하면 {streak}일 연속이 사라져요. 지금 바로 시작하세요!</p>
+                    <p className="text-[11px] text-gray-400">오늘 퀘스트를 안 하면 {streak}일 연속이 사라져요. 지금 바로 시작하세요!</p>
                   </div>
                 </div>
               )}
@@ -1488,8 +1511,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 <div className="w-full max-w-2xl mb-4 px-4 py-3 rounded-xl bg-[#ef4444]/10 border border-[#ef4444]/30 flex items-center gap-3">
                   <span className="text-xl">💔</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-[#ef4444]">연속 루틴이 초기화됐어요</p>
-                    <p className="text-[11px] text-gray-400">루틴을 3일 연속 완료하면 기존 스트릭을 복구할 수 있어요!</p>
+                    <p className="text-sm font-bold text-[#ef4444]">연속 퀘스트가 초기화됐어요</p>
+                    <p className="text-[11px] text-gray-400">퀘스트를 3일 연속 완료하면 기존 스트릭을 복구할 수 있어요!</p>
                   </div>
                 </div>
               )}
@@ -1498,7 +1521,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   <span className="text-xl">🔧</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-[#a855f7]">스트릭 복구 퀘스트 진행 중</p>
-                    <p className="text-[11px] text-gray-400">루틴 3연속 완료 시 복구! 현재 <span className="text-[#a855f7] font-bold">{repairCount}/3</span> 완료</p>
+                    <p className="text-[11px] text-gray-400">퀘스트 3연속 완료 시 복구! 현재 <span className="text-[#a855f7] font-bold">{repairCount}/3</span> 완료</p>
                   </div>
                   <div className="flex gap-1 shrink-0">
                     {[0,1,2].map(i => (
@@ -1516,16 +1539,16 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 <span className="text-[11px] text-gray-300 font-semibold">눌러서 시작해보세요</span>
               </div>
 
-              {/* 상단 2컬럼: 루틴 + 자유 예습 */}
+              {/* 상단 2컬럼: 퀘스트 + 자유 예습 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mb-4">
-                {/* 오늘의 루틴 카드 */}
+                {/* 오늘의 퀘스트 카드 */}
                 <button
                   onClick={async () => {
                     if (!repo && classData.length > 0) {
                       const firstClass = classData.find(c => c.repos && c.repos.length > 0);
                       if (firstClass) await handleRepoSelect(firstClass.teacher, firstClass.repos[0]);
                     }
-                    setMode('routine'); setStatusPop(true);
+                    setMode('quest'); setStatusPop(true);
                   }}
                   className="group relative bg-gradient-to-br from-[#f59e0b]/[0.12] to-[#f97316]/[0.06] border border-[#f59e0b]/30 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(245,158,11,0.10)] hover:-translate-y-2 hover:border-[#f59e0b]/60 hover:from-[#f59e0b]/[0.20] hover:to-[#f97316]/[0.10] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(245,158,11,0.28)]"
                 >
@@ -1536,7 +1559,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       </svg>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold mb-1" style={{ color: '#f59e0b' }}>오늘의 루틴</h3>
+                      <h3 className="text-base font-bold mb-1" style={{ color: '#f59e0b' }}>오늘의 퀘스트</h3>
                       <p className="text-xs text-gray-400">오늘 배운 코드를 한 바퀴 훑어보세요.</p>
                     </div>
                   </div>
@@ -1565,7 +1588,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       </svg>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold mb-1" style={{ color: '#38bdf8' }}>자유 예습</h3>
+                      <h3 className="text-base font-bold mb-1" style={{ color: '#38bdf8' }}>자유 학습</h3>
                       <p className="text-xs text-gray-400">주제를 입력하면 AI가 코드를 만들어줘요.</p>
                     </div>
                   </div>
@@ -1588,8 +1611,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold mb-2" style={{ color: '#4ec9b0' }}>챕터별 학습 (복습)</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">강사의 코드를 자유롭게 탐색합니다. 예전 코드도 다시 볼 수 있어요.</p>
+                  <h3 className="text-lg font-bold mb-2" style={{ color: '#4ec9b0' }}>챕터별 학습</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">강사의 코드를 자유롭게 탐색합니다.<br/>예전 코드도 다시 볼 수 있어요.</p>
                   <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#4ec9b0] font-bold group-hover:gap-2.5 transition-all duration-200">
                     <span>시작하기</span>
                     <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -1607,8 +1630,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold mb-2" style={{ color: '#a855f7' }}>레벨업 문제지옥</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">과목별 문제를 풀며 티어를 올립니다. 틀릴수록 강해집니다.</p>
+                  <h3 className="text-lg font-bold mb-2" style={{ color: '#a855f7' }}>문제지옥</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed">과목별 문제를 풀며 티어를 올립니다.</p>
+                  <p className="text-[11px] text-gray-600 mt-2">Java, React, Python, GitHub... 뭐든 OK</p>
                   <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#a855f7] font-bold group-hover:gap-2.5 transition-all duration-200">
                     <span>도전하기</span>
                     <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
@@ -1654,25 +1678,28 @@ const StudentPage = ({ user, userData, onLogout }) => {
         </div>
       )}
 
-      {/* 루틴 완료 축하 모달 */}
-      {routineDoneModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in-up" onClick={() => setRoutineDoneModal(null)}>
+      {/* 퀘스트 완료 축하 모달 */}
+      {questDoneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in-up" onClick={() => setQuestDoneModal(null)}>
           <div className="bg-[#1a1a1a] border border-[#f59e0b]/20 rounded-2xl p-7 w-[360px] shadow-[0_16px_64px_rgba(245,158,11,0.15)] text-center" onClick={e => e.stopPropagation()}>
             <div className="text-4xl mb-3">🎉</div>
-            <h3 className="text-xl font-black text-white mb-1">루틴 완료!</h3>
-            <p className="text-sm text-gray-400 mb-5">오늘의 루틴을 마쳤어요. 수고했어요!</p>
+            <h3 className="text-xl font-black text-white mb-1">퀘스트 완료!</h3>
+            <p className="text-sm text-gray-400 mb-5">오늘의 퀘스트를 마쳤어요. 수고했어요!</p>
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div className="p-3 rounded-xl bg-[#f59e0b]/[0.08] border border-[#f59e0b]/15">
-                <p className="text-2xl font-black text-[#f59e0b]">+{routineDoneModal.xp || 0}</p>
+                {questDoneModal.xp > 0
+                  ? <p className="text-2xl font-black text-[#f59e0b]">+{questDoneModal.xp}</p>
+                  : <p className="text-sm font-bold text-gray-500">퀴즈를 맞춰야<br/>XP를 받아요!</p>
+                }
                 <p className="text-[10px] text-gray-500 font-semibold mt-0.5">XP 획득</p>
               </div>
               <div className="p-3 rounded-xl bg-[#c586c0]/[0.08] border border-[#c586c0]/15">
                 <p className="text-2xl font-black text-[#c586c0]">{streak}</p>
-                <p className="text-[10px] text-gray-500 font-semibold mt-0.5">연속 루틴일</p>
+                <p className="text-[10px] text-gray-500 font-semibold mt-0.5">연속 퀘스트일</p>
               </div>
             </div>
             <button
-              onClick={() => setRoutineDoneModal(null)}
+              onClick={() => setQuestDoneModal(null)}
               className="w-full py-3 rounded-xl text-sm font-bold text-[#f59e0b] bg-[#f59e0b]/10 border border-[#f59e0b]/25 hover:bg-[#f59e0b]/20 transition-all"
             >
               홈으로 돌아가기

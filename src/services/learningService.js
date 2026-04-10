@@ -213,7 +213,7 @@ export const getWeeklyTop3 = async () => {
 // ─── 하루 XP 상한 ─────────────────────────────────
 const DAILY_XP_CAP = 500;
 const DAILY_XP_LOGIN = 50;       // 접속 보상
-const DAILY_XP_ROUTINE = 200;    // 루틴 상한
+const DAILY_XP_QUEST = 200;      // 퀘스트 상한
 const DAILY_XP_LEVELUP = 250;    // 문제지옥 상한
 
 /** 오늘의 XP 키 (날짜별) */
@@ -226,11 +226,11 @@ export const getDailyXP = () => {
     const data = JSON.parse(localStorage.getItem(dailyXPKey()) || '{}');
     return {
       total: data.total || 0,
-      routine: data.routine || 0,
+      quest: data.quest || 0,
       levelup: data.levelup || 0,
       login: data.login || 0,
     };
-  } catch { return { total: 0, routine: 0, levelup: 0, login: 0 }; }
+  } catch { return { total: 0, quest: 0, levelup: 0, login: 0 }; }
 };
 
 /** 연속 출석 배율 (7일: ×1.2, 30일: ×1.5) */
@@ -248,12 +248,12 @@ export const addDailyXP = (amount, source = 'levelup', applyStreakBonus = false)
   const daily = getDailyXP();
 
   // 소스별 상한 체크
-  if (source === 'routine' && daily.routine >= DAILY_XP_ROUTINE) return 0;
+  if (source === 'quest' && daily.quest >= DAILY_XP_QUEST) return 0;
   if (source === 'levelup' && daily.levelup >= DAILY_XP_LEVELUP) return 0;
   if (daily.total >= DAILY_XP_CAP) return 0;
 
   // 실제 추가 가능한 양 계산
-  const sourceLimit = source === 'routine' ? DAILY_XP_ROUTINE - daily.routine :
+  const sourceLimit = source === 'quest' ? DAILY_XP_QUEST - daily.quest :
                       source === 'levelup' ? DAILY_XP_LEVELUP - daily.levelup : amount;
   const totalLimit = DAILY_XP_CAP - daily.total;
   const actual = Math.min(amount, sourceLimit, totalLimit);
@@ -294,11 +294,11 @@ export const claimLoginXP = async (uid) => {
 // 규칙:
 //   결석 1일 → 얼리기 자동 소모. 없으면 암묵적 패스 (grace1, 조용히)
 //   결석 2일 → 암묵적 패스 + "내일이 마지막 기회" 경고 (grace2)
-//   결석 3일+ → 스트릭 0 초기화 + 복구 퀘스트 (루틴 3연속 완료 시 복구)
+//   결석 3일+ → 스트릭 0 초기화 + 복구 퀘스트 (퀘스트 3연속 완료 시 복구)
 //
 // localStorage keys:
 //   lucid_streak              : 현재 연속일
-//   lucid_last_routine        : 마지막 루틴 완료일 (YYYY-MM-DD)
+//   lucid_last_quest          : 마지막 퀘스트 완료일 (YYYY-MM-DD)
 //   lucid_last_visit          : 마지막 접속일 (접속 보상용)
 //   lucid_streak_freeze       : 얼리기 개수
 //   lucid_repair_count        : 복구 퀘스트 진행 횟수 (-1=비활성, 0~2=진행중)
@@ -306,7 +306,7 @@ export const claimLoginXP = async (uid) => {
 // ──────────────────────────────────────────────────────
 
 const STREAK_KEY = 'lucid_streak';
-const LAST_ROUTINE_KEY = 'lucid_last_routine';
+const LAST_QUEST_KEY = 'lucid_last_quest';
 const LAST_VISIT_KEY = 'lucid_last_visit';
 const FREEZE_KEY = 'lucid_streak_freeze';
 const REPAIR_KEY = 'lucid_repair_count';
@@ -334,7 +334,7 @@ export const addStreakFreeze = () => {
  */
 export const checkStreak = () => {
   const today = todayStr();
-  const lastRoutine = localStorage.getItem(LAST_ROUTINE_KEY);
+  const lastQuest = localStorage.getItem(LAST_QUEST_KEY);
   const saved = parseInt(localStorage.getItem(STREAK_KEY) || '0');
   const repairCount = parseInt(localStorage.getItem(REPAIR_KEY) || '-1');
 
@@ -343,15 +343,15 @@ export const checkStreak = () => {
     return { streak: saved, status: 'repair', usedFreeze: false, repairCount };
   }
 
-  // 첫 접속이거나 오늘 이미 루틴 완료
-  if (!lastRoutine || lastRoutine === today) {
+  // 첫 접속이거나 오늘 이미 퀘스트 완료
+  if (!lastQuest || lastQuest === today) {
     return { streak: saved, status: 'ok', usedFreeze: false, repairCount: -1 };
   }
 
-  const gap = daysBetween(lastRoutine, today);
+  const gap = daysBetween(lastQuest, today);
 
   if (gap === 1) {
-    // 어제 루틴 함 → 정상 대기 (루틴 완료 시 +1)
+    // 어제 퀘스트 함 → 정상 대기 (퀘스트 완료 시 +1)
     return { streak: saved, status: 'ok', usedFreeze: false, repairCount: -1 };
   }
 
@@ -378,20 +378,20 @@ export const checkStreak = () => {
 };
 
 /**
- * 루틴 완료 시 호출 — 스트릭 +1 또는 복구 퀘스트 진행
+ * 퀘스트 완료 시 호출 — 스트릭 +1 또는 복구 퀘스트 진행
  * 반환: { streak, repairedStreak, gotFreeze }
  *   repairedStreak: 복구 완료 시 복구된 스트릭값, 아니면 null
  */
-export const onRoutineComplete = () => {
+export const onQuestComplete = () => {
   const today = todayStr();
-  const lastRoutine = localStorage.getItem(LAST_ROUTINE_KEY);
+  const lastQuest = localStorage.getItem(LAST_QUEST_KEY);
 
   // 오늘 이미 카운트됨
-  if (lastRoutine === today) {
+  if (lastQuest === today) {
     return { streak: parseInt(localStorage.getItem(STREAK_KEY) || '0'), repairedStreak: null, gotFreeze: false };
   }
 
-  localStorage.setItem(LAST_ROUTINE_KEY, today);
+  localStorage.setItem(LAST_QUEST_KEY, today);
 
   const repairCount = parseInt(localStorage.getItem(REPAIR_KEY) || '-1');
 
@@ -416,8 +416,8 @@ export const onRoutineComplete = () => {
   const saved = parseInt(localStorage.getItem(STREAK_KEY) || '0');
   const newStreak = saved + 1;
   localStorage.setItem(STREAK_KEY, String(newStreak));
-  // 오늘 루틴 완료 마킹 (대시보드 weeklyRoutineClear 계산용)
-  localStorage.setItem(`lucid_routine_done_${today}`, 'true');
+  // 오늘 퀘스트 완료 마킹 (대시보드 weeklyQuestClear 계산용)
+  localStorage.setItem(`lucid_quest_done_${today}`, 'true');
   const gotWeekendFreeze = checkWeekendBonus();
 
   // 14일 연속 달성마다 얼리기 1개 추가
@@ -523,25 +523,25 @@ export const loadProgressFromFirestore = async (uid) => {
   }
 };
 
-// ─── 루틴 반복 드랍률 ────────────────────────────────
+// ─── 퀘스트 반복 드랍률 ─────────────────────────────
 // 1회차: 100% / 2회차: 50% / 3회차+: 10 XP 고정
-const routineRepeatKey = (filePath) =>
-  `lucid_routine_repeat_${new Date().toISOString().slice(0,10)}_${filePath.replace(/[^a-zA-Z0-9]/g,'_')}`;
+const questRepeatKey = (filePath) =>
+  `lucid_quest_repeat_${new Date().toISOString().slice(0,10)}_${filePath.replace(/[^a-zA-Z0-9]/g,'_')}`;
 
-/** 해당 파일 오늘 몇 번째 루틴인지 반환 (1부터 시작) */
-export const getRoutineRepeatCount = (filePath) => {
-  return parseInt(localStorage.getItem(routineRepeatKey(filePath)) || '0') + 1;
+/** 해당 파일 오늘 몇 번째 퀘스트인지 반환 (1부터 시작) */
+export const getQuestRepeatCount = (filePath) => {
+  return parseInt(localStorage.getItem(questRepeatKey(filePath)) || '0') + 1;
 };
 
-/** 루틴 완료 시 반복 횟수 기록 */
-export const recordRoutineRepeat = (filePath) => {
-  const key = routineRepeatKey(filePath);
+/** 퀘스트 완료 시 반복 횟수 기록 */
+export const recordQuestRepeat = (filePath) => {
+  const key = questRepeatKey(filePath);
   const cur = parseInt(localStorage.getItem(key) || '0');
   localStorage.setItem(key, String(cur + 1));
 };
 
 /** 반복 횟수에 따른 XP 배율 (1회차:1.0, 2회차:0.5, 3회차+: 고정 10XP) */
-export const getRoutineDropRate = (repeatCount) => {
+export const getQuestDropRate = (repeatCount) => {
   if (repeatCount <= 1) return { multiplier: 1.0, fixed: null };
   if (repeatCount === 2) return { multiplier: 0.5, fixed: null };
   return { multiplier: 0, fixed: 10 }; // 3회차+: 10 XP 고정
@@ -587,6 +587,43 @@ export const generateFreeStudyCode = async (topic, apiKey) => {
 
 export { XP_WEIGHTS, LEVEL_TABLE, DAILY_XP_CAP, REWARD_TIERS };
 
+// ─── 원두 지갑 ──────────────────────────────────────
+const BEAN_KEY = 'lucid_beans';
+const BEAN_FIRST_KEY = 'lucid_beans_first_claimed';
+
+/** 현재 보유 원두 수 */
+export const getBeanCount = () => parseInt(localStorage.getItem(BEAN_KEY) || '0');
+
+/** 원두 추가 후 새 개수 반환 */
+export const addBean = () => {
+  const next = getBeanCount() + 1;
+  localStorage.setItem(BEAN_KEY, String(next));
+  return next;
+};
+
+/** 첫 원두 획득 여부 */
+export const isFirstBean = () => !localStorage.getItem(BEAN_FIRST_KEY);
+
+/** 첫 원두 마킹 */
+export const markFirstBean = () => localStorage.setItem(BEAN_FIRST_KEY, 'true');
+
+/**
+ * 퀘스트 완료 시 원두 드랍 판정
+ *   첫 퀘스트 완료 → 확정 드랍 1개
+ *   이후 → 23% 확률 드랍
+ * 반환: { dropped: boolean, isFirst: boolean, beanCount: number }
+ */
+export const rollBeanDrop = () => {
+  const first = isFirstBean();
+  const dropped = first || Math.random() < 0.23;
+  if (dropped) {
+    markFirstBean();
+    const count = addBean();
+    return { dropped: true, isFirst: first, beanCount: count };
+  }
+  return { dropped: false, isFirst: false, beanCount: getBeanCount() };
+};
+
 // ─── Streak Firestore 동기화 ──────────────────────────
 /** streak 관련 localStorage → Firestore 저장 */
 export const syncStreakToFirestore = async (uid) => {
@@ -594,7 +631,7 @@ export const syncStreakToFirestore = async (uid) => {
   try {
     await updateDoc(doc(db, 'users', uid), {
       streak:            parseInt(localStorage.getItem(STREAK_KEY) || '0'),
-      lastRoutineDate:   localStorage.getItem(LAST_ROUTINE_KEY) || null,
+      lastRoutineDate:   localStorage.getItem(LAST_QUEST_KEY) || null,
       streakFreezes:     parseInt(localStorage.getItem(FREEZE_KEY) || '0'),
       repairCount:       parseInt(localStorage.getItem(REPAIR_KEY) || '-1'),
       streakBeforeBreak: parseInt(localStorage.getItem(STREAK_BEFORE_BREAK_KEY) || '0'),
@@ -612,7 +649,7 @@ export const restoreStreakFromFirestore = async (uid) => {
     if (!snap.exists()) return;
     const d = snap.data();
     if (d.streak != null)            localStorage.setItem(STREAK_KEY, String(d.streak));
-    if (d.lastRoutineDate)           localStorage.setItem(LAST_ROUTINE_KEY, d.lastRoutineDate);
+    if (d.lastRoutineDate)           localStorage.setItem(LAST_QUEST_KEY, d.lastRoutineDate);
     if (d.streakFreezes != null)     localStorage.setItem(FREEZE_KEY, String(d.streakFreezes));
     if (d.repairCount != null)       localStorage.setItem(REPAIR_KEY, String(d.repairCount));
     if (d.streakBeforeBreak != null) localStorage.setItem(STREAK_BEFORE_BREAK_KEY, String(d.streakBeforeBreak));
@@ -638,7 +675,7 @@ export const syncUserStatus = async (uid, displayName) => {
     const totalXP = snap.exists() ? (snap.data().totalXP || 0) : 0;
     const level = calcLevel(totalXP);
 
-    // 이번 주 루틴 클리어 수 (localStorage 기반)
+    // 이번 주 퀘스트 클리어 수 (localStorage 기반)
     const today = new Date();
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay()); // 이번 주 일요일
@@ -646,7 +683,7 @@ export const syncUserStatus = async (uid, displayName) => {
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekStart);
       d.setDate(weekStart.getDate() + i);
-      const key = `lucid_routine_done_${d.toISOString().slice(0, 10)}`;
+      const key = `lucid_quest_done_${d.toISOString().slice(0, 10)}`;
       if (localStorage.getItem(key)) weeklyCount++;
     }
 
@@ -658,7 +695,7 @@ export const syncUserStatus = async (uid, displayName) => {
       streak,
       dailyXP: daily.total,
       todayAttended: true,
-      weeklyRoutineClear: weeklyCount,
+      weeklyQuestClear: weeklyCount,
       status,
       lastStudiedAt: serverTimestamp(),
     });

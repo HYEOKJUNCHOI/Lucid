@@ -6,7 +6,7 @@ import AdminPage from './pages/Admin/AdminPage';
 import DictionaryPopup from './components/common/DictionaryPopup';
 
 function App() {
-  const { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, logout } = useAuth();
+  const { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, loginWithGithub, logout } = useAuth();
 
   // 인증 정보 확인 중이거나 로딩 중일 때
   if (loading || user === undefined) {
@@ -27,6 +27,7 @@ function App() {
         loginLoading={loginLoading}
         loginError={loginError}
         onLogin={loginWithGoogle}
+        onGithubLogin={loginWithGithub}
       />
     );
   }
@@ -40,6 +41,9 @@ function App() {
       <Routes>
         <Route path="/"       element={isSuperAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/home" replace />} />
         <Route path="/home" element={<StudentPage user={user} userData={userData} onLogout={logout} />} />
+        <Route path="/home/chapter" element={<StudentPage user={user} userData={userData} onLogout={logout} />} />
+        <Route path="/home/quest" element={<StudentPage user={user} userData={userData} onLogout={logout} />} />
+        <Route path="/home/levelup" element={<StudentPage user={user} userData={userData} onLogout={logout} />} />
         <Route path="/admin"   element={isSuperAdmin ? <AdminPage user={user} userData={userData} onLogout={logout} /> : <Navigate to="/home" replace />} />
         <Route path="*"        element={<Navigate to="/" replace />} />
       </Routes>
