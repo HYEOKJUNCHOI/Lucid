@@ -59,7 +59,6 @@ const FifaCard = ({ student, onClick, isActive, draggable, onDragStart, onDragEn
   }, [photoEdit]);
   const level       = student.level != null ? student.level : 1;
   const activity    = getActivityTier(student.lastStudiedAt);
-  const badge       = getTierBadge(level);
   const theme       = getCardTheme(student.studentType);
   const streak      = student.streak || 0;
   const dailyXP     = student.dailyXP || 0;
@@ -76,10 +75,11 @@ const FifaCard = ({ student, onClick, isActive, draggable, onDragStart, onDragEn
     return (
       <div {...outerProps} style={{ ...outerProps.style, height: '100%' }}>
         <div className="overflow-hidden flex flex-col h-full" style={{ background: theme.inner, borderRadius: '11px' }}>
-          {/* 이름 + 레벨 */}
+          {/* 뱃지(왼쪽위) + 레벨(오른쪽) */}
           <div className="flex items-center justify-between px-2.5 pt-2 pb-1">
-            <span className="text-[15px] font-black text-white/95 tracking-wide leading-tight max-w-[65%]">
-              {(student.displayName || '이름 없음').toUpperCase()}
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
+              style={{ background: theme.typeBg, color: theme.typeColor, border: `1px solid ${theme.shine}40` }}>
+              {theme.label}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <div className={`w-2 h-2 rounded-full ${activity.label === '오늘' ? 'animate-pulse' : ''}`}
@@ -96,14 +96,10 @@ const FifaCard = ({ student, onClick, isActive, draggable, onDragStart, onDragEn
                 : <span className="text-2xl font-black" style={{ color: theme.shine }}>{initials}</span>}
             </div>
           </div>
-          {/* 타입 + 티어 뱃지 */}
-          <div className="px-2.5 pb-2 flex items-center justify-between">
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
-              style={{ background: theme.typeBg, color: theme.typeColor, border: `1px solid ${theme.shine}40` }}>
-              {theme.label}
-            </span>
-            <span className="text-[9px] font-bold leading-none" style={{ color: badge.color }}>
-              {badge.label}
+          {/* 이름 중앙 */}
+          <div className="px-2.5 pb-2 flex items-center justify-center">
+            <span className="text-[15px] font-black text-white/95 tracking-wide leading-tight text-center truncate w-full">
+              {(student.displayName || '이름 없음').toUpperCase()}
             </span>
           </div>
         </div>
@@ -117,8 +113,9 @@ const FifaCard = ({ student, onClick, isActive, draggable, onDragStart, onDragEn
 
         {/* 헤더 */}
         <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5">
-          <span className="text-[10px] font-black text-white/90 tracking-wide truncate max-w-[65%]">
-            {(student.displayName || '이름 없음').toUpperCase()}
+          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none"
+            style={{ background: theme.typeBg, color: theme.typeColor, border: `1px solid ${theme.shine}40` }}>
+            {theme.label}
           </span>
           <div className="flex items-center gap-1 shrink-0">
             <div className={`w-2 h-2 rounded-full ${activity.label === '오늘' ? 'animate-pulse' : ''}`}
@@ -180,13 +177,9 @@ const FifaCard = ({ student, onClick, isActive, draggable, onDragStart, onDragEn
 
         {/* 하단 패널 */}
         <div className="px-2 pt-0.5 pb-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full leading-none"
-              style={{ background: theme.typeBg, color: theme.typeColor, border: `1px solid ${theme.shine}40` }}>
-              {theme.label}
-            </span>
-            <span className="text-[8px] font-bold leading-none" style={{ color: badge.color }}>
-              {badge.label}
+          <div className="flex items-center justify-center mb-1">
+            <span className="text-[13px] font-black text-white/95 tracking-wide leading-tight text-center truncate w-full">
+              {(student.displayName || '이름 없음').toUpperCase()}
             </span>
           </div>
           {!compact && (

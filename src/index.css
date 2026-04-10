@@ -392,6 +392,7 @@ body.ctrl-held .code-token-clickable {
 .free-tab-active {
   background: var(--free-editor-bg);
   color: #bbbbbb;
+  z-index: 2;
 }
 .free-tab-inactive {
   color: #9ca3af;
