@@ -22,6 +22,9 @@ const GroupManagement = () => {
   const [editTeacherId, setEditTeacherId] = useState('');
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
+  // 수업 기간 저장 상태 (그룹별)
+  const [dateSaving, setDateSaving] = useState({});
+
   // 강사 등록 모달 상태
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [newTeacherName, setNewTeacherName] = useState('');
@@ -102,6 +105,17 @@ const GroupManagement = () => {
       showToast('추가 실패', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDateChange = async (groupId, field, value) => {
+    setDateSaving(prev => ({ ...prev, [groupId]: true }));
+    try {
+      await updateDoc(doc(db, 'groups', groupId), { [field]: value });
+    } catch (err) {
+      showToast('날짜 저장 실패', 'error');
+    } finally {
+      setDateSaving(prev => ({ ...prev, [groupId]: false }));
     }
   };
 
@@ -271,6 +285,32 @@ const GroupManagement = () => {
                     ) : (
                       <span className="text-red-400 text-[13px] font-medium">강사 정보 없음</span>
                     )}
+                  </div>
+
+                  {/* 수업 기간 */}
+                  <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-white/5">
+                    <span className="text-[9px] uppercase font-bold text-gray-500 tracking-widest">수업 기간</span>
+                    <div className="flex flex-col gap-1 mt-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-600 w-7 shrink-0">개강</span>
+                        <input
+                          type="date"
+                          value={g.startDate || ''}
+                          onChange={(e) => handleDateChange(g.id, 'startDate', e.target.value)}
+                          className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded px-1.5 py-1 text-[10px] text-white focus:outline-none focus:border-[#4ec9b0]/50"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-600 w-7 shrink-0">종강</span>
+                        <input
+                          type="date"
+                          value={g.endDate || ''}
+                          onChange={(e) => handleDateChange(g.id, 'endDate', e.target.value)}
+                          className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded px-1.5 py-1 text-[10px] text-white focus:outline-none focus:border-[#4ec9b0]/50"
+                        />
+                      </div>
+                      {dateSaving[g.id] && <span className="text-[9px] text-gray-600 italic">저장 중...</span>}
+                    </div>
                   </div>
                 </div>
               );
