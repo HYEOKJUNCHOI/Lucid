@@ -1442,63 +1442,70 @@ const StudentPage = ({ user, userData, onLogout }) => {
         <div className={`relative ${sidebarMini ? 'p-1' : 'p-2'} border-t border-white/[0.06]`}>
           {/* 팝업 메뉴 */}
           {isMenuOpen && !sidebarMini && (
-            <div className="absolute bottom-full left-0 mb-1 w-full bg-[#202020] border border-white/[0.08] rounded-xl shadow-xl z-50 py-1 overflow-hidden">
-              {/* 유저 */}
-              <div className="px-3 py-2.5 flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
+            <div className="absolute bottom-full left-0 mb-2 w-full rounded-2xl z-50 overflow-hidden"
+              style={{ background: '#141414', border: '1px solid rgba(78,201,176,0.15)', boxShadow: '0 -4px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)' }}>
+              {/* 유저 헤더 */}
+              <div className="px-4 py-3.5 flex items-center gap-3"
+                style={{ background: 'linear-gradient(135deg, rgba(78,201,176,0.08) 0%, rgba(86,156,214,0.05) 100%)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-sm font-black text-white"
+                  style={{ background: 'linear-gradient(135deg, #4ec9b0 0%, #569cd6 100%)', boxShadow: '0 0 10px rgba(78,201,176,0.3)' }}>
                   {(userData?.displayName || user?.displayName || 'U')[0].toUpperCase()}
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[13px] font-medium text-white truncate leading-tight">
+                  <span className="text-[13px] font-bold text-white truncate leading-tight">
                     {userData?.displayName || user?.displayName}
                   </span>
-                  <span className="text-[11px] text-white/40 truncate leading-tight">{user?.email}</span>
+                  <span className="text-[10px] text-white/30 truncate leading-tight mt-0.5">{user?.email}</span>
                 </div>
               </div>
 
-              <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
+              <div className="p-1.5 flex flex-col gap-0.5">
+                {userData?.role === 'admin' && (
+                  <button
+                    onClick={() => { setIsMenuOpen(false); navigate('/admin'); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] text-white/60 hover:text-white hover:bg-white/[0.06] transition-all"
+                  >
+                    <svg className="w-3.5 h-3.5 shrink-0 text-[#4ec9b0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    관리자 페이지
+                  </button>
+                )}
 
-              {userData?.role === 'admin' && (
+                <div className="h-px mx-1 my-0.5" style={{ background: 'rgba(255,255,255,0.05)' }} />
+
                 <button
-                  onClick={() => { setIsMenuOpen(false); navigate('/admin'); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors"
+                  onClick={onLogout}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] text-white/40 hover:text-red-400 hover:bg-red-500/[0.06] transition-all"
                 >
                   <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                   </svg>
-                  관리자 페이지
+                  로그아웃
                 </button>
-              )}
-
-              <div className="h-px bg-white/[0.06] mx-2 my-0.5" />
-
-              <button
-                onClick={onLogout}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-white/50 hover:bg-white/[0.06] hover:text-white/80 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                로그아웃
-              </button>
+              </div>
             </div>
           )}
 
           {/* 프로필 버튼 */}
           <button
             onClick={() => sidebarMini ? setSidebarMini(false) : setIsMenuOpen(!isMenuOpen)}
-            className={`flex items-center ${sidebarMini ? 'justify-center' : 'gap-2.5'} w-full px-2 py-2 rounded-lg hover:bg-white/[0.06] transition-colors`}
+            className={`flex items-center ${sidebarMini ? 'justify-center' : 'gap-2.5'} w-full px-2 py-2 rounded-xl transition-all hover:bg-white/[0.05]`}
+            style={{ border: '1px solid transparent' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(78,201,176,0.2)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
           >
-            <div className="w-7 h-7 rounded-full bg-[#444] flex items-center justify-center shrink-0 text-xs font-semibold text-white">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-black text-white"
+              style={{ background: 'linear-gradient(135deg, #4ec9b0 0%, #569cd6 100%)', boxShadow: '0 0 8px rgba(78,201,176,0.35)' }}>
               {(userData?.displayName || user?.displayName || 'U')[0].toUpperCase()}
             </div>
             {!sidebarMini && (
               <>
-                <span className="text-[13px] text-white/80 truncate flex-1 text-left">
+                <span className="text-[13px] font-semibold text-white/80 truncate flex-1 text-left">
                   {userData?.displayName || user?.displayName}
                 </span>
-                <svg className="w-3.5 h-3.5 text-white/30 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-3 h-3 text-white/20 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
                 </svg>
               </>
@@ -1826,7 +1833,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
                               streak >= 7  ? `${streak}일 연속 🔥 상위 5%예요` :
                               streak >= 3  ? `${streak}일 연속 중 — 습관이 만들어지고 있어요` :
                               streak >= 2  ? `어제도 왔었죠? 오늘도 할 수 있어요 !! 화이팅 !!` :
-                              visitedFiles.length > 0 ? `지금까지 ${visitedFiles.length}개 파일 — 포기하지 마요` :
+                              visitedFiles.length > 0 ? [
+                                '오늘도 화이팅!',
+                                '꾸준함이 실력이 됩니다 💪',
+                                '오늘 배운 것, 내일의 무기가 돼요',
+                                '천천히가도 괜찮아요, 멈추지만 마요',
+                                '코드 한 줄씩, 실력이 쌓이고 있어요',
+                              ][Math.floor(Date.now() / 3600000) % 5] :
                               '첫 걸음이 제일 어렵습니다. 시작해봐요';
                 return (
                   <>

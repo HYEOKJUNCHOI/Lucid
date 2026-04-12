@@ -450,7 +450,7 @@ const SeatChart = () => {
         </div>
         {/* 하단: Lv + 이름 */}
         <div className="flex items-baseline gap-1 px-1 max-w-full mt-1.5">
-          <span className="text-[8px] font-bold text-white/35 shrink-0">Lv{level}&nbsp;</span>
+          <span className="text-[8px] font-bold text-sky-400 shrink-0">Lv{level}&nbsp;</span>
           <span className="text-[13px] font-bold text-white/85 leading-tight truncate">{displayName}</span>
         </div>
       </div>

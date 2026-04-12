@@ -587,7 +587,7 @@ const StudentManagement = () => {
                   </div>
                   {assignMode === 'invite' && (
                     <div>
-                      <label className="block text-sm font-bold text-gray-300 mb-1.5">구글 로그인에 사용된 이메일 <span className="text-red-500">*</span></label>
+                      <label className="block text-sm font-bold text-gray-300 mb-1.5">가입에 사용할 이메일 <span className="text-red-500">*</span></label>
                       <input
                         type="email"
                         value={inviteEmail}

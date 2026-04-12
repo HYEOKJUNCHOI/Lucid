@@ -4,9 +4,51 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { debugSetUserFields, debugResetUser, getUserState, debugAddAttendedDate, debugRemoveAttendedDate } from '../../services/userStateService';
+
+// ── 전체 테스트 데이터 시드 (랜덤) ──────────────────────────────────
+const rInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+const seedAllUsers = async (users) => {
+  const batch = writeBatch(db);
+  users.forEach((u) => {
+    const totalXP   = rInt(50, 5000);
+    const level     = Math.max(1, Math.floor(totalXP / 500) + 1);
+    const streak    = rInt(0, 30);
+    const beanCount = rInt(0, 25);
+
+    // streak 만큼 연속 출석 날짜 생성
+    const attended = [];
+    for (let d = 0; d < streak; d++) {
+      const dt = new Date(); dt.setDate(dt.getDate() - d);
+      attended.push(dt.toISOString().slice(0, 10));
+    }
+
+    const bestCpm = rInt(0, 600);
+    batch.update(doc(db, 'users', u.uid), {
+      totalXP,
+      level,
+      streak,
+      beanCount,
+      americanoCount:  rInt(0, 8),
+      streakFreezes:   rInt(0, 3),
+      difficultyLevel: rInt(0, 4),
+      attendedDates:   attended,
+      lastRoutineDate: streak > 0 ? todayStr() : '',
+      lastStudiedAt:   streak > 0 ? Date.now() - rInt(0, 86400000) : null,
+      typingStats: {
+        bestCpm,
+        bestAccuracy: bestCpm > 0 ? rInt(80, 100) : 0,
+        sessionCount: rInt(0, 80),
+        totalChars:   rInt(0, 50000),
+      },
+    });
+  });
+  await batch.commit();
+};
 import AttendanceCalendar from '../../components/admin/AttendanceCalendar';
 import { getActivityTier } from '../../components/admin/FifaCard';
 
@@ -119,7 +161,7 @@ const MiniStudentCard = ({ student, selected, onClick }) => {
       </div>
       {/* Lv + 이름 */}
       <div className="flex items-baseline gap-0.5 px-1 max-w-full mt-1">
-        <span className="text-[7px] font-bold text-white/30 shrink-0">Lv{level}</span>
+        <span className="text-[7px] font-bold text-sky-400 shrink-0">Lv{level}</span>
         <span className="text-[11px] font-bold text-white/80 leading-tight truncate">{displayName}</span>
       </div>
       {/* 선택 체크 */}
@@ -142,6 +184,22 @@ export default function DebugPanel() {
   const [saving, setSaving]               = useState({});
   const [loading, setLoading]             = useState(false);
   const [resetConfirm, setResetConfirm]   = useState(false);
+  const [seeding, setSeeding]             = useState(false);
+  const [seedDone, setSeedDone]           = useState(false);
+
+  const handleSeedAll = async () => {
+    if (!users.length) return;
+    setSeeding(true);
+    try {
+      await seedAllUsers(users);
+      setSeedDone(true);
+      setTimeout(() => setSeedDone(false), 3000);
+    } catch (e) {
+      alert('시드 실패: ' + e.message);
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   // 실시간 데이터 로드
   useEffect(() => {
@@ -211,14 +269,24 @@ export default function DebugPanel() {
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
       {/* 헤더 */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="px-2 py-0.5 rounded text-[10px] font-black tracking-wider bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/30">
           ⚠️ DEV ONLY
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold text-white">디버그 패널</h2>
           <p className="text-gray-400 text-sm mt-0.5">학생 Firestore 상태 직접 편집 — 적용 즉시 학생 화면에 반영됨</p>
         </div>
+        <button
+          onClick={handleSeedAll}
+          disabled={seeding || !users.length}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-all border disabled:opacity-40"
+          style={seedDone
+            ? { background: 'rgba(78,201,176,0.15)', borderColor: 'rgba(78,201,176,0.4)', color: '#4ec9b0' }
+            : { background: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.35)', color: '#a78bfa' }}
+        >
+          {seeding ? '적용 중...' : seedDone ? '✓ 완료!' : `🎲 전체 테스트 데이터 (${users.length}명)`}
+        </button>
       </div>
 
       {/* 기수 선택 탭 */}
