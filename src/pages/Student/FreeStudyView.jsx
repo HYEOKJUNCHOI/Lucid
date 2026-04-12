@@ -11,14 +11,10 @@ import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { recordTypingSession, getTypingStats, resetTypingStats, saveCheatBadge } from '../../services/learningService';
 
-const CARD_DEFS = [
-  { key: '기능해석', label: '⚙️ 기능 해석', accent: 'border-l-cyan-400/70',  bg: 'bg-cyan-500/[0.06]'  },
-  { key: '비유설명', label: '🌀 비유 설명', accent: 'border-l-amber-400/70', bg: 'bg-amber-500/[0.06]' },
-];
 
 const TABS = [
-  { id: 'main', label: '🗒️ Main.java' },
-  { id: 'ai',   label: 'AI 생성코드' },
+  { id: 'main', label: '💻 코드노트' },
+  { id: 'ai',   label: '🤖 AI 생성코드' },
 ];
 
 const RIGHT_TABS = [
@@ -27,15 +23,23 @@ const RIGHT_TABS = [
   { id: 'memo',  label: '📝 학습메모' },
 ];
 
-const FreeStudyView = ({ onBack }) => {
+const stripComments = (code) =>
+  code
+    .replace(/\/\*[\s\S]*?\*\//g, '')   // 블록 주석 /* ... */
+    .replace(/\/\/[^\n]*/g, '')          // 라인 주석 // ...
+    .replace(/^\s*\n/gm, '\n')           // 주석 제거 후 남은 빈 줄 정리
+    .replace(/\n{3,}/g, '\n\n')          // 연속 빈 줄 2개로 압축
+    .trim();
+
+const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRepoNames = [], onGoToChapter = null, externalCode = null, fromChapter = false }) => {
   const [activeTab, setActiveTab] = useState('main');
   const [activeRightTab, setActiveRightTab] = useState('tutor');
   const [tabContents, setTabContents] = useState({
-    main: SAMPLE_JAVA_CODE,
+    main: '',
     ai: '',
   });
   const [splitRatio, setSplitRatio] = useState(0.5);
-  const [editorFontSize, setEditorFontSize] = useState(14);
+  const [editorFontSize, setEditorFontSize] = useState(13);
   const editorRef = useRef(null);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -52,8 +56,28 @@ const FreeStudyView = ({ onBack }) => {
   const [chatGreeting, setChatGreeting] = useState('코드에 대해 뭐든 물어보세요');
   const [chatSystemPrompt, setChatSystemPrompt] = useState(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiDifficulty, setAiDifficulty] = useState(1); // 0:쉬움 1:보통 2:어려움
   const [focusedPanel, setFocusedPanel] = useState(null); // 'left' | 'right'
+  const chatScrollRef = useRef(null);
   const { user } = useAuth();
+
+  // ─── 랜딩 패널 상태 ────────────────────────────────────
+  const [landingVisible, setLandingVisible] = useState(showLanding);
+  const [landingSection, setLandingSection] = useState(null); // null | 'github' | 'keyword'
+  // 담당강사 있으면 항상 체크 ON으로 시작
+  const [useTeacherGithub, setUseTeacherGithub] = useState(() => {
+    const saved = localStorage.getItem('lucid_github_use_teacher');
+    if (saved !== null) return saved === 'true';
+    return !!teacher?.githubUsername; // 첫 방문 기본값: 선생님 있으면 ON
+  });
+  const [landingGithubId, setLandingGithubId] = useState(() => {
+    if (teacher?.githubUsername) return teacher.githubUsername;
+    return localStorage.getItem('lucid_github_id') || '';
+  });
+  const [landingRepos, setLandingRepos] = useState(null);
+  const [landingReposLoading, setLandingReposLoading] = useState(false);
+  const [landingKeyword, setLandingKeyword] = useState('');
+  const [landingKeywordLoading, setLandingKeywordLoading] = useState(false);
 
   // ─── 치팅 감지용 ref ───────────────────────────────────
   // Monaco command / window keydown 핸들러는 클로저로 등록되기 때문에
@@ -65,6 +89,15 @@ const FreeStudyView = ({ onBack }) => {
   const aiReferenceCodeRef = useRef(null);
   activeTabRef.current = activeTab;
   tabContentsRef.current = tabContents;
+
+  // 외부 코드 주입 (챕터 모달에서 파일 선택 시)
+  useEffect(() => {
+    if (externalCode) {
+      setTabContents(prev => ({ ...prev, main: externalCode }));
+      setLandingVisible(false);
+      setActiveTab('main');
+    }
+  }, [externalCode]);
 
   // 타자연습 진입 시점에 호출 → 현재 탭 코드와 원본 비교해서 치팅 여부 결정
   const computeIsCheating = () => {
@@ -94,13 +127,8 @@ const FreeStudyView = ({ onBack }) => {
       getTypingStats(user.uid).then((stats) => setTypingBest(stats));
     }
   }, [isTypingPractice, user?.uid]);
-  // 해석 카드
-  const [explainCards, setExplainCards] = useState(null);
-  const [cardOpenStates, setCardOpenStates] = useState({ 0: false, 1: false });
-  const [explainLoading, setExplainLoading] = useState(false);
-  const [isCtrlDown, setIsCtrlDown] = useState(false);
   const f2StepRef = useRef(0);
-  const decoIdsRef = useRef([]);
+  const monacoRef = useRef(null);
   const splitContainerRef = useRef(null);
   const isDraggingRef = useRef(false);
 
@@ -110,14 +138,19 @@ const FreeStudyView = ({ onBack }) => {
     if (!mainCode.trim() || isGeneratingAi) return;
     setIsGeneratingAi(true);
     try {
-      const prompt = `다음 Java 코드를 분석해서, 같은 디자인 패턴과 구조를 사용하되 완전히 다른 생활 소재로 새로운 Java 예제 코드를 작성해줘.
+      const difficultyInstruction = [
+        '클래스 1개, 필드 2~3개, 메서드 2~3개로 구조를 원본보다 훨씬 단순하게 줄여라. 편의점·냉장고·버스 같은 극도로 친근한 일상 소재를 써라.',
+        '원본과 클래스 수·메서드 수·상속 구조를 동일하게 유지하되 소재만 바꿔라. 변수명·로직은 원본과 1:1 대응되게.',
+        '원본보다 메서드 수를 늘리고 유효성 검사·예외 처리·추가 필드를 포함해라. 재고관리·주문시스템·로그처리 같은 실무 패턴 소재를 써라.',
+      ][aiDifficulty];
 
-규칙:
-- 코드만 출력. 설명·주석·마크다운 코드블록 없이 순수 Java 코드만.
-- 클래스명·변수명은 한글로 (예: 병원, 학교, 은행 등 일상적인 소재).
-- 메서드명은 영어로.
-- 원본 코드와 구조(메서드 수, 패턴)는 유지.
-- package, import 없이 클래스만.
+      const prompt = `아래 Java 코드를 분석해서 같은 디자인 패턴·구조로 완전히 다른 소재의 새 Java 예제를 작성해라.
+
+[출력 규칙 — 반드시 지켜]
+- 순수 Java 코드만 출력. 설명·주석·마크다운 코드블록(\`\`\`) 절대 금지.
+- 클래스명·변수명은 한글, 메서드명은 영어.
+- package·import 없이 클래스만.
+- ${difficultyInstruction}
 
 [원본 코드]
 ${mainCode.slice(0, 3000)}`;
@@ -134,7 +167,12 @@ ${mainCode.slice(0, 3000)}`;
         }
       );
       const data = await res.json();
-      const generated = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      // 코드블록 마크다운 제거 후 Java 코드 시작점까지 앞부분 잘라내기
+      const stripped = raw.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
+      const lines = stripped.split('\n');
+      const codeStart = lines.findIndex(l => /^(public\s|class\s|\/\/)/.test(l.trim()));
+      const generated = (codeStart >= 0 ? lines.slice(codeStart).join('\n') : stripped).trim();
       if (generated) {
         aiReferenceCodeRef.current = generated;
         setTabContents(prev => ({ ...prev, ai: generated }));
@@ -147,8 +185,58 @@ ${mainCode.slice(0, 3000)}`;
   };
 
 
+
+  // ─── 랜딩: GitHub 레포 검색 ────────────────────────────
+  const fetchLandingRepos = async (overrideId) => {
+    const id = (overrideId ?? landingGithubId).trim();
+    if (!id) return;
+    setLandingReposLoading(true);
+    setLandingRepos(null);
+    try {
+      const res = await fetch(`https://api.github.com/users/${id}/repos?per_page=100&sort=updated`);
+      const data = await res.json();
+      if (res.status === 403 && data?.message?.includes('rate limit')) {
+        setLandingRepos([{ name: '__rate_limit__' }]);
+      } else {
+        const repos = Array.isArray(data) ? data.map(r => ({ name: r.name, description: r.description })) : [];
+        setLandingRepos(repos);
+      }
+    } catch { setLandingRepos([]); }
+    finally { setLandingReposLoading(false); }
+  };
+
+  // ─── 랜딩: 키워드 AI 코드 생성 → 코드노트에 삽입 ────────
+  const generateKeywordCode = async () => {
+    if (!landingKeyword.trim() || landingKeywordLoading) return;
+    setLandingKeywordLoading(true);
+    try {
+      const prompt = `Java 개념 "${landingKeyword.trim()}"을 학습할 수 있는 예제 코드를 작성해라.
+[출력 규칙 — 반드시 지켜]
+- 순수 Java 코드만 출력. 설명·주석·마크다운 코드블록(\`\`\`) 절대 금지.
+- 클래스명·변수명은 한글, 메서드명은 영어.
+- package·import 없이 클래스만.
+- 30~60줄 분량의 실용적 예제.`;
+      const res = await fetch(
+        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${getGeminiApiKey()}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8 } }) }
+      );
+      const data = await res.json();
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const stripped = raw.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
+      const lines = stripped.split('\n');
+      const codeStart = lines.findIndex(l => /^(public\s|class\s|\/\/)/.test(l.trim()));
+      const generated = (codeStart >= 0 ? lines.slice(codeStart).join('\n') : stripped).trim();
+      if (generated) {
+        setTabContents(prev => ({ ...prev, main: generated }));
+        setLandingSection(null);
+        setLandingVisible(false);
+      }
+    } catch (err) { console.error('키워드 코드 생성 실패:', err); }
+    finally { setLandingKeywordLoading(false); }
+  };
+
   // 퀴즈/채팅 코드 토큰 Ctrl+Click → 왼쪽 에디터 하이라이트
-  const monacoRef = useRef(null);
   const highlightCodeToken = (token) => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
@@ -520,6 +608,145 @@ ${mainCode.slice(0, 3000)}`;
   return (
     <div ref={splitContainerRef} className="relative flex-1 flex overflow-hidden">
 
+      {/* ── GitHub 불러오기 모달 ── */}
+      {landingSection === 'github' && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => { setLandingSection(null); setLandingRepos(null); }}>
+          <div className="w-full max-w-md mx-4 rounded-2xl shadow-2xl overflow-hidden"
+            style={{ background: '#0d1117', border: '1px solid rgba(78,201,176,0.25)', boxShadow: '0 0 40px rgba(78,201,176,0.08)' }}
+            onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+              <div className="flex items-center gap-2.5">
+                <span className="text-base">📂</span>
+                <p className="text-white font-black text-[15px] tracking-tight">GitHub 불러오기</p>
+              </div>
+              <button onClick={() => { setLandingSection(null); setLandingRepos(null); }}
+                className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
+            </div>
+            {/* 담당강사 체크박스 */}
+            {teacher?.githubUsername && (
+              <label className="flex items-center gap-2.5 px-6 py-3 border-b border-white/[0.06] cursor-pointer select-none">
+                <input type="checkbox" checked={useTeacherGithub}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setUseTeacherGithub(checked);
+                    localStorage.setItem('lucid_github_use_teacher', String(checked));
+                    const newId = checked ? teacher.githubUsername : '';
+                    setLandingGithubId(newId);
+                    if (newId) localStorage.setItem('lucid_github_id', newId);
+                    setLandingRepos(null);
+                  }}
+                  className="w-4 h-4 accent-[#4ec9b0]"
+                />
+                <span className="text-[13px] text-gray-400">담당강사 GitHub
+                  <span className="text-[#4ec9b0] font-bold ml-1">({teacher.githubUsername})</span>
+                </span>
+              </label>
+            )}
+            {/* 검색 입력 (체크 해제 시) / 불러오기 버튼 (체크 ON 시) */}
+            <div className="flex gap-2 px-4 py-3 border-b border-white/[0.06]">
+              {!useTeacherGithub && (
+                <input
+                  value={landingGithubId}
+                  onChange={e => {
+                    setLandingGithubId(e.target.value);
+                    localStorage.setItem('lucid_github_id', e.target.value);
+                    setLandingRepos(null);
+                  }}
+                  onKeyDown={e => e.key === 'Enter' && fetchLandingRepos()}
+                  placeholder="GitHub ID 입력 후 Enter"
+                  autoFocus
+                  className="flex-1 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}
+                />
+              )}
+              <button onClick={() => fetchLandingRepos()} disabled={landingReposLoading || !landingGithubId.trim()}
+                className="px-4 py-2 rounded-xl font-bold text-sm transition-all disabled:opacity-40"
+                style={{ background: 'rgba(78,201,176,0.15)', border: '1px solid rgba(78,201,176,0.35)', color: '#4ec9b0', width: useTeacherGithub ? '100%' : undefined }}>
+                {landingReposLoading ? '...' : useTeacherGithub ? '레포 불러오기' : '검색'}
+              </button>
+            </div>
+            {/* 레포 목록 — 검색 결과 있을 때만 표시 */}
+            {(landingReposLoading || landingRepos !== null) && (
+            <div className="px-4 py-3 flex flex-col gap-2 max-h-72 overflow-y-auto scrollbar-hide">
+              {landingReposLoading ? (
+                <div className="flex items-center justify-center py-8 gap-2">
+                  <div className="w-4 h-4 border-2 border-[#4ec9b0]/40 border-t-[#4ec9b0] rounded-full animate-spin" />
+                  <span className="text-gray-500 text-sm">불러오는 중...</span>
+                </div>
+              ) : landingRepos[0]?.name === '__rate_limit__' ? (
+                <p className="text-amber-400/70 text-sm text-center py-6">⏱ API 한도 초과 — 1시간 후 재시도</p>
+              ) : (() => {
+                // 담당강사 체크 시 korit_숫자_ 레포만, label은 _gov_ 뒤 부분
+                const displayRepos = useTeacherGithub
+                  ? landingRepos
+                      .filter(r => enrolledRepoNames.length > 0
+                        ? enrolledRepoNames.includes(r.name)
+                        : /^korit_\d+_/i.test(r.name))
+                      .map(r => ({
+                        ...r,
+                        label: r.name.includes('_gov_')
+                          ? r.name.split('_gov_').pop()
+                          : r.name,
+                      }))
+                  : landingRepos.map(r => ({ ...r, label: r.name }));
+                return displayRepos.length === 0 ? (
+                  <p className="text-gray-500 text-sm text-center py-6">레포가 없습니다</p>
+                ) : displayRepos.map(r => (
+                  <button key={r.name}
+                    onClick={() => {
+                      setLandingSection(null);
+                      setLandingRepos(null);
+                      onGoToChapter && onGoToChapter({ githubUsername: landingGithubId.trim(), repo: { name: r.name, label: r.label } });
+                    }}
+                    className="text-left px-4 py-3.5 rounded-xl transition-all hover:-translate-y-0.5 hover:border-white/20"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <p className="text-[14px] font-bold text-white">{r.label}</p>
+                    {useTeacherGithub && <p className="text-[11px] text-gray-500 mt-0.5">{r.name}</p>}
+                  </button>
+                ));
+              })()}
+            </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── AI 키워드 모달 ── */}
+      {landingSection === 'keyword' && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => { setLandingSection(null); setLandingKeyword(''); }}>
+          <div className="w-full max-w-xs mx-4 rounded-2xl p-5 shadow-2xl"
+            style={{ background: '#111827', border: '1px solid rgba(167,139,250,0.25)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-white font-bold text-sm">✨ AI 코드생성</p>
+              <button onClick={() => { setLandingSection(null); setLandingKeyword(''); }}
+                className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
+            </div>
+            <p className="text-gray-500 text-[11px] mb-4">싱글톤, 배열, 상속... 뭐든 OK</p>
+            <input
+              value={landingKeyword}
+              onChange={e => setLandingKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generateKeywordCode()}
+              placeholder="예: 싱글톤 패턴"
+              autoFocus
+              className="w-full rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none mb-3"
+              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}
+            />
+            <button onClick={generateKeywordCode} disabled={landingKeywordLoading || !landingKeyword.trim()}
+              className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+              style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd',
+                boxShadow: landingKeywordLoading ? 'none' : '0 0 16px rgba(167,139,250,0.2)' }}>
+              {landingKeywordLoading
+                ? <><span className="inline-block animate-spin mr-1">⟳</span>생성 중...</>
+                : '✨ AI 코드 생성'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── 왼쪽: 코드 패널 ── */}
       <div
         className="relative flex flex-col bg-[var(--free-editor-bg)] rounded-lg overflow-hidden border border-[#2c313a] shadow-lg shrink-0"
@@ -571,41 +798,225 @@ ${mainCode.slice(0, 3000)}`;
         {/* Monaco 액자라운드 */}
         <div
           className="relative flex-1 min-h-0 mx-1.5 mb-1.5 mt-1 rounded-2xl border bg-[#0d1518] overflow-hidden transition-all duration-200"
-          style={focusedPanel === 'left'
-            ? { borderColor: 'rgba(224,190,122,0.75)', boxShadow: '0 0 16px rgba(224,190,122,0.1)' }
-            : { borderColor: 'rgba(224,190,122,0.4)' }
+          style={landingVisible
+            ? focusedPanel === 'left'
+              ? { borderColor: 'rgba(255,255,255,0.45)', boxShadow: '0 0 24px rgba(255,255,255,0.1), 0 0 0 1px rgba(255,255,255,0.06)' }
+              : { borderColor: 'rgba(255,255,255,0.15)' }
+            : activeTab === 'ai'
+              ? focusedPanel === 'left'
+                ? { borderColor: 'rgba(167,139,250,0.75)', boxShadow: '0 0 16px rgba(167,139,250,0.15)' }
+                : { borderColor: 'rgba(167,139,250,0.4)' }
+              : focusedPanel === 'left'
+                ? { borderColor: 'rgba(224,190,122,0.75)', boxShadow: '0 0 16px rgba(224,190,122,0.1)' }
+                : { borderColor: 'rgba(224,190,122,0.4)' }
           }
         >
-          {/* 에디터 글씨 크기 조절 */}
-          <div className="absolute top-2 right-3 z-10 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => setEditorFontSize(prev => Math.max(10, prev - 1))}
-              className="w-7 h-7 flex items-center justify-center rounded text-[13px] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-            >−</button>
-            <span className="text-[11px] text-gray-500 w-6 text-center">{editorFontSize}</span>
-            <button
-              onClick={() => setEditorFontSize(prev => Math.min(28, prev + 1))}
-              className="w-7 h-7 flex items-center justify-center rounded text-[13px] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-            >+</button>
+          {/* 에디터 우상단 컨트롤 (난이도선택 / 뒤로가기 / 글씨크기) */}
+          <div className="absolute top-2 right-3 z-10 flex flex-col items-stretch gap-1 opacity-60 hover:opacity-100 transition-opacity">
+            {activeTab === 'ai' && tabContents.ai && (
+              <div
+                className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 cursor-pointer transition-all"
+                onClick={() => setTabContents(prev => ({ ...prev, ai: '' }))}
+                title="난이도 재선택"
+                style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)' }}
+              >
+                <span className="text-[14px]" style={{ color: '#fb923c' }}>↺</span>
+                <span className="text-[9px] font-bold" style={{ color: '#fb923c' }}>난이도 선택</span>
+              </div>
+            )}
+            {activeTab === 'main' && showLanding && !landingVisible && (
+              <div
+                className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 cursor-pointer transition-all"
+                onClick={() => { if (fromChapter) { onBack(); } else { setLandingSection(null); setLandingVisible(true); } }}
+                title="랜딩으로 돌아가기"
+                style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)' }}
+              >
+                <span className="text-[14px]" style={{ color: '#fb923c' }}>↺</span>
+                <span className="text-[9px] font-bold" style={{ color: '#fb923c' }}>뒤로가기</span>
+              </div>
+            )}
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => setEditorFontSize(prev => Math.max(10, prev - 1))}
+                className="w-7 h-7 flex items-center justify-center rounded text-[13px] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+              >−</button>
+              <span className="text-[11px] text-gray-500 w-6 text-center">{editorFontSize}</span>
+              <button
+                onClick={() => setEditorFontSize(prev => Math.min(28, prev + 1))}
+                className="w-7 h-7 flex items-center justify-center rounded text-[13px] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+              >+</button>
+            </div>
           </div>
 
           {/* AI 코드 생성 오버레이 — Alt+2 탭이 비어있을 때 */}
           {activeTab === 'ai' && !tabContents.ai && (
-            <div className="absolute inset-0 rounded-2xl z-10 flex flex-col items-center justify-center gap-4 bg-[#0d1117]/90 backdrop-blur-sm">
-              <p className="text-white font-bold text-sm" style={{ textShadow: '0 0 12px rgba(255,255,255,0.4)' }}>1번 탭 코드를 분석해서 새 예제를 만들어줄게</p>
-              <button
-                onClick={generateAiCode}
-                disabled={isGeneratingAi}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/30 hover:text-cyan-100 transition-all disabled:opacity-50 disabled:cursor-wait"
-              >
-                {isGeneratingAi ? (
-                  <><span className="animate-spin">⟳</span> 생성 중...</>
-                ) : (
-                  <>✨ AI 코드 생성</>
-                )}
-              </button>
+            <div className="absolute inset-0 rounded-2xl z-10 flex flex-col items-center bg-[#0d1117] pt-10 pb-14">
+              {/* 플로우 일러스트 + 설명 */}
+              <div className="flex flex-col items-center gap-4 mt-[100px] mb-[50px]">
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+                    <span className="text-[22px]">💻</span>
+                    <span className="text-pink-300 font-medium text-[10px]">코드노트</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-0.5 text-gray-500">
+                    <span className="text-[10px]">✨</span>
+                    <span className="text-[15px]">→</span>
+                    <span className="text-[10px]">✨</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+                    <span className="text-[22px]">🤖</span>
+                    <span className="text-amber-300 font-medium text-[10px]">AI 분석</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-0.5 text-gray-500">
+                    <span className="text-[10px]">🚀</span>
+                    <span className="text-[15px]">→</span>
+                    <span className="text-[10px]"> </span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+                    <span className="text-[22px]">🖥️</span>
+                    <span className="text-cyan-300 font-medium text-[10px]">AI 생성코드</span>
+                  </div>
+                </div>
+                <p className="font-bold text-center leading-[2.2] tracking-wide" style={{ textShadow: '0 0 16px rgba(255,255,255,0.2)' }}>
+                  <span className="text-[13px] block">
+                    <span className="text-pink-300">코드노트</span>
+                    <span className="text-gray-400">에서 공부한 </span>
+                    <span className="text-sky-300">코드</span>
+                    <span className="text-gray-400">를 분석해서</span>
+                  </span>
+                  <span className="text-[13px] block">
+                    <span className="text-gray-400">새로 공부할 </span>
+                    <span className="text-cyan-300">코드</span>
+                    <span className="text-gray-400">를 </span>
+                    <span className="text-amber-300">AI</span>
+                    <span className="text-gray-400">가 생성해줍니다.</span>
+                  </span>
+                </p>
+              </div>
+              {/* 난이도 슬라이더 — 설명 바로 아래 */}
+              <div className="flex flex-col items-center gap-1.5 w-44 mt-5">
+                <span className="text-[9px] font-light text-white/60 tracking-widest uppercase mb-0.5">난이도 선택</span>
+                <div className="flex items-center justify-between w-full px-0.5">
+                  {['쉬움','보통','어려움'].map((label, i) => (
+                    <span key={i} className={`text-[10px] font-light ${aiDifficulty === i ? ['text-sky-300','text-violet-300','text-rose-300'][i] : 'text-gray-600'}`}>{label}</span>
+                  ))}
+                </div>
+                <input
+                  type="range" min={0} max={2} step={1}
+                  value={aiDifficulty}
+                  onChange={e => setAiDifficulty(Number(e.target.value))}
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                  style={{
+                    background: [
+                      'linear-gradient(to right, rgba(125,211,252,0.7) 0%, rgba(125,211,252,0.7) 0%, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)',
+                      'linear-gradient(to right, rgba(167,139,250,0.7) 0%, rgba(167,139,250,0.7) 50%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.1) 100%)',
+                      'linear-gradient(to right, rgba(251,113,133,0.7) 0%, rgba(251,113,133,0.7) 100%, rgba(255,255,255,0.1) 100%, rgba(255,255,255,0.1) 100%)',
+                    ][aiDifficulty]
+                  }}
+                />
+              </div>
+              {/* 버튼 — 아래 공간 중앙 */}
+              <div className="flex-1 flex items-center justify-center">
+                <button
+                  onClick={generateAiCode}
+                  disabled={isGeneratingAi}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-violet-500/20 border border-violet-400/40 text-violet-300 hover:bg-violet-500/30 hover:text-violet-100 transition-all disabled:opacity-50 disabled:cursor-wait"
+                  style={{ boxShadow: '0 0 16px rgba(167,139,250,0.35)' }}
+                >
+                  {isGeneratingAi ? (
+                    <><span className="animate-spin">⟳</span> 생성 중...</>
+                  ) : (
+                    <>✨ AI 코드 생성</>
+                  )}
+                </button>
+              </div>
             </div>
           )}
+
+        {/* ─── 랜딩 패널 (코드노트 탭 / AI 생성코드 탭 스타일 통일) ─── */}
+        {activeTab === 'main' && landingVisible && (
+          <div className="absolute inset-0 rounded-2xl z-10 flex flex-col items-center bg-[#0d1117] pt-10 pb-14 overflow-y-auto">
+            {/* 플로우 일러스트 */}
+            <div className="flex flex-col items-center gap-4 mt-[60px] mb-[36px]">
+              <div className="flex items-center gap-2">
+                {/* 아이콘 1: GitHub */}
+                <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl border" style={{ background: '#161b22', borderColor: 'rgba(255,255,255,0.18)' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-white">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                  </svg>
+                  <span className="text-white font-medium text-[10px]">GitHub</span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5 text-gray-500">
+                  <span className="text-[10px]">✨</span>
+                  <span className="text-[15px]">→</span>
+                  <span className="text-[10px]"> </span>
+                </div>
+                {/* 아이콘 2: 코드노트 */}
+                <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+                  <span className="text-[22px]">💻</span>
+                  <span className="text-pink-300 font-medium text-[10px]">코드노트</span>
+                </div>
+                <div className="flex flex-col items-center gap-0.5 text-gray-500">
+                  <span className="text-[10px]">🚀</span>
+                  <span className="text-[15px]">→</span>
+                  <span className="text-[10px]"> </span>
+                </div>
+                {/* 아이콘 3: 학습 시작 */}
+                <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+                  <span className="text-[22px]">📚</span>
+                  <span className="text-amber-300 font-medium text-[10px]">학습 시작</span>
+                </div>
+              </div>
+
+              {/* 설명 텍스트 */}
+              <div className="text-center leading-relaxed tracking-wide flex flex-col gap-0.5">
+                <p className="text-[13px] text-gray-300">
+                  <span className="text-white font-bold">GitHub</span>
+                  <span className="text-gray-400"> 코드를 불러오거나,</span>
+                </p>
+                <p className="text-[13px] text-gray-400">
+                  <span className="text-purple-400 font-bold">AI</span>
+                  <span>가 주제를 받아 코드를 생성</span>
+                </p>
+                <p className="text-[13px] text-gray-400">혹은 <span className="text-yellow-300 font-bold">자유롭게</span> 코드를 입력해서</p>
+                <p className="text-[13px] mt-1.5">
+                  <span className="text-pink-300 font-bold">코드노트</span>
+                  <span className="text-gray-400">에서 바로 학습을 시작합니다!</span>
+                </p>
+              </div>
+            </div>
+
+            {/* 버튼 3개 */}
+            <div className="flex flex-col gap-2.5 w-full max-w-[220px]">
+              {/* GitHub 불러오기 */}
+              <button onClick={() => setLandingSection('github')}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all hover:-translate-y-0.5 hover:brightness-110"
+                style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.22)', color: '#ffffff',
+                  boxShadow: '0 0 14px rgba(255,255,255,0.06)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+                GitHub 불러오기
+              </button>
+
+              {/* AI 키워드 코드생성 */}
+              <button onClick={() => setLandingSection('keyword')}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all hover:-translate-y-0.5"
+                style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.35)', color: '#a78bfa',
+                  boxShadow: '0 0 12px rgba(167,139,250,0.1)' }}>
+                ✨ AI 키워드 코드생성
+              </button>
+
+              {/* 자유 코드입력 (맨 밑, 서브 스타일) */}
+              <button
+                onClick={() => { setTabContents(prev => ({ ...prev, main: '' })); setLandingVisible(false); }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all hover:-translate-y-0.5"
+                style={{ background: 'rgba(253,224,71,0.06)', border: '1px solid rgba(253,224,71,0.2)', color: '#fde047' }}>
+                ✏️ 자유 코드입력
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Monaco */}
         <div
@@ -702,24 +1113,37 @@ ${mainCode.slice(0, 3000)}`;
         {/* 탭 콘텐츠 */}
         <div
           className="relative flex-1 flex flex-col min-h-0 mx-1.5 mt-1 mb-1.5 rounded-2xl border bg-[#0d1518] overflow-hidden transition-all duration-200"
-          style={focusedPanel === 'right'
-            ? { borderColor: 'rgba(224,190,122,0.75)', boxShadow: '0 0 16px rgba(224,190,122,0.1)' }
-            : { borderColor: 'rgba(224,190,122,0.4)' }
-          }
+          style={(() => {
+            const isQuiz = activeRightTab === 'quiz';
+            const isMemo = activeRightTab === 'memo';
+            const focused = focusedPanel === 'right';
+            if (isQuiz)  return focused ? { borderColor: 'rgba(167,139,250,0.75)', boxShadow: '0 0 16px rgba(167,139,250,0.15)' } : { borderColor: 'rgba(167,139,250,0.4)' };
+            if (isMemo)  return focused ? { borderColor: 'rgba(251,146,60,0.75)',  boxShadow: '0 0 16px rgba(251,146,60,0.15)'  } : { borderColor: 'rgba(251,146,60,0.4)'  };
+            return focused ? { borderColor: 'rgba(224,190,122,0.75)', boxShadow: '0 0 16px rgba(224,190,122,0.1)' } : { borderColor: 'rgba(224,190,122,0.4)' };
+          })()}
         >
 
           {/* 💬 Lucid Tutor */}
           <div className={`flex-1 flex flex-col min-h-0 ${activeRightTab === 'tutor' ? '' : 'hidden'}`}>
               <ChatPanel
                 key={chatKey}
-                getCodeContext={() => tabContents[activeTab]}
+                getCodeContext={() => {
+                  if (landingVisible) return null;
+                  const code = tabContents[activeTab];
+                  return code?.trim() ? code : null;
+                }}
+                notice={landingVisible || !tabContents[activeTab]?.trim() ? true : null}
+                chatScrollRef={chatScrollRef}
                 placeholder="Lucid에게 물어보기"
                 greeting={chatGreeting}
                 systemPrompt={chatSystemPrompt || undefined}
                 model={MODELS.FREESTUDY_TUTOR}
                 splitRatio={splitRatio}
                 onHighlightToken={highlightCodeToken}
-                quickQuestion="이 코드 뭐하는 코드야?"
+                quickQuestions={[
+                  '이 코드 뭐하는 코드야?',
+                  '게임 배경을 바탕으로 비유로 설명해줘',
+                ]}
                 onGoToQuiz={() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', altKey: true, bubbles: true, cancelable: true }))}
                 className=""
               />
@@ -731,11 +1155,38 @@ ${mainCode.slice(0, 3000)}`;
               getCodeContext={() => tabContents[activeTab]}
               onSendToTutor={handleSendToTutor}
               onHighlightToken={highlightCodeToken}
+              activeTab={activeTab}
+              defaultCount={3}
             />
           </div>
 
           {/* 📝 메모 */}
           {activeRightTab === 'memo' && <MemoPanel />}
+
+          {/* 문제풀기 바로가기 + ↑ 맨위로 버튼 — Lucid Tutor 탭일 때만 */}
+          {activeRightTab === 'tutor' && (
+            <div className="absolute bottom-[66px] right-3 z-10 flex flex-col items-end gap-1 pointer-events-auto">
+              {/* ↑ 맨위로 — 문제풀기 위에 얹기 */}
+              <button
+                onClick={() => chatScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="flex items-center justify-center rounded font-black text-[11px] transition-all hover:-translate-y-0.5 px-2 py-1"
+                style={{ background: 'rgba(253,224,71,0.1)', border: '1px solid rgba(253,224,71,0.3)', color: '#fde047', boxShadow: '0 0 8px rgba(253,224,71,0.1)' }}
+                title="맨 위로"
+              >↑</button>
+              {/* 문제풀기 */}
+              <button
+                onClick={() => setActiveRightTab('quiz')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition-all hover:-translate-y-0.5"
+                style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.35)', color: '#a78bfa', boxShadow: '0 0 14px rgba(167,139,250,0.18)' }}
+              >
+                🎯 문제풀기
+                <span className="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold leading-none"
+                  style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd' }}>
+                  Alt+4
+                </span>
+              </button>
+            </div>
+          )}
 
         </div>
       </div>
@@ -743,7 +1194,7 @@ ${mainCode.slice(0, 3000)}`;
       {/* 타자연습 오버레이 — split 컨테이너 전체(에디터+채팅)를 덮어 폭을 최대로 확보 */}
       {isTypingPractice && (
         <TypingPractice
-          code={tabContents[activeTab]}
+          code={stripComments(tabContents[activeTab])}
           isNewRecord={typingIsNewRecord}
           previousBest={typingBest}
           onRestart={() => setTypingIsNewRecord(false)}
@@ -793,20 +1244,30 @@ ${mainCode.slice(0, 3000)}`;
 
       {/* 학습 종료 확인 모달 */}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#1e2030] border border-white/10 rounded-2xl px-8 py-6 flex flex-col items-center gap-4 shadow-2xl w-[320px]">
-            <p className="text-white font-bold text-base">학습을 종료할까요?</p>
-            <p className="text-gray-400 text-sm text-center">작성한 내용은 저장되지 않습니다.</p>
-            <div className="flex gap-3 w-full mt-1">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 w-[300px]"
+            style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 20, padding: '28px 28px 24px', boxShadow: '0 0 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06), 0 0 32px rgba(255,255,255,0.08)' }}>
+            {/* 아이콘 */}
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <span className="text-xl">⚠️</span>
+            </div>
+            <div className="text-center flex flex-col gap-1.5">
+              <p className="text-white font-black text-[15px] tracking-tight">학습을 종료할까요?</p>
+              <p className="text-gray-400 text-[12px]">작성한 내용은 저장되지 않습니다.</p>
+            </div>
+            <div className="flex gap-2.5 w-full mt-1">
               <button
                 onClick={() => setShowExitConfirm(false)}
-                className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm font-bold hover:bg-white/10 transition-all"
+                className="flex-1 py-2.5 text-[13px] font-bold text-gray-400 hover:text-white transition-all"
+                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}
               >
                 취소
               </button>
               <button
                 onClick={onBack}
-                className="flex-1 py-2 rounded-lg bg-red-500/80 text-white text-sm font-bold hover:bg-red-500 transition-all"
+                className="flex-1 py-2.5 text-[13px] font-bold text-white transition-all hover:-translate-y-0.5"
+                style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, boxShadow: '0 0 16px rgba(239,68,68,0.12)', color: '#f87171' }}
               >
                 종료
               </button>

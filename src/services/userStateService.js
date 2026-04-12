@@ -37,6 +37,7 @@ import {
   updateDoc,
   onSnapshot,
   arrayUnion,
+  arrayRemove,
   increment,
   collection,
   serverTimestamp,
@@ -379,6 +380,16 @@ export const getQuestRepeatCountFS = async (uid, filePath) => {
  */
 export const debugSetUserFields = async (uid, fields) => {
   await updateUserState(uid, fields);
+};
+
+/** 출석 날짜 추가 (YYYY-MM-DD) */
+export const debugAddAttendedDate = async (uid, dateStr) => {
+  await updateDoc(doc(db, 'users', uid), { attendedDates: arrayUnion(dateStr) });
+};
+
+/** 출석 날짜 제거 (YYYY-MM-DD) */
+export const debugRemoveAttendedDate = async (uid, dateStr) => {
+  await updateDoc(doc(db, 'users', uid), { attendedDates: arrayRemove(dateStr) });
 };
 
 /** 사용자 상태 초기화 (디버그용) */

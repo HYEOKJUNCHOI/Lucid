@@ -185,10 +185,10 @@ const DictionaryPopup = () => {
     };
 
     const handleDblClick = (e) => {
-      if (e.detail !== 2 || !e.altKey) return; // Alt + 더블클릭만
-      // 학습 페이지(/home, /freestudy)에서만 동작
+      if (e.detail !== 2) return; // 더블클릭만
+      // 학습 페이지에서만 동작
       const { pathname } = window.location;
-      if (!pathname.startsWith('/home') && pathname !== '/freestudy') return;
+      if (!pathname.startsWith('/home') && pathname !== '/freestudy' && !pathname.startsWith('/study')) return;
 
       let word = '';
       if (document.caretRangeFromPoint) {

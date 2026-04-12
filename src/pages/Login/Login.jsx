@@ -307,20 +307,19 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
           )}
 
           <button
-            onClick={() => showToast('카카오 로그인은 v2에서 지원 예정입니다.', 'warn')}
-            className="w-full flex items-center justify-center gap-3 bg-[#FEE500]/90 text-[#191919] font-semibold py-3.5 px-4 rounded-xl hover:bg-[#FEE500] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300"
+            onClick={() => showToast('카카오 로그인은 v2 업데이트 예정입니다.', 'warn')}
+            className="relative w-full flex items-center justify-center gap-3 bg-[#FEE500]/90 text-[#191919] font-semibold py-3.5 px-4 rounded-xl hover:bg-[#FEE500] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300"
           >
             <KakaoIcon />
             카카오로 시작하기
           </button>
 
           <button
-            onClick={onGithubLogin}
-            disabled={loginLoading !== null}
-            className="w-full flex items-center justify-center gap-3 bg-black/50 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 backdrop-blur-md hover:bg-black/80 hover:-translate-y-0.5 hover:border-gray-500 hover:shadow-lg transition-all duration-300 disabled:cursor-wait disabled:transform-none"
+            onClick={() => showToast('GitHub 로그인은 v2 업데이트 예정입니다.', 'warn')}
+            className="relative w-full flex items-center justify-center gap-3 bg-black/50 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 backdrop-blur-md hover:bg-black/80 hover:-translate-y-0.5 hover:border-gray-500 hover:shadow-lg transition-all duration-300"
           >
             <GithubIcon />
-            {loginLoading === 'github' ? '인증 중...' : 'GitHub로 시작하기'}
+            GitHub로 시작하기
           </button>
         </div>
 

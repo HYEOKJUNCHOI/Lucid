@@ -17,8 +17,14 @@ export const MODELS = {
   // 🎓 심층 튜터 대화 (ChatView 메인) — 가장 비싸지만 교육 퀄리티 필요
   TUTOR: 'gpt-4o',
 
+  // ⚡ 빠르고 저렴한 튜터 옵션 (ChatView 토글)
+  MINI: 'gpt-4o-mini',
+
   // 🤖 Gemini: 문제 생성·코드 분석 (FreeStudy 퀴즈)
   GEMINI_QUIZ: 'gemini-2.5-flash-lite',
+
+  // 🔤 한→영 번역 (타자연습 코드 번역, 저비용)
+  TRANSLATE: 'gemini-2.0-flash',
 
   // 🧪 Gemini 튜터 비교 테스트용 (2026-04-12 ListModels 확인)
   GEMINI_TUTOR_FLASH: 'gemini-2.0-flash',          // 1순위 (저렴)

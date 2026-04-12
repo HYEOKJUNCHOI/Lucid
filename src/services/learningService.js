@@ -872,6 +872,24 @@ export const saveCheatBadge = async (uid) => {
  * - status: 오늘 dailyXP > 0 → 'green' / dailyXP === 0 → 'yellow'
  *   (red는 대시보드에서 lastStudiedAt 기준으로 계산)
  */
+// ─── GitHub 파일 캐시 ──────────────────────────
+// SHA는 git content hash → 내용이 같으면 SHA도 같아서 전역 유니크
+export const getGithubFileCache = async (sha) => {
+  try {
+    const snap = await getDoc(doc(db, 'github_cache', sha));
+    return snap.exists() ? snap.data().content : null;
+  } catch { return null; }
+};
+
+export const saveGithubFileCache = async (sha, content) => {
+  try {
+    await setDoc(doc(db, 'github_cache', sha), {
+      content,
+      cachedAt: serverTimestamp(),
+    });
+  } catch (e) { console.warn('GitHub 캐시 저장 실패:', e); }
+};
+
 export const syncUserStatus = async (uid, displayName) => {
   try {
     // Firestore에서 최신 상태 읽기

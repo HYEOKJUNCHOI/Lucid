@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import Editor from '@monaco-editor/react';
+import nightOwlTheme from '../../themes/nightOwl.json';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import ChatView from './ChatView';
@@ -11,8 +13,8 @@ import DiagnosisView from './DiagnosisView';
 import FreeStudyView from './FreeStudyView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
-import { calcLevel, xpToNextLevel, LEVEL_TABLE, isWeekend, getRewardStatus, DAILY_XP_CAP, syncVisitedFile, syncUserStatus } from '../../services/learningService';
-import { calcStreakStatus, claimLoginXPFS, useFreezeOnDateFS, getDailyXPFromState, getUserState } from '../../services/userStateService';
+import { calcLevel, xpToNextLevel, LEVEL_TABLE, isWeekend, getRewardStatus, DAILY_XP_CAP, syncVisitedFile, syncUserStatus, getGithubFileCache, saveGithubFileCache } from '../../services/learningService';
+import { calcStreakStatus, claimLoginXPFS, useFreezeOnDateFS, getDailyXPFromState, getUserState, updateUserState } from '../../services/userStateService';
 import { getApiKey } from '../../lib/apiKey';
 import Toast, { showToast } from '../../components/common/Toast';
 import TypingBadge from '../../components/common/TypingBadge';
@@ -46,15 +48,20 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [repairCount, setRepairCount] = useState(-1);
   const [mode, setMode] = useState(() => {
     const p = window.location.pathname;
-    if (p === '/home/chapter') return 'chapter';
+    if (p === '/chapter' || p === '/home/chapter') return 'chapter';
     if (p === '/home/quest') return 'quest';
     if (p === '/home/levelup') return 'levelup';
-    if (p === '/freestudy') return 'freeStudy';
+    if (p === '/study' || p === '/freestudy') return 'freeStudy';
     return null;
   });
   const [sidebarMini, setSidebarMini] = useState(false); // 사이드바 미니모드
   const [homeConfirm, setHomeConfirm] = useState(false); // 홈 이동 확인 모달
-  const [questDoneModal, setQuestDoneModal] = useState(null); // { xp, count }
+  const [questDoneModal, setQuestDoneModal] = useState(null);
+  const [chapterModal, setChapterModal] = useState(false);
+  const [freeStudyCode, setFreeStudyCode] = useState(null);
+  const [chapterSelectedFile, setChapterSelectedFile] = useState(null); // { file, code }
+  const [chapterCodeLoading, setChapterCodeLoading] = useState(false);
+  const [freeStudySource, setFreeStudySource] = useState(null); // null | 'chapter' // { xp, count }
 
   const [dailyXP, setDailyXP] = useState({ total: 0, quest: 0, levelup: 0, login: 0 });
   const [freezeCount, setFreezeCount] = useState(0);
@@ -98,7 +105,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   // mode 변경 시 URL 동기화
   useEffect(() => {
-    const pathMap = { chapter: '/home/chapter', quest: '/home/quest', levelup: '/home/levelup', freeStudy: '/freestudy' };
+    const pathMap = { chapter: '/chapter', quest: '/home/quest', levelup: '/home/levelup', freeStudy: '/study' };
     const target = pathMap[mode] || '/home';
     if (location.pathname !== target) navigate(target, { replace: true });
   }, [mode]);
@@ -111,6 +118,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   // 챕터 퀘스트 완료 토스트
   const [chapterQuestToast, setChapterQuestToast] = useState(null); // { name }
+  const [questDevNotice, setQuestDevNotice] = useState(false);
   const prevCompletedRef = useRef([]);
   useEffect(() => {
     if (!completedFiles.length) return;
@@ -149,6 +157,10 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [chapterHover, setChapterHover] = useState(null); // 챕터 호버 미리보기 { name, files, top, left }
   const [freezeHover, setFreezeHover] = useState(null); // 얼리기 호버 툴팁 { top, left }
   const [freezeConfirm, setFreezeConfirm] = useState(null); // 얼리기 사용 확인 모달 { dateStr, day }
+  const [beanHover, setBeanHover] = useState(null); // 원두 호버 툴팁 { top, left }
+  const [americanoHover, setAmericanoHover] = useState(null); // 아메리카노 호버 툴팁 { top, left }
+  const [cheatHover, setCheatHover] = useState(null); // 개발자정신 배지 호버 { top, left }
+  const [americanoPopup, setAmericanoPopup] = useState(false); // 아메리카노 교환 완료 팝업
   // frozenDates는 userData.frozenDates로 FS에서 직접 읽음 (별도 state 불필요)
 
   // 레포 목록 로드
@@ -328,6 +340,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
               name: item.path.split('/').pop(),
               downloadUrl: `https://raw.githubusercontent.com/${t.githubUsername}/${r.name}/HEAD/${item.path}`,
               path: item.path,
+              sha: item.sha,
             }));
           filesMap[ch.name] = folderFiles;
         });
@@ -375,7 +388,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
       setChapterFilesMap(prev => ({
         ...prev,
-        [ch.name]: codeFiles.map(f => ({ name: f.name, downloadUrl: f.download_url, path: f.path }))
+        [ch.name]: codeFiles.map(f => ({ name: f.name, downloadUrl: f.download_url, path: f.path, sha: f.sha }))
       }));
     } catch (e) {
       console.error('파일 로드 실패:', e);
@@ -527,7 +540,23 @@ const StudentPage = ({ user, userData, onLogout }) => {
                         return (
                           <button
                             key={file.name}
-                            onClick={() => handleFileSelect(file, ch)}
+                            onClick={async () => {
+                                          try {
+                                            let code = file.sha ? await getGithubFileCache(file.sha) : null;
+                                            if (!code) {
+                                              const resp = await fetch(file.downloadUrl);
+                                              code = await resp.text();
+                                              if (file.sha) saveGithubFileCache(file.sha, code);
+                                            }
+                                            setFreeStudyCode(code);
+                                            setFreeStudySource('chapter');
+                                            setMode('freeStudy');
+                                          } catch {
+                                            setFreeStudyCode('// 코드를 불러오지 못했습니다');
+                                            setFreeStudySource('chapter');
+                                            setMode('freeStudy');
+                                          }
+                                        }}
                             className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md transition-all group mb-0.5 ${
                               isActive
                                 ? 'bg-[#c586c0]/10'
@@ -720,6 +749,156 @@ const StudentPage = ({ user, userData, onLogout }) => {
         </div>
       )}
 
+      {/* 원두 호버 툴팁 (fixed) */}
+      {beanHover && (
+        <div
+          className="pointer-events-none z-[9999] fixed w-52 rounded-2xl shadow-2xl"
+          style={{ top: Math.min(beanHover.top, window.innerHeight - 260), left: beanHover.left, background: 'linear-gradient(160deg, #1c1c2e 0%, #1a1a28 100%)', border: '1px solid rgba(245,158,11,0.2)', boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,158,11,0.08)' }}
+        >
+          {/* 헤더 */}
+          <div className="px-3.5 pt-3 pb-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-base leading-none">🫘</span>
+              <span className="text-[11px] font-black text-white tracking-tight">원두</span>
+            </div>
+            <p className="text-[8.5px] leading-[1.6]" style={{ color: 'rgba(255,255,255,0.38)' }}>
+              <span style={{ color: '#fbbf24' }}>원두 5개</span>를 모으면<br /><span style={{ color: '#ffffff' }}>학원에서</span> <span style={{ color: '#d97706' }}>아메리카노</span>를<br /><span style={{ color: '#60a5fa' }}>한 잔</span> 사줄지도 모릅니다(?)
+            </p>
+          </div>
+
+          {/* 획득 조건 */}
+          <div className="px-3.5 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <p className="text-[7.5px] font-bold uppercase tracking-widest mb-2" style={{ color: 'rgba(255,255,255,0.25)' }}>획득 조건</p>
+            <div className="flex items-start gap-2">
+              <span className="text-[9px] mt-px">📋</span>
+              <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}><span style={{ color: '#fbbf24' }}>오늘의 퀘스트</span> 진행 시<br /><span style={{ color: 'rgba(255,255,255,0.7)' }}>가끔씩 드랍</span>됩니다</p>
+            </div>
+          </div>
+
+          {/* 5개 진행 */}
+          <div className="px-3.5 py-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[7.5px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>아메리카노까지</p>
+              <p className="text-[8px] font-black" style={{ color: '#f59e0b' }}>{beanCount}<span style={{ color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}> / 5</span></p>
+            </div>
+            <div className="flex gap-1">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex-1 h-1 rounded-full" style={{ background: i < beanCount ? 'linear-gradient(90deg, #f59e0b, #ef4444)' : 'rgba(255,255,255,0.06)', boxShadow: i < beanCount ? '0 0 4px rgba(245,158,11,0.5)' : 'none' }} />
+              ))}
+            </div>
+            {beanCount >= 5 && (
+              <p className="text-[7.5px] mt-1" style={{ color: 'rgba(245,158,11,0.8)' }}>☕ 아메리카노 받을 준비 완료!</p>
+            )}
+          </div>
+
+          {/* 말풍선 꼬리 */}
+          <div className="absolute top-5 right-full w-0 h-0 border-t-[5px] border-b-[5px] border-r-[5px] border-t-transparent border-b-transparent" style={{ borderRightColor: 'rgba(245,158,11,0.2)' }} />
+        </div>
+      )}
+
+      {/* 아메리카노 호버 툴팁 (fixed) */}
+      {americanoHover && (
+        <div
+          className="pointer-events-none z-[9999] fixed w-48 rounded-2xl shadow-2xl"
+          style={{ top: Math.min(americanoHover.top, window.innerHeight - 120), left: Math.max(8, americanoHover.left - 192 + 28), background: 'linear-gradient(160deg, #1c1507 0%, #181208 100%)', border: '1px solid rgba(217,119,6,0.25)', boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(217,119,6,0.08)' }}
+        >
+          <div className="px-3.5 py-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="text-base leading-none">☕</span>
+              <span className="text-[11px] font-black text-white tracking-tight">아메리카노</span>
+            </div>
+            <p className="text-[8.5px] leading-[1.6]" style={{ color: 'rgba(255,255,255,0.38)' }}>
+              <span style={{ color: '#fbbf24' }}>멘토</span>님에게<br />
+              <span style={{ color: '#d97706' }}>아메리카노</span>를 <span style={{ color: '#60a5fa' }}>쫄라보세요</span> (?)
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 아메리카노 교환 완료 팝업 */}
+      {americanoPopup && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(120,60,0,0.55) 0%, rgba(0,0,0,0.82) 100%)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setAmericanoPopup(false)}
+        >
+          <div
+            className="relative text-center"
+            style={{ animation: 'fadeScaleIn 0.35s cubic-bezier(0.34,1.56,0.64,1) both' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 배경 글로우 */}
+            <div className="absolute inset-0 rounded-3xl pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(217,119,6,0.18) 0%, transparent 70%)', filter: 'blur(20px)' }} />
+
+            <div className="relative rounded-3xl px-10 py-9" style={{ background: 'linear-gradient(160deg, #1e1a0f 0%, #141008 100%)', border: '1px solid rgba(217,119,6,0.4)', boxShadow: '0 30px 80px rgba(0,0,0,0.8), 0 0 60px rgba(217,119,6,0.12), inset 0 1px 0 rgba(255,255,255,0.05)' }}>
+
+              {/* 스팀 라인들 */}
+              <div className="flex justify-center gap-3 mb-1" style={{ height: 28 }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="w-0.5 rounded-full" style={{
+                    background: 'linear-gradient(to top, rgba(217,119,6,0.6), transparent)',
+                    height: '100%',
+                    animation: `steamRise 1.4s ease-in-out ${i * 0.2}s infinite`,
+                  }} />
+                ))}
+              </div>
+
+              {/* 커피 이모지 */}
+              <div className="text-6xl mb-4 leading-none" style={{ filter: 'drop-shadow(0 0 16px rgba(217,119,6,0.6))' }}>☕</div>
+
+              {/* 원두 → 아메리카노 변환 표시 */}
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>🫘 ×5</span>
+                <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>→</span>
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: 'rgba(217,119,6,0.12)', color: '#d97706', border: '1px solid rgba(217,119,6,0.25)' }}>☕ ×1</span>
+              </div>
+
+              {/* 메인 텍스트 */}
+              <p className="text-[20px] font-black leading-snug mb-2">
+                <span style={{ color: '#d97706' }}>아메리카노</span>{' '}
+                <span style={{ color: '#60a5fa' }}>한 잔</span>{' '}
+                <span className="text-white">얻으셨네요!</span>
+              </p>
+              <p className="text-[13px] mb-6" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                <span style={{ color: '#fbbf24' }}>멘토</span>
+                <span>님께 쫄라보세요 (?)</span>
+              </p>
+
+              <button
+                onClick={() => setAmericanoPopup(false)}
+                className="w-full py-2.5 rounded-xl text-[13px] font-black text-white transition-all hover:opacity-80"
+                style={{ background: 'linear-gradient(135deg, rgba(217,119,6,0.5), rgba(180,83,9,0.35))', border: '1px solid rgba(217,119,6,0.4)' }}
+              >확인</button>
+            </div>
+          </div>
+
+          <style>{`
+            @keyframes fadeScaleIn {
+              from { opacity: 0; transform: scale(0.85); }
+              to   { opacity: 1; transform: scale(1); }
+            }
+            @keyframes steamRise {
+              0%   { transform: translateY(0) scaleX(1); opacity: 0.6; }
+              50%  { transform: translateY(-10px) scaleX(1.4); opacity: 0.3; }
+              100% { transform: translateY(-20px) scaleX(0.8); opacity: 0; }
+            }
+          `}</style>
+        </div>
+      )}
+
+      {/* 개발자정신 배지 호버 툴팁 (fixed) */}
+      {cheatHover && (
+        <div
+          className="pointer-events-none z-[9999] fixed rounded-xl shadow-2xl"
+          style={{ top: Math.max(8, cheatHover.top - 80), left: cheatHover.left + 8, background: '#1a1f2e', border: '1px solid rgba(148,163,184,0.25)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', width: 180 }}
+        >
+          <div className="px-3.5 py-2.5">
+            <div className="text-slate-300 text-[10px] font-black mb-1.5">🤫 개발자정신</div>
+            <div className="text-gray-300 text-[10px] leading-relaxed">버그 쓰셨어요??</div>
+          </div>
+        </div>
+      )}
+
       {/* 챕터 퀘스트 완료 토스트 */}
       {chapterQuestToast && (
         <div className="quest-complete-toast fixed bottom-10 left-1/2 z-[200] pointer-events-none"
@@ -890,7 +1069,12 @@ const StudentPage = ({ user, userData, onLogout }) => {
                         <>
                           {/* 🤫 치팅 배지 */}
                           {hasCheating && (
-                            <div className="absolute right-2 scale-[0.77] origin-top-right group" style={{ top: cheatTopPx }}>
+                            <div
+                              className="absolute right-2 scale-[0.77] origin-top-right"
+                              style={{ top: cheatTopPx }}
+                              onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setCheatHover({ top: r.top, left: r.right }); }}
+                              onMouseLeave={() => setCheatHover(null)}
+                            >
                               <div
                                 className="flex items-center gap-0.5 px-1 h-[22px] rounded cursor-default select-none"
                                 style={{
@@ -901,14 +1085,6 @@ const StudentPage = ({ user, userData, onLogout }) => {
                               >
                                 <span className="text-[11px] leading-none">🤫</span>
                                 <span className="text-[11px] font-black tracking-[-0.02em] leading-none" style={{ color: `rgba(148,163,184,1)` }}>개발자정신</span>
-                              </div>
-                              <div className="pointer-events-none absolute top-full right-0 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50">
-                                <div className="bg-[#1a1f2e] border border-slate-400/25 rounded-xl px-3.5 py-2.5 shadow-2xl shadow-black/40 w-[180px]">
-                                  <div className="text-slate-300 text-[10px] font-black mb-1.5">🤫 개발자정신</div>
-                                  <div className="text-gray-300 text-[10px] leading-relaxed">
-                                    코드를 살짝 만져보고<br/>타자친 분에게 드리는<br/>비밀 이스터에그 ㅋ
-                                  </div>
-                                </div>
                               </div>
                             </div>
                           )}
@@ -1013,6 +1189,27 @@ const StudentPage = ({ user, userData, onLogout }) => {
                         .map(s => parseInt(s.slice(8), 10))
                     );
 
+                    // attendedDates 전체 배열에서 오늘 기준 연속 출석일 계산
+                    const calcLiveStreak = () => {
+                      const all = (userData?.attendedDates || []).slice().sort().reverse(); // 최신순
+                      if (all.length === 0) return 0;
+                      const todayMs = new Date(new Date().toISOString().slice(0,10)).getTime();
+                      const day0 = all[0];
+                      const day0Ms = new Date(day0).getTime();
+                      // 마지막 출석이 오늘 또는 어제여야 연속으로 인정
+                      const diff0 = (todayMs - day0Ms) / 86400000;
+                      if (diff0 > 1) return 0;
+                      let count = 1;
+                      for (let i = 1; i < all.length; i++) {
+                        const prev = new Date(all[i - 1]).getTime();
+                        const curr = new Date(all[i]).getTime();
+                        if ((prev - curr) / 86400000 === 1) count++;
+                        else break;
+                      }
+                      return count;
+                    };
+                    const liveStreak = calcLiveStreak();
+
                     // 달력 셀 배열 (앞 빈칸 + 날짜 + 뒤 빈칸으로 7의 배수 맞춤)
                     const cells = [];
                     for (let i = 0; i < firstDow; i++) cells.push(null);
@@ -1031,7 +1228,32 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       <div className="mb-2 p-2 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(245,158,11,0.04) 100%)', border: '1px solid rgba(251,191,36,0.22)' }}>
                         <div className="flex items-center justify-between mb-2 px-0.5">
                           <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{month}월 출석</span>
-                          <span className="text-[11px] font-black" style={{ color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }}>{streak}일 연속 🔥</span>
+                          <div className="relative group cursor-default">
+                            <span className="text-[11px] font-black" style={{ color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }}>{liveStreak}일 연속 🔥</span>
+                            {/* 7일 뱃지 안내 팝업 */}
+                            <div className="absolute right-0 bottom-full mb-2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50 w-[190px]">
+                              <div className="rounded-xl px-3.5 py-3 shadow-2xl" style={{ background: '#1a1f2e', border: '1px solid rgba(251,191,36,0.35)' }}>
+                                <div className="text-[11px] font-black mb-1.5" style={{ color: '#fbbf24' }}>🔥 연속 출석 배지</div>
+                                <p className="text-[9.5px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                                  <span style={{ color: '#fbbf24', fontWeight: 700 }}>7일 이상</span> 연속 출석하면<br/>배지를 획득할 수 있어요!
+                                </p>
+                                {liveStreak < 7 && (
+                                  <div className="mt-2 pt-2" style={{ borderTop: '1px solid rgba(251,191,36,0.15)' }}>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[8.5px]" style={{ color: 'rgba(255,255,255,0.7)' }}>배지까지</span>
+                                      <span className="text-[9px] font-black" style={{ color: '#fbbf24' }}>{liveStreak} / 7일</span>
+                                    </div>
+                                    <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                                      <div className="h-full rounded-full" style={{ width: `${(liveStreak / 7) * 100}%`, background: 'linear-gradient(90deg, #fbbf24, #f97316)', boxShadow: '0 0 6px rgba(251,191,36,0.6)' }} />
+                                    </div>
+                                  </div>
+                                )}
+                                {liveStreak >= 7 && (
+                                  <p className="mt-1.5 text-[8.5px] font-bold" style={{ color: 'rgba(251,191,36,0.7)' }}>✓ 배지 획득 완료!</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                         {/* 요일 헤더 */}
                         <div className="grid grid-cols-7 mb-1">
@@ -1137,31 +1359,78 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     </div>
                   </div>
 
-                  {/* 얼리기 + 원두 */}
-                  <div className="p-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                    <div className="flex items-center gap-2">
-                      {/* 얼리기 */}
-                      <div className="flex-1 flex flex-col items-center gap-0.5 py-1">
-                        <span className="text-base leading-none">🧊</span>
-                        <span className="text-sm font-black text-[#569cd6] leading-none">{freezeCount}</span>
-                        <span className="text-[8px] font-semibold text-gray-500">얼리기</span>
+                  {/* 아메리카노 + 원두 */}
+                  {(() => {
+                    const americanoCount = userData?.americanoCount || 0;
+                    const canExchange = beanCount >= 5;
+                    const handleExchange = async () => {
+                      if (!canExchange) return;
+                      await updateUserState(user.uid, { beanCount: 0, americanoCount: americanoCount + 1 });
+                      setAmericanoPopup(true);
+                    };
+                    return (
+                      <div className="p-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                        <div className="flex items-center gap-1">
+                          {/* 아메리카노 (왼쪽) */}
+                          <div
+                            className="flex-1 flex flex-col items-center gap-0.5 py-1 cursor-default"
+                            onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setAmericanoHover({ top: r.top, left: r.left }); }}
+                            onMouseLeave={() => setAmericanoHover(null)}
+                          >
+                            <span className="text-base leading-none">☕</span>
+                            <span className="text-sm font-black leading-none" style={{ color: '#d97706' }}>{americanoCount}</span>
+                            <span className="text-[8px] font-semibold text-gray-500">아메리카노</span>
+                          </div>
+                          {/* 교환 버튼 */}
+                          <button
+                            onClick={handleExchange}
+                            disabled={!canExchange}
+                            title={canExchange ? '원두 5개 → 아메리카노 1잔' : `원두 ${5 - beanCount}개 더 필요`}
+                            className="flex flex-col items-center gap-0.5 px-1 py-1 rounded-lg transition-all"
+                            style={canExchange ? {
+                              background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(217,119,6,0.12))',
+                              border: '1px solid rgba(245,158,11,0.5)',
+                              boxShadow: '0 0 10px rgba(245,158,11,0.25)',
+                              cursor: 'pointer',
+                            } : {
+                              background: 'rgba(255,255,255,0.02)',
+                              border: '1px solid rgba(255,255,255,0.06)',
+                              cursor: 'not-allowed',
+                            }}
+                          >
+                            <span className="text-[10px] leading-none" style={{ color: canExchange ? '#f59e0b' : 'rgba(255,255,255,0.15)' }}>←</span>
+                            <span className="text-[7px] font-black leading-none" style={{ color: canExchange ? '#f59e0b' : 'rgba(255,255,255,0.12)' }}>교환</span>
+                          </button>
+                          {/* 원두 (오른쪽) */}
+                          <div
+                            className="flex-1 flex flex-col items-center gap-0.5 py-1 cursor-default rounded-lg transition-all"
+                            onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setBeanHover({ top: r.top, left: r.right + 8 }); }}
+                            onMouseLeave={() => setBeanHover(null)}
+                            style={{}}
+                          >
+                            <span className="text-base leading-none" style={canExchange ? { filter: 'drop-shadow(0 0 8px rgba(245,158,11,0.9)) drop-shadow(0 0 16px rgba(245,158,11,0.5))' } : {}}>🫘</span>
+                            <span className="text-sm font-black leading-none" style={{ color: canExchange ? '#fbbf24' : '#f59e0b', textShadow: canExchange ? '0 0 8px rgba(251,191,36,0.8)' : 'none' }}>{beanCount}</span>
+                            <span className="text-[8px] font-semibold" style={{ color: canExchange ? 'rgba(251,191,36,0.6)' : 'rgba(255,255,255,0.3)' }}>원두</span>
+                          </div>
+                        </div>
+                        {/* 하단 바 */}
+                        {americanoCount > 0 && (
+                          <div className="flex gap-0.5 mt-1.5 justify-center">
+                            {[...Array(Math.min(americanoCount, 10))].map((_, i) => (
+                              <div key={i} className="h-0.5 flex-1 rounded-full bg-[#d97706]/70" style={{ boxShadow: '0 0 3px rgba(217,119,6,0.5)' }} />
+                            ))}
+                          </div>
+                        )}
+                        {beanCount > 0 && americanoCount === 0 && (
+                          <div className="flex gap-0.5 mt-1.5 justify-center">
+                            {[...Array(5)].map((_, i) => (
+                              <div key={i} className={`h-0.5 flex-1 rounded-full ${i < beanCount ? 'bg-[#f59e0b]/70' : 'bg-white/[0.06]'}`} />
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="w-px h-8 bg-white/[0.06]" />
-                      {/* 원두 */}
-                      <div className="flex-1 flex flex-col items-center gap-0.5 py-1">
-                        <span className="text-base leading-none">🫘</span>
-                        <span className="text-sm font-black text-[#f59e0b] leading-none">{beanCount}</span>
-                        <span className="text-[8px] font-semibold text-gray-500">원두</span>
-                      </div>
-                    </div>
-                    {beanCount > 0 && (
-                      <div className="flex gap-0.5 mt-1.5 justify-center">
-                        {[...Array(5)].map((_, i) => (
-                          <div key={i} className={`h-0.5 flex-1 rounded-full ${i < beanCount ? 'bg-[#f59e0b]/70' : 'bg-white/[0.06]'}`} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })()}
 
                 </>
               );
@@ -1301,8 +1570,42 @@ const StudentPage = ({ user, userData, onLogout }) => {
             />
 
           ) : mode === 'freeStudy' ? (
-            // ─── 자유 학습 ────────────────────────────────────────
-            <FreeStudyView onBack={() => { setMode(null); navigate('/home'); }} />
+            // ─── 복습 & 예습 ──────────────────────────────────────
+            (() => {
+              // teacher가 없으면 classData에서 첫 번째 강사 사용
+              const effectiveTeacher = teacher || classData.find(c => c.teacher?.githubUsername)?.teacher || null;
+              // 담당강사 레포 필터용: 해당 강사의 등록된 레포명만 추출 (기수 매칭 완료된 것들)
+              const enrolledRepoNames = classData
+                .filter(c => c.teacher?.githubUsername === effectiveTeacher?.githubUsername)
+                .flatMap(c => c.repos.map(r => r.name));
+              return (
+            <FreeStudyView
+              onBack={() => {
+              if (freeStudySource === 'chapter') {
+                setFreeStudyCode(null);
+                setFreeStudySource(null);
+                reset();
+                setChapterModal(true); // 마지막 선택 파일 유지한 채 모달 재오픈
+              } else {
+                setMode(null);
+                navigate('/home');
+              }
+            }}
+              showLanding={true}
+              teacher={effectiveTeacher}
+              enrolledRepoNames={enrolledRepoNames}
+              externalCode={freeStudyCode}
+              fromChapter={freeStudySource === 'chapter'}
+              onGoToChapter={async ({ githubUsername, repo: r }) => {
+                const teacherObj = effectiveTeacher?.githubUsername === githubUsername
+                  ? effectiveTeacher
+                  : { githubUsername, name: githubUsername };
+                await handleRepoSelect(teacherObj, r);
+                setChapterModal(true);
+              }}
+            />
+              );
+            })()
 
           ) : mode === 'levelup' ? (
             // ─── 레벨업 문제지옥 ─────────────────────────────────
@@ -1361,196 +1664,154 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 onBack={() => setStep(1)}
               />
             ) : (
-              // 레포 목록 or 챕터/파일 브라우저 (중앙 화면)
-              <div className="w-full h-full flex flex-col overflow-hidden animate-fade-in-up">
-                {/* 브레드크럼 */}
-                <div className="flex items-center gap-2 px-6 py-3 border-b border-white/[0.06] shrink-0 flex-wrap">
-                  <button
-                    onClick={() => { setMode(null); reset(); }}
-                    className="flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-                    홈
-                  </button>
-                  {repo && (
-                    <>
-                      <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                      <button onClick={() => reset()} className="text-gray-400 hover:text-white text-sm transition">레포 목록</button>
-                      <svg className="w-3.5 h-3.5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                      <span className="text-[#4ec9b0] text-sm font-semibold truncate max-w-[240px]">{repo.label}</span>
-                    </>
-                  )}
-                </div>
-                {/* 본문 */}
-                <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  <div className={repo ? 'w-full h-full px-4 py-4' : 'max-w-4xl mx-auto w-full px-6 py-6'}>
+              // ─── 챕터 사이드바 + 메인 (옛날 디자인 복원) ────────
+              <div className="w-full h-full flex overflow-hidden animate-fade-in-up">
+                {/* 왼쪽 사이드바 */}
+                <aside className="w-60 shrink-0 border-r border-white/[0.06] flex flex-col" style={{ background: '#0d1117' }}>
+                  {/* 상단 헤더 */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] shrink-0">
+                    <button onClick={() => { setMode(null); reset(); }}
+                      className="flex items-center gap-1.5 text-gray-400 hover:text-white text-[11px] font-bold transition">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+                      홈
+                    </button>
+                    {repo && (
+                      <button onClick={() => reset()}
+                        className="text-[10px] text-gray-600 hover:text-gray-400 transition">
+                        레포 변경
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 사이드바 콘텐츠 */}
+                  <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     {!repo ? (
                       // ─── 레포 목록 ───────────────────────────────
-                      <div>
-                        <h2 className="text-2xl font-black text-white mb-1">챕터별 학습</h2>
-                        <p className="text-sm text-gray-500 mb-6">학습할 수업을 선택하세요</p>
-                        {classLoading ? (
-                          <div className="flex items-center gap-2 py-4">
-                            <div className="w-4 h-4 border-2 border-[#4ec9b0]/60 border-t-transparent rounded-full animate-spin" />
-                            <span className="text-gray-500 text-sm">불러오는 중...</span>
-                          </div>
-                        ) : (
-                          classData.map(({ id, group, teacher: t, repos }, groupIdx) => (
-                            <div key={id} className="mb-8">
-                              <p className="text-sm font-bold text-white/80 mb-3 px-1">{group.name}</p>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {repos.map((r) => {
-                                  const repoKey = `${id}-${r.name}`;
-                                  const isSel = selectedRepoKey === repoKey;
-                                  return (
-                                    <button
-                                      key={r.name}
-                                      onClick={() => { setSelectedRepoKey(repoKey); setVisitedRepoKeys(prev => new Set(prev).add(repoKey)); handleRepoSelect(t, r); }}
-                                      className={`text-left px-4 py-4 rounded-xl border transition-all flex items-center gap-3 group relative overflow-hidden ${
-                                        isSel
-                                          ? 'bg-[#4ec9b0]/10 border-[#4ec9b0]/40 shadow-[0_0_20px_rgba(78,201,176,0.15),inset_0_1px_0_rgba(78,201,176,0.2)]'
-                                          : visitedRepoKeys.has(repoKey)
-                                            ? 'bg-gradient-to-b from-white/[0.04] to-white/[0.01] border-[#4ec9b0]/15 shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-[#4ec9b0]/30'
-                                            : 'bg-gradient-to-b from-white/[0.04] to-white/[0.01] border-white/[0.07] shadow-[0_2px_6px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] hover:bg-gradient-to-b hover:from-[#4ec9b0]/[0.08] hover:to-[#4ec9b0]/[0.03] hover:border-[#4ec9b0]/30'
-                                      }`}
-                                    >
-                                      <div className={`shrink-0 p-2.5 rounded-xl ${isSel ? 'bg-[#4ec9b0]/20' : 'bg-white/[0.04] group-hover:bg-[#4ec9b0]/10'}`}>
-                                        <svg className={`w-4 h-4 ${isSel ? 'text-[#4ec9b0]' : 'text-gray-600 group-hover:text-[#4ec9b0]'}`} fill="currentColor" viewBox="0 0 24 24">
-                                          <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-                                        </svg>
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className={`text-sm truncate ${isSel ? 'font-bold text-[#4ec9b0]' : 'font-medium text-gray-300 group-hover:text-white'}`}>{r.label}</p>
-                                      </div>
-                                      <svg className="w-4 h-4 text-gray-600 group-hover:text-[#4ec9b0] shrink-0 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    ) : (
-                      // ─── 2패널: 챕터 목록(좌) + 파일 그리드(우) ──
-                      <div className="flex gap-0" style={{ height: 'calc(100vh - 120px)', minHeight: 0 }}>
-                        {/* 왼쪽: 챕터 목록 */}
-                        <div className="w-48 shrink-0 border-r border-white/[0.06] overflow-y-auto pr-1 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                          <p className="text-[9px] font-bold text-gray-600 uppercase tracking-wider px-2 py-2">{repo.label}</p>
-                          {chaptersLoading ? (
-                            <div className="flex items-center gap-1.5 px-2 py-2">
-                              <div className="w-3 h-3 border-2 border-[#4ec9b0]/60 border-t-transparent rounded-full animate-spin shrink-0" />
-                              <span className="text-gray-500 text-[10px]">로딩 중...</span>
-                            </div>
-                          ) : chapters.length === 0 ? (
-                            <p className="text-gray-600 text-[10px] px-2">챕터 없음</p>
-                          ) : (
-                            chapters.map((ch) => {
-                              const isSel = selectedChapter?.name === ch.name;
-                              const files = chapterFilesMap[ch.name] || [];
-                              const allCompleted = files.length > 0 && files.every(f => completedFiles.includes(f.path));
-                              const hasCompleted = files.some(f => completedFiles.includes(f.path));
-                              const hasVisited = files.some(f => visitedFiles.includes(f.path));
-                              return (
-                                <div
-                                  key={ch.name}
-                                  onMouseEnter={files.length > 0 ? (e) => {
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    setChapterHover({ name: ch.name, files, top: rect.top, left: rect.right });
-                                  } : undefined}
-                                  onMouseLeave={files.length > 0 ? () => setChapterHover(null) : undefined}
-                                >
-                                  <button
-                                    onClick={() => {
-                                      setSelectedChapter(ch);
-                                      if (!chapterFilesMap[ch.name] || chapterFilesMap[ch.name].length === 0) {
-                                        handleChapterToggle(ch);
-                                      }
-                                    }}
-                                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all ${
-                                      isSel ? 'bg-[#569cd6]/15 text-[#569cd6]' : 'text-gray-400 hover:bg-white/[0.04] hover:text-white'
-                                    }`}
-                                  >
-                                    {hasCompleted ? (
-                                      <span className="text-[8px] shrink-0" style={{ color: '#4ec9b0' }}>✓</span>
-                                    ) : hasVisited ? (
-                                      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#f48ab8' }} />
-                                    ) : (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-white/10 shrink-0" />
-                                    )}
-                                    <span className={`text-[11px] font-semibold truncate ${isSel ? 'text-[#569cd6]' : ''}`}>
-                                      {ch.name.replace('ch', 'ch.')}
-                                    </span>
-                                    {files.length > 0 && (
-                                      <span className="ml-auto text-[9px] text-gray-600 shrink-0">{files.length}</span>
-                                    )}
-                                  </button>
-                                </div>
-                              );
-                            })
-                          )}
+                      classLoading ? (
+                        <div className="flex items-center gap-2 px-2 py-3">
+                          <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
+                          <span className="text-gray-500 text-xs">불러오는 중...</span>
                         </div>
-
-                        {/* 오른쪽: 파일 그리드 */}
-                        <div className="flex-1 overflow-y-auto px-6 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                          {!selectedChapter ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center py-16">
-                              <svg className="w-10 h-10 text-gray-700 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg>
-                              <p className="text-gray-600 text-sm">왼쪽에서 챕터를 선택하세요</p>
+                      ) : (
+                        classData.map(({ id, group, teacher: t, repos }) => (
+                          <div key={id} className="mb-4">
+                            <div className="px-2 mb-1.5">
+                              <p className="text-[11px] font-bold text-gray-400 truncate">{group.name}</p>
+                              <p className="text-[10px] text-gray-600">@{t.githubUsername}</p>
                             </div>
-                          ) : (() => {
-                            const files = chapterFilesMap[selectedChapter.name] || [];
-                            const isLoading = chapterFilesLoadingMap[selectedChapter.name];
-                            return (
-                              <div>
-                                <p className="text-[11px] font-bold text-gray-500 mb-3 uppercase tracking-wider">
-                                  {selectedChapter.name.replace('ch', 'ch.')}
-                                  {files.length > 0 && <span className="ml-2 text-gray-600 normal-case font-normal">{files.length}개 파일</span>}
-                                </p>
-                                {isLoading ? (
-                                  <div className="flex items-center gap-2 py-4">
-                                    <div className="w-3 h-3 border border-gray-600 border-t-transparent rounded-full animate-spin" />
-                                    <span className="text-gray-600 text-xs">로딩 중...</span>
+                            {repos.map(r => {
+                              const repoKey = `${id}-${r.name}`;
+                              return (
+                                <button key={r.name}
+                                  onClick={() => { setSelectedRepoKey(repoKey); setVisitedRepoKeys(prev => new Set(prev).add(repoKey)); handleRepoSelect(t, r); }}
+                                  className="w-full text-left px-3 py-2.5 rounded-xl border transition-all duration-200 flex items-center gap-2.5 group mb-1.5 bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/[0.05] hover:border-[#4ec9b0]/25 hover:text-white hover:shadow-[0_0_10px_rgba(78,201,176,0.1)]">
+                                  <div className="shrink-0 p-1.5 rounded-lg bg-white/5 group-hover:bg-[#4ec9b0]/10 transition-colors">
+                                    <svg className="w-3 h-3 text-gray-500 group-hover:text-[#4ec9b0]" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                                    </svg>
                                   </div>
-                                ) : files.length === 0 ? (
-                                  <p className="text-gray-600 text-sm">파일 없음</p>
-                                ) : (
-                                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                                    {files.map((file) => {
-                                      const isActive = concept?.path === file.path;
-                                      const isVisited = visitedFiles.includes(file.path);
-                                      const isCompleted = completedFiles.includes(file.path);
-                                      return (
-                                        <button
-                                          key={file.name}
-                                          onClick={() => handleFileSelect(file, selectedChapter)}
-                                          className={`text-left flex items-center gap-2 px-3 py-3 rounded-xl transition-all border ${
-                                            isActive ? 'bg-[#c586c0]/10 border-[#c586c0]/25'
-                                            : isCompleted ? 'bg-[#4ec9b0]/5 border-[#4ec9b0]/15'
-                                            : isVisited ? 'bg-[#f48ab8]/5 border-[#f48ab8]/10'
-                                            : 'border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/[0.12]'
-                                          }`}
-                                        >
-                                          {isCompleted ? (
-                                            <svg className="w-3.5 h-3.5 shrink-0" style={{ color: '#4ec9b0' }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                          ) : (
-                                            <svg className="w-3.5 h-3.5 shrink-0" style={{ color: isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#555' }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                          )}
-                                          <span className="text-[12px] truncate font-medium" style={{ color: isCompleted ? '#4ec9b0' : isActive ? '#c586c0' : isVisited ? '#f48ab8' : '#dcdcaa' }}>
+                                  <span className="text-[11px] font-semibold break-words min-w-0">{r.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ))
+                      )
+                    ) : (
+                      // ─── 챕터 아코디언 트리 ───────────────────────
+                      <>
+                        <button onClick={() => reset()}
+                          className="flex items-center gap-1.5 text-gray-500 hover:text-white text-[11px] px-2 py-1.5 mb-1 transition">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+                          레포 목록
+                        </button>
+                        <p className="text-[10px] font-bold text-gray-500 px-2 mb-2 truncate">{repo.label}</p>
+                        {chaptersLoading ? (
+                          <div className="flex items-center gap-2 px-2 py-3">
+                            <div className="w-3.5 h-3.5 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
+                            <span className="text-gray-500 text-xs">챕터 로딩 중...</span>
+                          </div>
+                        ) : chapters.length === 0 ? (
+                          <p className="text-gray-600 text-xs px-2">챕터 없음</p>
+                        ) : (
+                          chapters.map((ch) => {
+                            const isExpanded = expandedChapters[ch.name];
+                            const files = chapterFilesMap[ch.name] || [];
+                            const isLoadingFiles = chapterFilesLoadingMap[ch.name];
+                            return (
+                              <div key={ch.name} className="mb-0.5">
+                                <button onClick={() => handleChapterToggle(ch)}
+                                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/[0.04] transition-all group">
+                                  <svg className={`w-2.5 h-2.5 text-gray-600 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M8 5l8 7-8 7V5z"/>
+                                  </svg>
+                                  <svg className="w-3.5 h-3.5 shrink-0 text-gray-500 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+                                  </svg>
+                                  <span className="text-[11px] font-bold shrink-0" style={{ color: '#569cd6' }}>
+                                    {ch.name.replace('ch', 'ch.')}
+                                  </span>
+                                  {ch.labelLoading ? (
+                                    <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0 ml-1"/>
+                                  ) : (
+                                    ch.label && ch.label !== ch.name && (
+                                      <span className="text-[10px] truncate min-w-0 opacity-80 font-medium ml-1.5 px-1.5 py-0.5 rounded bg-white/5 border border-white/5" style={{ color: '#ce9178' }}>
+                                        {ch.label}
+                                      </span>
+                                    )
+                                  )}
+                                </button>
+                                {isExpanded && (
+                                  <div className="ml-5 border-l border-white/[0.06] pl-2 mt-0.5 mb-1">
+                                    {isLoadingFiles ? (
+                                      <div className="flex items-center gap-1.5 px-2 py-1.5">
+                                        <div className="w-2.5 h-2.5 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0"/>
+                                        <span className="text-gray-600 text-[10px]">로딩 중...</span>
+                                      </div>
+                                    ) : files.length === 0 ? (
+                                      <p className="text-gray-600 text-[10px] px-2 py-1">파일 없음</p>
+                                    ) : (
+                                      files.map((file) => (
+                                        <button key={file.name}
+                                          onClick={() => handleFileSelect(file, ch)}
+                                          className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md transition-all group mb-0.5 ${concept?.name === file.name ? 'bg-[#4ec9b0]/10' : 'hover:bg-white/[0.04]'}`}>
+                                          <svg className="w-3 h-3 shrink-0 text-gray-600 group-hover:text-[#dcdcaa] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                          </svg>
+                                          <span className="text-[11px] truncate" style={{ color: concept?.name === file.name ? '#4ec9b0' : '#dcdcaa' }}>
                                             {file.name}
                                           </span>
                                         </button>
-                                      );
-                                    })}
+                                      ))
+                                    )}
                                   </div>
                                 )}
                               </div>
                             );
-                          })()}
-                        </div>
-                      </div>
+                          })
+                        )}
+                      </>
                     )}
                   </div>
+                </aside>
+
+                {/* 오른쪽 메인 — 안내 */}
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                  <div className="mb-6 p-4 rounded-2xl border border-white/5" style={{ background: 'linear-gradient(135deg, rgba(78,201,176,0.1) 0%, rgba(86,156,214,0.1) 100%)' }}>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="url(#chapter-grad)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <defs>
+                        <linearGradient id="chapter-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#4ec9b0"/>
+                          <stop offset="100%" stopColor="#569cd6"/>
+                        </linearGradient>
+                      </defs>
+                      <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-bold text-white mb-2">복습할 파일을 선택해주세요</h2>
+                  <p className="text-sm text-gray-500">
+                    {!repo ? '왼쪽에서 레포를 선택하면 챕터 목록이 나타납니다.' : '챕터를 펼쳐 파일을 선택하면 AI 학습이 시작됩니다.'}
+                  </p>
                 </div>
               </div>
             )
@@ -1621,81 +1882,74 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 <span className="text-[11px] text-gray-300 font-semibold">눌러서 시작해보세요</span>
               </div>
 
-              {/* 상단 2컬럼: 퀘스트 + 자유 예습 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mb-4">
+              {/* ── 3카드 섹션 (relative 래퍼) ── */}
+              <div className="relative w-full max-w-2xl">
+
+              {/* 퀘스트 개발중 안내 오버레이 */}
+              {questDevNotice && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                  <div className="flex items-center gap-5 px-9 py-6 rounded-2xl pointer-events-auto"
+                    style={{ background: '#0c0c0c', border: '1px solid rgba(245,158,11,0.4)', boxShadow: '0 0 40px rgba(245,158,11,0.25)' }}>
+                    <span className="text-5xl">🛠️</span>
+                    <div>
+                      <p className="text-[20px] font-black tracking-[0.12em] uppercase" style={{ color: '#f59e0b' }}>퀘스트 조합 개발중</p>
+                      <p className="text-[15px] text-gray-500 mt-1">곧 만나요!</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 상단 1컬럼: 퀘스트 */}
+              <div className="w-full mb-4">
                 {/* 오늘의 퀘스트 카드 */}
                 <button
-                  onClick={async () => {
-                    if (!repo && classData.length > 0) {
-                      const firstClass = classData.find(c => c.repos && c.repos.length > 0);
-                      if (firstClass) await handleRepoSelect(firstClass.teacher, firstClass.repos[0]);
-                    }
-                    setMode('quest'); setStatusPop(true);
-                  }}
-                  className="group relative bg-gradient-to-br from-[#f59e0b]/[0.12] to-[#f97316]/[0.06] border border-[#f59e0b]/30 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(245,158,11,0.10)] hover:-translate-y-2 hover:border-[#f59e0b]/60 hover:from-[#f59e0b]/[0.20] hover:to-[#f97316]/[0.10] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(245,158,11,0.28)]"
+                  onClick={() => { setQuestDevNotice(true); setTimeout(() => setQuestDevNotice(false), 2500); }}
+                  className="group relative w-full bg-gradient-to-br from-[#f59e0b]/[0.12] to-[#f97316]/[0.06] border border-[#f59e0b]/30 rounded-2xl pt-[39px] pb-6 px-6 text-left shadow-[0_4px_24px_rgba(245,158,11,0.10)] hover:-translate-y-1 hover:border-[#f59e0b]/60 hover:from-[#f59e0b]/[0.20] hover:to-[#f97316]/[0.10] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(245,158,11,0.28)]"
                 >
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#f59e0b]/25 to-[#f97316]/15 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-[#f59e0b]/20 shrink-0">
-                      <svg className="w-6 h-6 text-[#f59e0b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <div className="flex items-center gap-4 -mt-[15px]">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#f59e0b]/25 to-[#f97316]/15 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-[#f59e0b]/20 shrink-0">
+                      <svg className="w-5 h-5 text-[#f59e0b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold mb-1" style={{ color: '#f59e0b' }}>오늘의 퀘스트</h3>
+                      <h3 className="text-base font-bold mb-0.5" style={{ color: '#f59e0b' }}>오늘의 퀘스트</h3>
                       <p className="text-xs text-gray-400">오늘 배운 코드를 한 바퀴 훑어보세요.</p>
                     </div>
-                  </div>
-                  <div className="flex justify-between text-[10px] text-gray-500 mb-1 px-0.5">
-                    <span>오늘의 XP</span>
-                    <span>{dailyXP.total} / 500</span>
-                  </div>
-                  <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-[#f59e0b] to-[#f97316] rounded-full transition-all duration-700" style={{ width: `${Math.min((dailyXP.total / 500) * 100, 100)}%` }} />
-                  </div>
-                  <div className="mt-3 flex items-center gap-1 text-[11px] text-[#f59e0b] font-bold">
-                    <span>시작</span>
-                    <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </div>
-                </button>
-
-                {/* 자유 예습 카드 */}
-                <button
-                  onClick={() => { setMode('freeStudy'); navigate('/freestudy'); }}
-                  className="group relative bg-gradient-to-br from-[#38bdf8]/[0.10] to-[#818cf8]/[0.04] border border-[#38bdf8]/25 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(56,189,248,0.08)] hover:-translate-y-2 hover:border-[#38bdf8]/55 hover:from-[#38bdf8]/[0.18] hover:to-[#818cf8]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(56,189,248,0.22)]"
-                >
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#38bdf8]/25 to-[#818cf8]/15 flex items-center justify-center group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(56,189,248,0.12)] ring-1 ring-[#38bdf8]/20 shrink-0">
-                      <svg className="w-6 h-6 text-[#38bdf8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.847a4.5 4.5 0 003.09 3.09L15.75 12l-2.847.813a4.5 4.5 0 00-3.09 3.09z" />
-                      </svg>
+                    <div className="shrink-0 min-w-[140px]">
+                      <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                        <span>오늘의 XP</span>
+                        <span>{dailyXP.total} / 500</span>
+                      </div>
+                      <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-[#f59e0b] to-[#f97316] rounded-full transition-all duration-700" style={{ width: `${Math.min((dailyXP.total / 500) * 100, 100)}%` }} />
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base font-bold mb-1" style={{ color: '#38bdf8' }}>자유 학습</h3>
-                      <p className="text-xs text-gray-400">주제를 입력하면 AI가 코드를 만들어줘요.</p>
+                    <div className="flex items-center gap-1 text-[11px] text-[#f59e0b] font-bold shrink-0 ml-2">
+                      <span>시작</span>
+                      <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </div>
-                  </div>
-                  <p className="text-[11px] text-gray-600 mb-3">배열기초, 싱글톤, 상속... 뭐든 OK</p>
-                  <div className="flex items-center gap-1 text-[11px] text-[#38bdf8] font-bold">
-                    <span>시작하기</span>
-                    <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
-                {/* 챕터별 학습 카드 */}
+                {/* 복습 & 예습 카드 */}
                 <button
-                  onClick={() => { setMode('chapter'); setStatusPop(true); }}
-                  className="group relative bg-gradient-to-br from-[#4ec9b0]/[0.10] to-[#569cd6]/[0.04] border border-[#4ec9b0]/25 rounded-2xl p-8 text-left shadow-[0_4px_24px_rgba(78,201,176,0.10)] hover:-translate-y-2 hover:border-[#4ec9b0]/60 hover:from-[#4ec9b0]/[0.18] hover:to-[#569cd6]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(78,201,176,0.26)]"
+                  onClick={() => { setMode('freeStudy'); navigate('/study'); }}
+                  className="group relative bg-gradient-to-br from-[#38bdf8]/[0.10] to-[#818cf8]/[0.04] border border-[#38bdf8]/25 rounded-2xl p-8 text-left shadow-[0_4px_24px_rgba(56,189,248,0.08)] hover:-translate-y-2 hover:border-[#38bdf8]/55 hover:from-[#38bdf8]/[0.18] hover:to-[#818cf8]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(56,189,248,0.22)]"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#4ec9b0]/25 to-[#569cd6]/15 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(78,201,176,0.15)] ring-1 ring-[#4ec9b0]/20">
-                    <svg className="w-7 h-7 text-[#4ec9b0]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#38bdf8]/25 to-[#818cf8]/15 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(56,189,248,0.12)] ring-1 ring-[#38bdf8]/20">
+                    <svg className="w-7 h-7 text-[#38bdf8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold mb-2" style={{ color: '#4ec9b0' }}>챕터별 학습</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed">강사의 코드를 자유롭게 탐색합니다.<br/>예전 코드도 다시 볼 수 있어요.</p>
-                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#4ec9b0] font-bold group-hover:gap-2.5 transition-all duration-200">
+                  <h3 className="text-lg font-bold mb-2" style={{ color: '#38bdf8' }}>복습 &amp; 예습</h3>
+                  <p className="text-sm text-gray-400 leading-snug">
+                    <span className="text-[11px] text-gray-500 leading-tight">코드노트, AI코드생성, 용어번역, 메모,<br/>AI문제출제, GitHub코드불러오기</span><br/>
+                    각종툴로 편하게 공부에만 집중하세요.
+                  </p>
+                  <div className="mt-4 flex items-center gap-1.5 text-[11px] text-[#38bdf8] font-bold group-hover:gap-2.5 transition-all duration-200">
                     <span>시작하기</span>
                     <svg className="w-3 h-3 group-hover:translate-x-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
@@ -1722,6 +1976,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 </button>
 
               </div>
+
+              </div>{/* ── 3카드 섹션 래퍼 끝 ── */}
             </div>
 
           )}
@@ -1786,6 +2042,310 @@ const StudentPage = ({ user, userData, onLogout }) => {
             >
               홈으로 돌아가기
             </button>
+          </div>
+        </div>
+      )}
+      {/* 챕터 모달 — FreeStudy에서 GitHub 레포 클릭 시 오버레이 */}
+      {chapterModal && (
+        <div className="fixed inset-0 z-[9999] flex pointer-events-none">
+          {/* 왼쪽 사이드바 영역: 투명·클릭 통과 */}
+          <div className={`${sidebarMini ? 'w-[68px]' : 'w-64'} shrink-0 hidden md:block`} />
+
+          {/* 메인 콘텐츠 영역: 블러 오버레이 */}
+          <div
+            className="flex-1 pointer-events-auto flex items-center justify-center px-4 py-4"
+            style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(7px)' }}
+            onClick={() => { setChapterModal(false); setChapterSelectedFile(null); }}
+          >
+            {/* 패널 */}
+            <div
+              className="relative z-10 flex w-full max-w-7xl rounded-2xl overflow-hidden shadow-2xl animate-fade-in-up"
+              style={{ border: '1px solid rgba(255,255,255,0.32)', height: 'calc(100vh - 48px)', maxHeight: '960px', boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 40px rgba(255,255,255,0.1), 0 0 80px rgba(255,255,255,0.04)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* 왼쪽: 챕터 트리 */}
+              <aside className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col" style={{ background: '#0d1117' }}>
+                <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.06] shrink-0">
+                  <span className="text-sm font-bold text-gray-200">📂 챕터 선택</span>
+                  <button
+                    onClick={() => { setChapterModal(false); setChapterSelectedFile(null); }}
+                    className="text-gray-500 hover:text-white text-base leading-none transition"
+                  >✕</button>
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 py-2" style={{ scrollbarWidth: 'none' }}>
+                  {!repo ? (
+                    classLoading ? (
+                      <div className="flex items-center gap-2 px-2 py-3">
+                        <div className="w-4 h-4 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
+                        <span className="text-gray-500 text-sm">불러오는 중...</span>
+                      </div>
+                    ) : (
+                      classData.map(({ id, group, teacher: t, repos }) => (
+                        <div key={id} className="mb-5">
+                          <div className="px-2 mb-1">
+                            <p className="text-sm font-bold text-gray-300 truncate">{group.name}</p>
+                            <p className="text-[11px] text-gray-500">@{t.githubUsername}</p>
+                          </div>
+                          {repos.map(r => (
+                            <button key={r.name}
+                              onClick={() => { const rk = `${id}-${r.name}`; setSelectedRepoKey(rk); handleRepoSelect(t, r); }}
+                              className="w-full text-left px-3 py-3 rounded-lg border transition-all flex items-center gap-2.5 mb-1.5 bg-white/[0.02] border-white/5 text-gray-400 hover:bg-white/[0.05] hover:border-[#4ec9b0]/25 hover:text-white">
+                              <svg className="w-4 h-4 shrink-0 text-gray-500" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                              </svg>
+                              <span className="text-sm font-semibold break-words min-w-0">{r.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    )
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => reset()}
+                        className="flex items-center gap-1.5 text-gray-500 hover:text-white text-sm px-3 py-2 mb-1.5 transition"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+                        레포 목록
+                      </button>
+                      <p className="text-xs font-bold text-gray-400 px-3 mb-2 truncate">{repo.label}</p>
+                      {chaptersLoading ? (
+                        <div className="flex items-center gap-2 px-2 py-3">
+                          <div className="w-4 h-4 border-2 border-cyan-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
+                          <span className="text-gray-500 text-sm">챕터 로딩 중...</span>
+                        </div>
+                      ) : chapters.length === 0 ? (
+                        <p className="text-gray-600 text-sm px-3">챕터 없음</p>
+                      ) : (
+                        chapters.map((ch) => {
+                          const isExpanded = expandedChapters[ch.name];
+                          const files = chapterFilesMap[ch.name] || [];
+                          const isLoadingFiles = chapterFilesLoadingMap[ch.name];
+                          return (
+                            <div key={ch.name} className="mb-0.5">
+                              <button onClick={() => handleChapterToggle(ch)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/[0.04] transition-all group">
+                                <svg className={`w-3 h-3 text-gray-600 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5l8 7-8 7V5z"/>
+                                </svg>
+                                <svg className="w-4 h-4 shrink-0 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+                                </svg>
+                                <span className="text-sm font-bold shrink-0" style={{ color: '#569cd6' }}>
+                                  {ch.name.replace('ch', 'ch.')}
+                                </span>
+                                {ch.label && ch.label !== ch.name && (
+                                  <span className="text-[11px] truncate min-w-0 ml-1.5 px-1.5 py-0.5 rounded bg-white/5" style={{ color: '#ce9178' }}>
+                                    {ch.label}
+                                  </span>
+                                )}
+                              </button>
+                              {isExpanded && (
+                                <div className="ml-5 border-l border-white/[0.06] pl-3 mt-1 mb-1">
+                                  {isLoadingFiles ? (
+                                    <div className="flex items-center gap-1 px-2 py-1">
+                                      <div className="w-3 h-3 border border-gray-600 border-t-transparent rounded-full animate-spin shrink-0"/>
+                                      <span className="text-gray-600 text-sm">로딩 중...</span>
+                                    </div>
+                                  ) : files.length === 0 ? (
+                                    <p className="text-gray-600 text-sm px-3 py-1.5">파일 없음</p>
+                                  ) : (
+                                    files.map((file) => {
+                                      const isCompleted = completedFiles.includes(file.path);
+                                      const isVisited = visitedFiles.includes(file.path);
+                                      const isSelected = chapterSelectedFile?.file?.path === file.path;
+                                      const fileColor = isCompleted
+                                        ? '#9ca3af'
+                                        : isVisited
+                                          ? '#a044bc'
+                                          : '#dcdcaa';
+                                      return (
+                                        <button key={file.name}
+                                          onClick={async () => {
+                                            setChapterCodeLoading(true);
+                                            setChapterSelectedFile({ file, code: null });
+                                            markFileVisited(file.path);
+                                            try {
+                                              let code = file.sha ? await getGithubFileCache(file.sha) : null;
+                                              if (!code) {
+                                                const resp = await fetch(file.downloadUrl);
+                                                code = await resp.text();
+                                                if (file.sha) saveGithubFileCache(file.sha, code);
+                                              }
+                                              setChapterSelectedFile({ file, code });
+                                            } catch {
+                                              setChapterSelectedFile({ file, code: '// 코드를 불러오지 못했습니다' });
+                                            }
+                                            setChapterCodeLoading(false);
+                                          }}
+                                          className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-md transition-all group mb-0.5 ${isSelected ? 'bg-purple-500/10' : 'hover:bg-white/[0.04]'}`}
+                                          style={isCompleted ? { opacity: 0.65 } : {}}
+                                        >
+                                          <svg className="w-3.5 h-3.5 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: fileColor }}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                          </svg>
+                                          <span className="text-sm truncate transition-colors" style={{ color: fileColor }}>
+                                            {file.name}
+                                          </span>
+                                          {isCompleted && (
+                                            <span className="ml-auto text-[10px] font-black shrink-0" style={{ color: '#9ca3af' }}>✓</span>
+                                          )}
+                                          {isSelected && !isCompleted && (
+                                            <span className="ml-auto w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#a78bfa' }} />
+                                          )}
+                                        </button>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* 범례 */}
+                <div className="shrink-0 px-4 py-3 border-t border-white/[0.06]">
+                  <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-2">파일 상태</p>
+                  <div className="flex flex-col gap-1.5">
+                    {[
+                      { color: '#dcdcaa', label: '안읽음' },
+                      { color: '#a044bc', label: '읽음' },
+                      { color: '#9ca3af', label: '학습완료' },
+                    ].map(({ color, label }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                        <span className="text-[11px] text-white/70">{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+
+              {/* 오른쪽: 코드 미리보기 or 안내 */}
+              {chapterSelectedFile ? (
+                <div className="flex-1 flex flex-col min-w-0" style={{ background: '#0d1117' }}>
+                  {/* 파일명 헤더 */}
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06] shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <svg className="w-4 h-4 shrink-0 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      <span className="text-sm font-bold text-gray-200 truncate">{chapterSelectedFile.file.name}</span>
+                    </div>
+                    {chapterCodeLoading && (
+                      <div className="w-4 h-4 border-2 border-purple-400/60 border-t-transparent rounded-full animate-spin shrink-0" />
+                    )}
+                  </div>
+
+                  {/* 코드 미리보기 */}
+                  <div className="flex-1 min-h-0">
+                    {chapterSelectedFile.code === null ? (
+                      <div className="flex items-center justify-center h-full">
+                        <div className="w-6 h-6 border-2 border-purple-400/40 border-t-purple-400 rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <Editor
+                        height="100%"
+                        language={(() => {
+                          const ext = chapterSelectedFile.file.name.split('.').pop().toLowerCase();
+                          return { java: 'java', js: 'javascript', ts: 'typescript', py: 'python', html: 'html', css: 'css', jsp: 'html', xml: 'xml', json: 'json', kt: 'kotlin', cpp: 'cpp', c: 'c' }[ext] || 'plaintext';
+                        })()}
+                        value={chapterSelectedFile.code}
+                        theme="night-owl"
+                        options={{
+                          readOnly: true,
+                          fontSize: 13,
+                          lineHeight: 1.7,
+                          fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, monospace',
+                          fontLigatures: true,
+                          minimap: { enabled: false },
+                          scrollBeyondLastLine: false,
+                          wordWrap: 'on',
+                          lineNumbers: 'on',
+                          renderLineHighlight: 'none',
+                          contextmenu: false,
+                          scrollbar: { verticalScrollbarSize: 4, horizontalScrollbarSize: 4 },
+                          padding: { top: 16, bottom: 16 },
+                        }}
+                        onMount={(_, monaco) => {
+                          monaco.editor.defineTheme('night-owl', nightOwlTheme);
+                          monaco.editor.setTheme('night-owl');
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* 코드노트로 가져가기 버튼 */}
+                  <div className="px-5 py-4 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <button
+                      disabled={!chapterSelectedFile.code}
+                      onClick={() => {
+                        if (!chapterSelectedFile.code) return;
+                        setFreeStudyCode(chapterSelectedFile.code);
+                        setFreeStudySource('chapter');
+                        setChapterModal(false);
+                        // chapterSelectedFile 보존 — 뒤로가기 시 모달 복원에 사용
+                      }}
+                      className="w-full py-4 rounded-xl text-base font-black transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(109,40,217,0.35), rgba(139,92,246,0.2))',
+                        border: '1px solid rgba(139,92,246,0.5)',
+                        color: '#c4b5fd',
+                        boxShadow: chapterSelectedFile.code
+                          ? '0 0 24px rgba(139,92,246,0.3), 0 0 48px rgba(139,92,246,0.12), inset 0 1px 0 rgba(255,255,255,0.08)'
+                          : 'none',
+                      }}
+                    >
+                      💻 코드노트로 가져가기
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* 기본 안내 패널 */
+                <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-8" style={{ background: '#0d1117' }}>
+                  {/* GitHub × 코드노트 콜라보 아이콘 */}
+                  <div className="flex items-center gap-4 mb-8">
+                    {/* GitHub Octocat */}
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 0 20px rgba(255,255,255,0.04)' }}>
+                        <svg width="34" height="34" viewBox="0 0 24 24" fill="white">
+                          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-bold text-white/50 tracking-wider">GitHub</span>
+                    </div>
+
+                    {/* 연결 화살표 */}
+                    <div className="flex flex-col items-center gap-1 pb-5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-6 h-px" style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.15), rgba(139,92,246,0.6))' }} />
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
+                      </div>
+                    </div>
+
+                    {/* 코드노트 </> */}
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: '#0f1923', border: '1px solid rgba(78,201,176,0.25)', boxShadow: '0 0 20px rgba(78,201,176,0.08)' }}>
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M16 18l6-6-6-6" stroke="#4ec9b0"/>
+                          <path d="M8 6l-6 6 6 6" stroke="#38bdf8"/>
+                        </svg>
+                      </div>
+                      <span className="text-[11px] font-bold tracking-wider" style={{ color: '#4ec9b0' }}>코드노트</span>
+                    </div>
+                  </div>
+
+                  <h2 className="text-xl font-bold text-white mb-3">복습할 파일을 선택해주세요</h2>
+                  <p className="text-sm" style={{ color: '#a78bfa' }}>
+                    {!repo ? '왼쪽에서 레포를 선택하세요.' : '챕터를 펼쳐 파일을 선택하면 코드노트로 가져갈 수 있습니다.'}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

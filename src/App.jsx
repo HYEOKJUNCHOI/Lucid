@@ -94,9 +94,12 @@ function App() {
 
         {/* 학생 보호 라우트 */}
         <Route path="/home"         element={requireAuth(studentPage)} />
-        <Route path="/home/chapter" element={requireAuth(studentPage)} />
+        <Route path="/chapter"      element={requireAuth(studentPage)} />
         <Route path="/home/quest"   element={requireAuth(studentPage)} />
         <Route path="/home/levelup" element={requireAuth(studentPage)} />
+        <Route path="/study"        element={requireAuth(studentPage)} />
+        {/* 구 URL 하위호환 */}
+        <Route path="/home/chapter" element={requireAuth(studentPage)} />
         <Route path="/freestudy"    element={requireAuth(studentPage)} />
 
         {/* 관리자 보호 라우트 */}

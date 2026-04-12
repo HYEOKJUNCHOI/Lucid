@@ -45,6 +45,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const [chatFontSize, setChatFontSize] = useState(16); // 채팅 Ctrl+Wheel 줌
   const [activeTab, setActiveTab] = useState('chat'); // 모바일 탭: "code" | "chat"
   const [isShuffling, setIsShuffling] = useState(false); // 비유 셔플 중 로딩 상태
+  const [chatModel, setChatModel] = useState(MODELS.TUTOR); // 모델 토글
   const [quizOptions, setQuizOptions] = useState([]); // 현재 퀴즈 선택지
   const [quizQuestion, setQuizQuestion] = useState(''); // 현재 퀴즈 문제 텍스트
   const [correctCount, setCorrectCount] = useState(0); // 퀴즈 정답 수
@@ -297,7 +298,7 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: MODELS.TUTOR,
+          model: chatModel,
           messages: payloadMessages,
           temperature: 0.7,
         }),
@@ -1305,6 +1306,27 @@ OPTIONS_END
                 확인 →
               </button>
             ) : (
+            <>
+            {/* 모델 토글 */}
+            <div className="flex items-center gap-1 mb-1 px-0.5">
+              {[
+                { value: MODELS.TUTOR, label: 'GPT-4o', sub: '고품질' },
+                { value: MODELS.MINI,  label: 'GPT-4o mini', sub: '빠름' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setChatModel(opt.value)}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all ${
+                    chatModel === opt.value
+                      ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                      : 'bg-white/[0.03] border-white/10 text-white/30 hover:text-white/60'
+                  }`}
+                >
+                  {opt.label}
+                  <span className={`text-[8px] font-normal ${chatModel === opt.value ? 'text-cyan-400/60' : 'text-white/20'}`}>{opt.sub}</span>
+                </button>
+              ))}
+            </div>
             <ChatInput
               value={input}
               onChange={setInput}
@@ -1322,6 +1344,7 @@ OPTIONS_END
                   : '질문이나 정답을 입력하세요... (퀴즈시 1,2,3,4 키보드 입력 가능)'
               }
             />
+            </>
             )}
           </div>
           </>

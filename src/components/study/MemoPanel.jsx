@@ -112,7 +112,7 @@ export default function MemoPanel() {
           return !v;
         });
       }
-      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
         if (panelRef.current?.contains(document.activeElement)) {
           e.preventDefault();
           setMode(m => m === 'edit' ? 'preview' : 'edit');
@@ -355,12 +355,12 @@ ${el.innerHTML}
       </div>
 
       {/* 2행: 도구모음 */}
-      <div className="flex shrink-0 items-center gap-1.5 px-2 py-1.5 rounded-xl border border-violet-500/30 bg-violet-500/[0.06]">
-        <div className="shrink-0 border border-violet-400/40 bg-violet-500/10 rounded-lg px-2 py-1 leading-tight text-center">
-          <span className="text-[11px] text-violet-300 font-medium block">마크다운</span>
-          <span className="text-[11px] text-violet-300 font-medium block">도구모음</span>
+      <div className="flex shrink-0 items-center gap-1.5 px-2 py-1.5 rounded-xl border border-orange-500/30 bg-orange-500/[0.06]">
+        <div className="shrink-0 border border-orange-400/40 bg-orange-500/10 rounded-lg px-2 py-1 leading-tight text-center">
+          <span className="text-[11px] text-orange-300 font-medium block">마크다운</span>
+          <span className="text-[11px] text-orange-300 font-medium block">도구모음</span>
         </div>
-        <span className="text-[14px] text-violet-500/60 shrink-0">»</span>
+        <span className="text-[14px] text-orange-500/60 shrink-0">»</span>
         <div className="border border-white/10 rounded-xl px-2 py-1.5 bg-white/[0.02]">
           <div className="flex items-center gap-1.5">
             {[
@@ -383,13 +383,13 @@ ${el.innerHTML}
             ].map(({ label, action, size }) => (
               <button key={label} onClick={action}
                 className={`${size ?? 'text-[11px]'} px-1.5 py-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-gray-400
-                  hover:border-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10
-                  hover:shadow-[0_0_8px_rgba(167,139,250,0.25)] transition-all duration-150`}
+                  hover:border-orange-400/40 hover:text-orange-200 hover:bg-orange-500/10
+                  hover:shadow-[0_0_8px_rgba(251,146,60,0.25)] transition-all duration-150`}
               >{label}</button>
             ))}
           </div>
         </div>
-        <div className="ml-auto flex items-center bg-white/[0.06] rounded-lg p-0.5 gap-0.5">
+        <div className="ml-auto flex items-center bg-white/[0.06] rounded-lg p-0.5 gap-0.5" title="Ctrl+M">
           {['edit', 'preview'].map(m => (
             <button key={m} onClick={() => setMode(m)}
               className={`text-[10px] px-2 py-0.5 rounded-md transition-all ${

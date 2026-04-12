@@ -8,6 +8,59 @@ import { lucidTutorSystemPrompt } from '../../lib/prompts';
 import ChatBubble from './ChatBubble';
 import ChatInput from './ChatInput';
 
+// ─── 토큰 색상 (QuestionText와 동일한 규칙) ──────────────
+const JAVA_KW = new Set([
+  'private','public','protected','static','final','abstract','synchronized',
+  'void','int','long','double','float','boolean','char','byte','short',
+  'class','interface','extends','implements','new','return','this','super',
+  'if','else','for','while','do','switch','case','break','continue','default',
+  'try','catch','finally','throw','throws','null','true','false','instanceof',
+  'import','package','enum','var','String','ArrayList','HashMap','List','Map','Set',
+]);
+const getTokenColor = (token) => {
+  const base = token.replace(/\(\)$/, '').trim();
+  if (token.endsWith('()'))    return '#dcdcaa';
+  if (JAVA_KW.has(base))       return '#569cd6';
+  if (/^[A-Z]/.test(base))     return '#4ec9b0';
+  return '#9cdcfe';
+};
+
+// 텍스트 안의 `token` · 'token' 패턴을 찾아 색상 코드 span으로 변환
+const processTokens = (text, onHighlightToken, keyPrefix = '') => {
+  const regex = /`([^`\n]+)`|'([^'\n]{1,40})'/g;
+  const parts = [];
+  let last = 0, m, k = 0;
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    const token = m[1] ?? m[2];
+    const color = getTokenColor(token);
+    parts.push(
+      <code
+        key={`${keyPrefix}-${k++}`}
+        className="text-[0.9em] bg-white/[0.08] px-1 py-0.5 rounded font-mono"
+        style={{ color, cursor: onHighlightToken ? 'pointer' : undefined }}
+        title={onHighlightToken ? '클릭으로 코드에서 찾기' : undefined}
+        onClick={() => { if (onHighlightToken) onHighlightToken(token); }}
+      >{token}</code>
+    );
+    last = regex.lastIndex;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+};
+
+// ReactMarkdown children 중 string만 processTokens 적용
+const applyTokens = (children, onHighlightToken, keyPrefix = '') =>
+  Array.isArray(children)
+    ? children.flatMap((child, i) =>
+        typeof child === 'string'
+          ? processTokens(child, onHighlightToken, `${keyPrefix}-${i}`)
+          : [child]
+      )
+    : typeof children === 'string'
+      ? processTokens(children, onHighlightToken, keyPrefix)
+      : children;
+
 /**
  * Lucid 공용 채팅 패널
  * - FreeStudy / QuestView / ChatView 공통 스타일
@@ -36,7 +89,10 @@ export default function ChatPanel({
   splitRatio = 0.5,
   onHighlightToken,
   quickQuestion,
+  quickQuestions,
   onGoToQuiz,
+  notice = null,
+  chatScrollRef = null,
 }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: greeting },
@@ -45,11 +101,15 @@ export default function ChatPanel({
   const [chatLoading, setChatLoading] = useState(false);
   const [chatFontSize, setChatFontSize] = useState(() => {
     const saved = localStorage.getItem('lucid_chat_font_size');
-    return saved ? Number(saved) : 11;
+    return saved ? Number(saved) : 13;
   });
+  const [favoriteGame, setFavoriteGame] = useState(() =>
+    localStorage.getItem('lucid_favorite_game') || ''
+  );
 
   const chatAreaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const fontSizeControlRef = useRef(null);
 
   // 새 메시지 들어오면 하단 스크롤
   useEffect(() => {
@@ -61,15 +121,23 @@ export default function ChatPanel({
     localStorage.setItem('lucid_chat_font_size', chatFontSize);
   }, [chatFontSize]);
 
+  // 좋아하는 게임 → localStorage 저장
+  useEffect(() => {
+    localStorage.setItem('lucid_favorite_game', favoriteGame);
+  }, [favoriteGame]);
+
   const adjustFontSize = (delta) =>
     setChatFontSize((prev) => Math.max(10, Math.min(24, prev + delta)));
 
-  // Ctrl + 휠 → 글자 크기 조절
+  // Ctrl+휠 (채팅 전체) 또는 그냥 휠 (크기 컨트롤 위) → 글자 크기 조절
   useEffect(() => {
     const handler = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
       const area = chatAreaRef.current;
-      if (!area || !area.contains(e.target)) return;
+      const ctrl = fontSizeControlRef.current;
+      const onCtrl = ctrl?.contains(e.target);
+      const onChat = area?.contains(e.target);
+      if (!onCtrl && !onChat) return;
+      if (!onCtrl && !(e.ctrlKey || e.metaKey)) return; // 채팅 전체는 Ctrl 필요
       e.preventDefault();
       adjustFontSize(e.deltaY < 0 ? 1 : -1);
     };
@@ -80,6 +148,15 @@ export default function ChatPanel({
   const sendMessage = async (directText) => {
     const text = (directText ?? input).trim();
     if (!text || chatLoading) return;
+    // 코드 없을 때 질문 시 경고 메시지
+    if (notice && getCodeContext?.() === null) {
+      setMessages(prev => [...prev,
+        { role: 'user', content: text },
+        { role: 'assistant', content: '← 코드를 생성 또는 입력 후 질문해주세요' },
+      ]);
+      setInput('');
+      return;
+    }
     const userMsg = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
@@ -160,12 +237,48 @@ export default function ChatPanel({
     }
   };
 
+  // 퀵 질문 데이터 (항상 표시용)
+  const rawQs = quickQuestions ?? (quickQuestion ? [quickQuestion] : []);
+
   return (
     <div className={`flex flex-col h-full min-h-0 ${className}`}>
+
+      {/* ── 상단 고정: 퀵 질문 바로가기 ── */}
+      {rawQs.length > 0 && (
+        <div className="shrink-0 px-3 pt-2 pb-1.5 flex flex-col gap-1.5 border-b border-white/[0.05]">
+          {rawQs.map((rawQ, qi) => {
+            const isGameBtn = rawQ.includes('비유로 설명해줘');
+            const fullQ = isGameBtn && favoriteGame.trim()
+              ? `${favoriteGame} 게임 배경을 바탕으로 비유로 설명해줘`
+              : rawQ;
+            return (
+              <div key={qi} className="flex items-center rounded-lg border border-amber-500/30 bg-amber-500/10 overflow-hidden">
+                {isGameBtn && (
+                  <input
+                    type="text"
+                    value={favoriteGame}
+                    onChange={e => setFavoriteGame(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && favoriteGame.trim() && sendMessage(fullQ)}
+                    placeholder="좋아하는 게임 입력"
+                    className="text-[10px] px-2.5 py-1 bg-transparent border-r border-amber-500/20 text-white placeholder-white/40 outline-none w-[7.5rem] shrink-0"
+                  />
+                )}
+                <button
+                  onClick={() => sendMessage(fullQ)}
+                  className="flex-1 text-[10px] px-2.5 py-1 text-amber-400 hover:bg-amber-500/20 hover:text-amber-200 transition-all text-left"
+                >
+                  💬 {isGameBtn ? `${favoriteGame ? favoriteGame + ' ' : ''}게임 배경을 바탕으로 비유로 설명해줘` : rawQ}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* 채팅 영역 */}
       <div className="relative flex-1 min-h-0">
-        {/* 글씨 크기 조절 버튼 */}
-        <div className="absolute top-2 right-3 z-10 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
+        {/* 글씨 크기 조절 */}
+        <div ref={fontSizeControlRef} className="absolute top-2 right-3 z-10 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
           <button
             onClick={() => adjustFontSize(-1)}
             className="w-7 h-7 flex items-center justify-center rounded text-[13px] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
@@ -176,82 +289,76 @@ export default function ChatPanel({
             className="w-7 h-7 flex items-center justify-center rounded text-[13px] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
           >+</button>
         </div>
-      <div
-        ref={chatAreaRef}
-        className="h-full overflow-y-auto px-4 py-4 flex flex-col gap-3 chat-readable"
-        style={{ fontSize: `${chatFontSize}px` }}
-      >
-        {messages.map((msg, i) => (
-          <div key={i}>
-          <ChatBubble role={msg.role}>
-            <div
-              className={msg.role === 'assistant'
-                ? 'prose prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0 prose-hr:my-2 prose-code:text-[#9cdcfe] prose-code:bg-white/10 prose-code:px-1 prose-code:rounded prose-pre:bg-black/30'
-                : ''}
-              style={msg.role === 'assistant' ? { fontSize: 'inherit' } : undefined}
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkBreaks]}
-                components={msg.role === 'assistant' && onHighlightToken ? {
-                  code({ inline, children }) {
-                    const text = String(children).trim();
-                    if (inline) {
-                      return (
-                        <code
-                          onClick={(e) => {
-                            if (e.ctrlKey || e.metaKey) {
-                              e.preventDefault();
-                              onHighlightToken(text);
-                            }
-                          }}
-                          style={{ cursor: 'pointer' }}
-                          title="Ctrl+클릭으로 코드에서 찾기"
-                        >
-                          {children}
-                        </code>
-                      );
-                    }
-                    return <code>{children}</code>;
-                  },
-                } : undefined}
-              >
-                {msg.content}
-              </ReactMarkdown>
+        <div
+          ref={el => { chatAreaRef.current = el; if (chatScrollRef) chatScrollRef.current = el; }}
+          className="h-full overflow-y-auto px-4 py-4 flex flex-col gap-3 chat-readable"
+          style={{ fontSize: `${chatFontSize}px` }}
+        >
+          {messages.map((msg, i) => (
+            <div key={i}>
+              {i === 0 ? (
+                <div className="flex justify-center mb-1">
+                  <span className="text-[11px] text-white/70 font-medium px-3 py-1 rounded-full bg-white/[0.06] border border-white/[0.08]">
+                    {msg.content}
+                  </span>
+                </div>
+              ) : (
+                <ChatBubble role={msg.role}>
+                  <div
+                    className={msg.role === 'assistant'
+                      ? 'prose prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0 prose-hr:my-2 prose-pre:bg-black/30'
+                      : ''}
+                    style={msg.role === 'assistant' ? { fontSize: 'inherit' } : undefined}
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkBreaks]}
+                      components={msg.role === 'assistant' ? {
+                        // p, li 텍스트 → regex로 직접 파싱 (백틱 문자 제거 + 색상)
+                        p({ children }) { return <p>{applyTokens(children, onHighlightToken, `p${i}`)}</p>; },
+                        li({ children }) { return <li>{applyTokens(children, onHighlightToken, `li${i}`)}</li>; },
+                        // 블록 코드 그대로, 인라인 코드도 같은 색상 처리
+                        code({ inline, className, children }) {
+                          if (className?.startsWith('language-') || inline === false) {
+                            return <code className={className}>{children}</code>;
+                          }
+                          const text = String(children).trim().replace(/^`+|`+$/g, '');
+                          const color = getTokenColor(text);
+                          return (
+                            <code
+                              className="text-[0.9em] bg-white/[0.08] px-1 py-0.5 rounded font-mono"
+                              style={{ color, cursor: onHighlightToken ? 'pointer' : undefined }}
+                              title={onHighlightToken ? '클릭으로 코드에서 찾기' : undefined}
+                              onClick={() => { if (onHighlightToken) onHighlightToken(text); }}
+                            >{text}</code>
+                          );
+                        },
+                      } : undefined}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                </ChatBubble>
+              )}
+              {/* AI가 퀴즈탭 안내 시 바로가기 버튼 */}
+              {msg.role === 'assistant' && onGoToQuiz && msg.content.includes('문제풀기 탭') && (
+                <div className="flex justify-start pl-1 mt-1">
+                  <button
+                    onClick={onGoToQuiz}
+                    className="text-[10px] px-2.5 py-1 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:text-violet-100 transition-all"
+                  >🎯 문제풀기로 가기</button>
+                </div>
+              )}
             </div>
-          </ChatBubble>
-          {/* AI가 퀴즈탭 안내 시 바로가기 버튼 */}
-          {msg.role === 'assistant' && onGoToQuiz && msg.content.includes('문제풀기 탭') && (
-            <div className="flex justify-start pl-1 mt-1">
-              <button
-                onClick={onGoToQuiz}
-                className="text-[10px] px-2.5 py-1 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:text-violet-100 transition-all"
-              >🎯 문제풀기로 가기</button>
+          ))}
+          {chatLoading && (
+            <div className="flex justify-start">
+              <div className="bg-white/5 rounded-2xl rounded-bl-sm px-4 py-2.5">
+                <span className="text-gray-500 animate-pulse">답변 생성 중...</span>
+              </div>
             </div>
           )}
-          {/* 그리팅 바로 아래 공식질문 버튼 */}
-          {i === 0 && quickQuestion && messages.length === 1 && (
-            <div className="flex justify-start pl-1 mt-1">
-              <button
-                onClick={() => sendMessage(quickQuestion)}
-                className="text-[10px] px-2.5 py-1 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 hover:text-cyan-200 transition-all"
-              >
-                💬 {quickQuestion}
-              </button>
-            </div>
-          )}
-          </div>
-        ))}
-        {chatLoading && (
-          <div className="flex justify-start">
-            <div className="bg-white/5 rounded-2xl rounded-bl-sm px-4 py-2.5">
-              <span className="text-gray-500 animate-pulse">
-                답변 생성 중...
-              </span>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* 입력창 (공용 ChatInput) */}

@@ -59,8 +59,10 @@ export const useAuth = () => {
                 setLoginError('다른 기기에서 로그인되어 자동 로그아웃되었습니다.');
                 return;
               }
-              // 개발자 계정 무조건 관리자 승격
-              if (firebaseUser.email?.toLowerCase() === 'gurwns369@naver.com' && data.role !== 'admin') {
+              // 개발자/관리자 계정 무조건 관리자 승격
+              const isAdminAccount = firebaseUser.email?.toLowerCase() === 'gurwns369@naver.com'
+                || firebaseUser.email?.endsWith('@lucid.admin');
+              if (isAdminAccount && data.role !== 'admin') {
                 await setDoc(userRef, { role: 'admin' }, { merge: true });
               }
 
@@ -278,7 +280,7 @@ export const useAuth = () => {
       const newSessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
       sessionIdRef.current = newSessionId;
       const result = await signInWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, 'users', result.user.uid), { sessionId: newSessionId }, { merge: true });
+      await setDoc(doc(db, 'users', result.user.uid), { sessionId: newSessionId, role: 'admin' }, { merge: true });
     } catch (e) {
       console.error('[admin login error]', e.code, e.message);
       if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {

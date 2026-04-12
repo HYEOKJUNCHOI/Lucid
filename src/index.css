@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── range input 슬라이더 thumb 스타일 ─── */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: rgba(167,139,250,0.9);
+  border: 2px solid rgba(167,139,250,0.5);
+  box-shadow: 0 0 6px rgba(167,139,250,0.5);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: rgba(167,139,250,0.9);
+  border: 2px solid rgba(167,139,250,0.5);
+  box-shadow: 0 0 6px rgba(167,139,250,0.5);
+  cursor: pointer;
+}
+
 /* prose blockquote 따옴표 제거 */
 .prose blockquote p::before,
 .prose blockquote p::after { content: none !important; }
@@ -22,17 +41,9 @@
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 
-/* ─── 전역 슬림 스크롤바 ─── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(78, 201, 176, 0.2);
-  border-radius: 99px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(78, 201, 176, 0.45);
-}
-::-webkit-scrollbar-corner { background: transparent; }
+/* ─── 전역 스크롤바 숨김 ─── */
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
 
 body {
   font-family: 'Pretendard', system-ui, sans-serif;
@@ -517,6 +528,20 @@ body.ctrl-held .code-token-clickable {
   background: rgba(255,255,255,0.03);
   border-color: rgba(255,255,255,0.05);
   color: #9ca3af;
+}
+
+/* ── 보라 글로우 액자 탭 (AI 생성코드, 문제풀기) ── */
+.free-tab-violet-active {
+  background: #1c1730 !important;
+  color: #e9d5ff !important;
+  box-shadow:
+    inset 0 1px 0 rgba(167,139,250,0.35),
+    0 -2px 8px rgba(0,0,0,0.3),
+    0 0 14px rgba(167,139,250,0.25),
+    0 -4px 18px rgba(167,139,250,0.18) !important;
+  border-top: 1px solid rgba(167,139,250,0.45);
+  border-left: 1px solid rgba(167,139,250,0.2);
+  border-right: 1px solid rgba(167,139,250,0.2);
 }
 
 /* 비활성 탭 호버 */

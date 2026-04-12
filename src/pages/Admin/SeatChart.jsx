@@ -414,44 +414,75 @@ const SeatChart = () => {
     setDraggingPool(null);
   };
 
+  // ── 학생 카드 (단순 뱃지 디자인) ────────────────────────────
+  const StudentCard = ({ student, faded }) => {
+    const type = student.studentType || 'beginner';
+    const badge =
+      type === 'major'       ? { label: '전공자', cls: 'text-amber-300 bg-amber-400/[0.18] border-amber-400/40' } :
+      type === 'experienced' ? { label: '경험자', cls: 'text-sky-300 bg-sky-400/[0.18] border-sky-400/40' } :
+                               { label: '일반',   cls: 'text-white/70 bg-white/[0.08] border-white/20' };
+    const borderCls =
+      type === 'major'       ? 'border-amber-400/25 hover:border-amber-400/50' :
+      type === 'experienced' ? 'border-sky-400/25 hover:border-sky-400/50' :
+                               'border-white/[0.08] hover:border-white/20';
+    const initBg =
+      type === 'major'       ? 'bg-amber-400/[0.1] text-amber-300' :
+      type === 'experienced' ? 'bg-sky-400/[0.1] text-sky-300' :
+                               'bg-white/[0.06] text-white/50';
+    const displayName = student.displayName || student.email || '?';
+    const level = student.level ?? 1;
+    const activity = getActivityTier(student.lastStudiedAt);
+
+    return (
+      <div
+        className={`relative w-full h-full rounded-xl border bg-white/[0.03] flex flex-col items-center justify-center gap-1.5 py-2 select-none transition-all hover:bg-white/[0.06] ${borderCls} ${faded ? 'opacity-25' : ''}`}
+      >
+        {/* 오른쪽 위: 타입 뱃지 */}
+        <span className={`absolute top-1.5 right-1.5 text-[7px] font-bold px-1 py-0.5 rounded border ${badge.cls}`}>
+          {badge.label}
+        </span>
+        {/* 중앙: 사진 (읽기 전용) */}
+        <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-white/[0.1] bg-white/[0.04] flex items-center justify-center">
+          {student.photoBase64
+            ? <img src={student.photoBase64} alt="" draggable={false} className="w-full h-full object-cover" />
+            : null
+          }
+        </div>
+        {/* 하단: Lv + 이름 */}
+        <div className="flex items-baseline gap-1 px-1 max-w-full mt-1.5">
+          <span className="text-[8px] font-bold text-white/35 shrink-0">Lv{level}&nbsp;</span>
+          <span className="text-[13px] font-bold text-white/85 leading-tight truncate">{displayName}</span>
+        </div>
+      </div>
+    );
+  };
+
   // ── 자리 렌더 ───────────────────────────────────────────────
-  const renderSeat = (seatId, minimal = false) => {
+  const renderSeat = (seatId) => {
     const uid      = seatMap[seatId];
     const student  = uid ? getUserById(uid) : null;
     const isDragging = (draggingSeat || draggingPool) && draggingSeat !== seatId;
 
     if (student) {
       return (
-        <div key={seatId} className="relative w-full h-full group">
+        <div
+          key={seatId}
+          draggable
+          onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); startDragSeat(seatId); }}
+          onDragEnd={endDragSeat}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => handleDrop(seatId, e)}
+          className="relative w-full h-full group cursor-grab active:cursor-grabbing"
+        >
           <button
             onClick={e => { e.stopPropagation(); clearSeat(seatId); }}
-            className="absolute -top-3 left-1/2 -translate-x-1/2 w-7 h-7 rounded-full bg-[#ef4444] text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-400 flex items-center justify-center"
-          >
-            {seatMode ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 14L4 9l5-5"/>
-                <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19V5"/>
-                <path d="M5 12l7-7 7 7"/>
-              </svg>
-            )}
-          </button>
-
-          <FifaCard
+            className={`absolute left-1/2 -translate-x-1/2 rounded-full bg-[#ef4444] text-white z-20 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-400 flex items-center justify-center font-bold ${seatMode ? '-top-5 w-9 h-9 text-[18px]' : '-top-3 w-6 h-6 text-[13px]'}`}
+          >{seatMode ? '↵' : '↑'}</button>
+          <StudentCard
             student={student}
             faded={draggingSeat === seatId}
-            draggable
-            onDragStart={() => startDragSeat(seatId)}
-            onDragEnd={endDragSeat}
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => handleDrop(seatId, e)}
-            onPhotoUpload={minimal ? undefined : (file => handlePhotoUpload(student.id, file))}
-            onPhotoDelete={minimal ? undefined : (() => handlePhotoDelete(student.id))}
-            minimal={minimal}
-            compact={seatMode}
+            onPhotoUpload={file => handlePhotoUpload(student.id, file)}
+            onPhotoDelete={() => handlePhotoDelete(student.id)}
           />
         </div>
       );
@@ -490,7 +521,7 @@ const SeatChart = () => {
             return (
               <div key={seatId} className="flex flex-col items-center gap-0.5 w-[120px] shrink-0">
                 <span className="text-[8px] text-gray-400 font-bold shrink-0">{globalNum}</span>
-                <div className={`w-full flex-1 ${seatMode ? 'min-h-[110px]' : 'min-h-[144px]'}`}>
+                <div className={`w-full flex-1 ${seatMode ? 'min-h-[88px]' : 'min-h-[96px]'}`}>
                   {renderSeat(seatId)}
                 </div>
               </div>
@@ -629,7 +660,7 @@ const SeatChart = () => {
                 {/* 대기석 */}
                 <div
                   className={`w-[180px] shrink-0 flex flex-col gap-1 p-2.5 rounded-xl border transition-all ${
-                    draggingSeat ? 'border-[#ef4444]/50 bg-[#ef4444]/[0.04]' : 'border-white/[0.08] bg-white/[0.02]'
+                    draggingSeat ? 'border-[#ef4444]/50 bg-[#ef4444]/[0.04]' : 'border-white/20 bg-white/[0.02]'
                   }`}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => {

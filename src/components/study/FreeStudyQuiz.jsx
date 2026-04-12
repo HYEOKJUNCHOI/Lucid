@@ -158,8 +158,20 @@ const callGemini = async (prompt) => {
 };
 
 // ─── 문제 생성 프롬프트 ──────────────────────────
-const buildQuizPrompt = (code, usedQuestions = []) => `
-아래 코드를 읽고 확인 문제 3개를 만들어라.
+const buildQuizPrompt = (code, usedQuestions = [], count = 3) => {
+  // 문제 구성: 4지선다 / 빈칸 교대, 마지막은 무조건 빈칸
+  const composition = Array.from({ length: count }, (_, i) =>
+    i === count - 1 ? `${i + 1}번: 빈칸 채우기` : `${i + 1}번: ${i % 2 === 0 ? '4지선다' : '빈칸 채우기'}`
+  ).join('\n');
+
+  const jsonTypes = Array.from({ length: count }, (_, i) =>
+    i === count - 1 || i % 2 !== 0
+      ? `  {"type":"fill_blank","question":"문제 설명","code_with_blank":"코드에서 가져온 줄 (___가 빈칸)","answer":"정답 코드","explanation":"해설"}`
+      : `  {"type":"multiple_choice","question":"문제 텍스트","options":["①...","②...","③...","④..."],"answer":"정답 전체 텍스트","explanation":"해설"}`
+  ).join(',\n');
+
+  return `
+아래 코드를 읽고 확인 문제 ${count}개를 만들어라.
 
 [코드]
 \`\`\`
@@ -177,15 +189,14 @@ ${usedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 - 빈칸 채우기는 위 코드에서 한 줄을 그대로 가져와 핵심 토큰 하나만 ___로 바꿔라. ___를 정답으로 채웠을 때 원본 줄과 완전히 일치해야 한다. 존재하지 않는 토큰을 빈칸으로 만들지 마라.
 - 문제 텍스트에서 코드 식별자·메서드명·키워드는 반드시 홑따옴표로 감싸라. 예: 'getInstance()', 'private', 'count'
 
-[문제 구성]
-1번: 4지선다
-2번: 빈칸 채우기
+[문제 구성 — 반드시 ${count}개]
+${composition}
 
 [JSON 형식으로만 응답]:
 {"concept":"이 코드의 핵심 개념","questions":[
-  {"type":"multiple_choice","question":"문제 텍스트","options":["①...","②...","③...","④..."],"answer":"정답 전체 텍스트","explanation":"해설"},
-  {"type":"fill_blank","question":"문제 설명","code_with_blank":"코드에서 가져온 줄 (___가 빈칸)","answer":"정답 코드","explanation":"해설"}
+${jsonTypes}
 ]}`;
+};
 
 // ─── 결과 분석 프롬프트 ──────────────────────────
 const buildResultPrompt = (concept, results) => {
@@ -209,14 +220,14 @@ const LOADING_MSGS = [
 const pickMsg = () => LOADING_MSGS[Math.floor(Math.random() * LOADING_MSGS.length)];
 
 // ═══════════════════════════════════════════════════
-export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlightToken }) {
+export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlightToken, activeTab, defaultCount = 5 }) {
   const [phase, setPhase]             = useState('idle'); // idle | generating | active | result
   const [questions, setQuestions]     = useState([]);
   const [concept, setConcept]         = useState('');
   const [currentIdx, setCurrentIdx]   = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [feedback, setFeedback]       = useState(null); // null | { correct }
-  const [hearts, setHearts]           = useState(3);
+  const [hearts, setHearts]           = useState(5);
   const [heartLostIdx, setHeartLostIdx] = useState(null);
   const [screenFlash, setScreenFlash] = useState(false);
   const [fillAnswer, setFillAnswer]   = useState('');
@@ -232,9 +243,11 @@ export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlig
   const [quizSession, setQuizSession]   = useState(0);     // 퀴즈 세션 ID (교차 오탐 방지)
   const [reportConfirm, setReportConfirm] = useState(false); // 문제 이상 신고 확인 UI
   const [replacingQuestion, setReplacingQuestion] = useState(false); // 문제 교체 로딩
+  const [questionCount, setQuestionCount] = useState(defaultCount); // 문제 개수 (5~15)
 
-  const panelRef    = useRef(null);
-  const fillInputRef = useRef(null);
+  const panelRef        = useRef(null);
+  const fillInputRef    = useRef(null);
+  const feedbackTimerRef = useRef(null);
   const curQ = questions[currentIdx];
 
   // ─── 문제 생성 ────────────────────────────────
@@ -248,7 +261,7 @@ export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlig
     setLoadingMsg(pickMsg());
     setErrorMsg('');
     try {
-      const raw = await callGemini(buildQuizPrompt(code, usedQuestions));
+      const raw = await callGemini(buildQuizPrompt(code, usedQuestions, questionCount));
       const jsonStr = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(jsonStr);
       if (parsed.error === 'not_coding') {
@@ -264,7 +277,7 @@ export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlig
       setSelectedAnswer(null);
       setFeedback(null);
       setFillAnswer('');
-      setHearts(3);
+      setHearts(5);
       setResults([]);
       setResultSuggestion('');
       setWrongAttempts(0);
@@ -334,9 +347,12 @@ ${curQ.type === 'fill_blank'
   // ─── 답 선택 ──────────────────────────────────
   const handleAnswer = (answer) => {
     if (feedback || !curQ) return;
-    const normalize = (s) => s.trim().toLowerCase().replace(/;+$/, '');
+    const normalize = (s) => s.trim().toLowerCase().replace(/;+$/, '').replace(/\s+/g, ' ');
+    // fill_blank: AI가 answer를 토큰만("num2") 또는 전체 줄("System.out.println(num2);")로 줄 수 있음
+    // 두 경우 모두 처리: 직접 비교 OR code_with_blank의 ___를 user 답으로 채운 결과와 비교
     const isCorrect = curQ.type === 'fill_blank'
       ? normalize(answer) === normalize(curQ.answer)
+        || (curQ.code_with_blank && normalize(curQ.code_with_blank.replace('___', answer)) === normalize(curQ.answer))
       : answer === curQ.answer;
     const semiHint = isCorrect && curQ.type === 'fill_blank'
       && curQ.answer.trim().endsWith(';') && !answer.trim().endsWith(';');
@@ -373,11 +389,18 @@ ${curQ.type === 'fill_blank'
     } else if (!isCorrect && reviewMode) {
       setWrongAttempts(prev => prev + 1);
     }
+    // 1차 오답만 5초 타이머 (재시도 가능 → feedback 클리어)
+    // 2차 오답은 타이머 없음 — 기존대로 Enter로 다음 문제
+    if (!isCorrect && wrongAttempts === 0) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = setTimeout(() => dismissWrongFeedback(true), 5000);
+    }
     setTimeout(() => panelRef.current?.focus(), 50);
   };
 
   // ─── 다음 문제 or 결과 ────────────────────────
   const goNext = () => {
+    clearTimeout(feedbackTimerRef.current);
     if (!feedback) return;
     const isLast = currentIdx + 1 >= questions.length;
     if (reviewMode) {
@@ -403,6 +426,19 @@ ${curQ.type === 'fill_blank'
     }
   };
 
+  // ─── 오답 피드백 자동 해제 (goNext 이후에 선언) ──
+  // canRetry: 재시도 가능 → feedback만 클리어 / false → 다음 문제
+  const dismissWrongFeedback = (canRetry) => {
+    clearTimeout(feedbackTimerRef.current);
+    if (canRetry) {
+      setFeedback(null);
+      setSelectedAnswer(null);
+      setTimeout(() => fillInputRef.current?.focus(), 50);
+    } else {
+      goNext();
+    }
+  };
+
   // ─── 이전 문제 ───────────────────────────────
   const goPrev = () => {
     if (currentIdx === 0) return;
@@ -414,12 +450,12 @@ ${curQ.type === 'fill_blank'
   };
 
   // ─── 결과 화면 전환 ───────────────────────────
-  const goResult = async () => {
+  const goResult = async (early = false) => {
     setPhase('result');
     const allResults = results.filter(Boolean);
     const prompt = buildResultPrompt(concept, allResults);
     if (!prompt) {
-      setResultSuggestion('모두 정답이에요! 훌륭해요 🎉');
+      setResultSuggestion(early ? '다음엔 끝까지 풀어봐요~ 💪' : '모두 정답이에요! 훌륭해요 🎉');
       return;
     }
     setSuggestionLoading(true);
@@ -491,26 +527,87 @@ ${curQ.type === 'fill_blank'
   // ══════════════════════════════════════════════
   // IDLE
   if (phase === 'idle') {
+    const isAiTab = activeTab === 'ai';
+    const srcEmoji = isAiTab ? '🖥️' : '💻';
+    const srcLabel = isAiTab ? 'AI 생성코드' : '코드노트';
+    const srcColor = isAiTab ? 'text-cyan-300' : 'text-pink-300';
+    const descLine1 = isAiTab
+      ? <><span className="text-cyan-300">AI 생성코드</span><span className="text-gray-400">의 개념을 </span><span className="text-amber-300">AI</span><span className="text-gray-400">가 파악해서</span></>
+      : <><span className="text-pink-300">코드노트</span><span className="text-gray-400">의 개념을 </span><span className="text-amber-300">AI</span><span className="text-gray-400">가 파악해서</span></>;
+
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-5 p-6 select-none">
+      <div className="flex-1 flex flex-col items-center select-none pt-10 pb-14">
         {errorMsg && (
           <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2 text-center">
             {errorMsg}
           </div>
         )}
-        <div className="text-center">
-          <div className="text-4xl mb-3">🎯</div>
-          <p className="text-white/80 text-sm font-bold mb-1.5">이 코드의 개념으로 문제 풀기</p>
-          <p className="text-gray-600 text-[11px] leading-relaxed">
-            Lucid가 개념을 파악해서<br />새로운 시험 문제를 만들어요
+        {/* 플로우 일러스트 */}
+        <div className="flex flex-col items-center gap-4 mt-[100px] mb-[50px]">
+          <div className="flex items-center gap-2">
+            <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+              <span className="text-[22px]">{srcEmoji}</span>
+              <span className={`${srcColor} font-medium text-[10px]`}>{srcLabel}</span>
+            </div>
+            <div className="flex flex-col items-center gap-0.5 text-gray-500">
+              <span className="text-[10px]">✨</span>
+              <span className="text-[15px]">→</span>
+              <span className="text-[10px]">✨</span>
+            </div>
+            <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+              <span className="text-[22px]">🤖</span>
+              <span className="text-amber-300 font-medium text-[10px]">AI 분석</span>
+            </div>
+            <div className="flex flex-col items-center gap-0.5 text-gray-500">
+              <span className="text-[10px]">🚀</span>
+              <span className="text-[15px]">→</span>
+              <span className="text-[10px]"> </span>
+            </div>
+            <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
+              <span className="text-[22px]">🎯</span>
+              <span className="text-violet-300 font-medium text-[10px]">문제 생성</span>
+            </div>
+          </div>
+          <p className="font-bold text-center leading-[2.2] tracking-wide" style={{ textShadow: '0 0 16px rgba(255,255,255,0.2)' }}>
+            <span className="text-[13px] block">{descLine1}</span>
+            <span className="text-[13px] block">
+              <span className="text-gray-400">새로운 </span>
+              <span className="text-violet-300">시험 문제</span>
+              <span className="text-gray-400">를 만들어줍니다.</span>
+            </span>
           </p>
         </div>
-        <button
-          onClick={startQuiz}
-          className="px-7 py-2.5 rounded-xl font-bold text-sm bg-violet-500/20 border border-violet-400/40 text-violet-200 hover:bg-violet-500/30 hover:border-violet-300/60 transition-all shadow-lg shadow-violet-950/20"
-        >
-          문제 생성
-        </button>
+        {/* 슬라이더 — 설명 바로 아래 */}
+        <div className="flex flex-col items-center gap-1.5 w-48 mt-5">
+          <span className="text-[9px] font-light text-white/60 tracking-widest uppercase mb-0.5">문제 횟수 선택</span>
+          <div className="flex items-center justify-between w-full px-0.5">
+            <span className="text-[10px] text-gray-500">MIN</span>
+            <span className="text-[13px] font-bold" style={{
+              color: `rgb(${Math.round(255)}, ${Math.round(255 - ((questionCount - 5) / 10) * 235)}, ${Math.round(255 - ((questionCount - 5) / 10) * 255)})`
+            }}>{questionCount}문제</span>
+            <span className="text-[10px] text-gray-500">MAX</span>
+          </div>
+          <input
+            type="range"
+            min={5} max={15} step={1}
+            value={questionCount}
+            onChange={e => setQuestionCount(Number(e.target.value))}
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, rgba(167,139,250,0.7) 0%, rgba(167,139,250,0.7) ${((questionCount - 5) / 10) * 100}%, rgba(255,255,255,0.1) ${((questionCount - 5) / 10) * 100}%, rgba(255,255,255,0.1) 100%)`
+            }}
+          />
+        </div>
+        {/* 버튼 — 아래 공간 중앙 */}
+        <div className="flex-1 flex items-center justify-center">
+          <button
+            onClick={startQuiz}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-violet-500/20 border border-violet-400/40 text-violet-300 hover:bg-violet-500/30 hover:text-violet-100 transition-all"
+            style={{ boxShadow: '0 0 16px rgba(167,139,250,0.35)' }}
+          >
+            🎯 문제 생성
+          </button>
+        </div>
       </div>
     );
   }
@@ -585,21 +682,23 @@ ${curQ.type === 'fill_blank'
               : resultSuggestion}
           </div>
 
-          {/* 복습 버튼 */}
-          <button
-            onClick={() => {
-              setReviewMode(true);
-              setCurrentIdx(0);
-              setSelectedAnswer(null);
-              setFeedback(null);
-              setFillAnswer('');
-              setWrongAttempts(0);
-              setPhase('active');
-            }}
-            className="w-full py-2.5 rounded-xl text-[12px] font-bold bg-white/[0.03] border border-white/10 text-gray-400 hover:bg-white/[0.06] hover:text-gray-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            👉 틀린 문제를 한 번 더 살펴볼 수 있어요
-          </button>
+          {/* 복습 버튼 — 틀린 문제 있을 때만 */}
+          {results.filter(r => r && !r.correct).length > 0 && (
+            <button
+              onClick={() => {
+                setReviewMode(true);
+                setCurrentIdx(0);
+                setSelectedAnswer(null);
+                setFeedback(null);
+                setFillAnswer('');
+                setWrongAttempts(0);
+                setPhase('active');
+              }}
+              className="w-full py-2.5 rounded-xl text-[12px] font-bold bg-red-500/[0.08] border border-red-400/50 text-red-300 hover:bg-red-500/[0.14] hover:text-red-200 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              👉 틀린 문제를 한 번 더 살펴볼 수 있어요
+            </button>
+          )}
 
           {/* 버튼 */}
           <div className="flex gap-2 pt-1">
@@ -608,7 +707,7 @@ ${curQ.type === 'fill_blank'
               className="flex-1 py-3 rounded-xl text-sm font-bold bg-violet-500/15 border border-violet-400/30 text-violet-200 hover:bg-violet-500/25 transition-all"
             >
               <span className="flex flex-col items-center gap-1.5">
-                <span>{resultEnterCount === 1 ? '한 번 더!' : '문제 더 풀어보기'}</span>
+                <span>{resultEnterCount === 1 ? '한 번 더!' : `${questionCount}문제 더 풀어보기`}</span>
                 <span className="flex items-center gap-1.5">
                   <kbd style={{ background: resultEnterCount === 1 ? 'linear-gradient(180deg, #4a3a1a 0%, #2a1a00 100%)' : 'linear-gradient(180deg, #3a3a3a 0%, #222 100%)', border: resultEnterCount === 1 ? '1px solid #e0be7a' : '1px solid #555', boxShadow: '0 2px 0 #111, 0 3px 0 #000' }} className="px-2 py-0.5 rounded text-white text-[11px] font-bold transition-all">Enter</kbd>
                   <span
@@ -663,7 +762,7 @@ ${curQ.type === 'fill_blank'
             </button>
           ) : (
             <div className="flex items-center gap-1">
-            {[0, 1, 2].map(i => (
+            {[0, 1, 2, 3, 4].map(i => (
               <span
                 key={i}
                 className={`text-[15px] transition-all duration-300 ${
@@ -679,10 +778,10 @@ ${curQ.type === 'fill_blank'
           {questions.map((_, i) => (
             <div
               key={i}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                i < currentIdx  ? 'w-5 bg-violet-400' :
-                i === currentIdx ? 'w-5 bg-violet-300' :
-                                   'w-4 bg-white/10'
+              className={`h-0.5 rounded-full transition-all duration-300 ${
+                i < currentIdx  ? 'w-3 bg-violet-400' :
+                i === currentIdx ? 'w-3 bg-violet-300' :
+                                   'w-2.5 bg-white/10'
               }`}
             />
           ))}
@@ -772,11 +871,14 @@ ${curQ.type === 'fill_blank'
 
         {/* 피드백 */}
         {feedback && (
-          <div className={`rounded-xl border px-4 py-3 text-[12px] leading-relaxed ${
-            feedback.correct
-              ? 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-200'
-              : 'border-red-500/25 bg-red-500/[0.06] text-red-200'
-          }`}>
+          <div
+            className={`rounded-xl border px-4 py-3 text-[12px] leading-relaxed cursor-pointer ${
+              feedback.correct
+                ? 'border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-200'
+                : 'border-red-500/25 bg-red-500/[0.06] text-red-200'
+            }`}
+            onClick={() => { if (!feedback.correct && wrongAttempts < 2) dismissWrongFeedback(true); }}
+          >
             <p className="font-bold mb-1 text-[13px]">
               {feedback.correct ? '✅ 정답!' : '❌ 오답'}
             </p>
@@ -803,9 +905,13 @@ ${curQ.type === 'fill_blank'
             )}
           </div>
         )}
-        {/* 문제 이상 신고 */}
+        {/* 하단 액션 행: 종료 + 신고 */}
         {!feedback && !replacingQuestion && (
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => goResult(true)}
+              className="text-[10px] text-white/70 px-2.5 py-1 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] hover:text-white transition-all"
+            >✕ 종료</button>
             {reportConfirm ? (
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="text-gray-500">새로운 문제로 교체해드릴까요?</span>

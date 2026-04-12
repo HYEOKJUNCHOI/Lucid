@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { getApiKey } from '../../lib/apiKey';
-import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
+import { getGeminiApiKey } from '../../lib/apiKey';
+import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
 import { auth } from '../../lib/firebase';
 import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -315,6 +315,7 @@ const LevelUpView = ({ userData, onBack }) => {
   const [placementHistory, setPlacementHistory] = useState([]); // [{correct, tierIdx}]
   const [placementDone, setPlacementDone] = useState(false);
   const [placementStarted, setPlacementStarted] = useState(false);
+  const [placementDevNotice, setPlacementDevNotice] = useState(false);
   const [placementQuizQueue, setPlacementQuizQueue] = useState([]); // 미리 생성된 문제 큐
   const [placementResume, setPlacementResume] = useState(null); // 저장된 진행 상태
 
@@ -336,7 +337,7 @@ const LevelUpView = ({ userData, onBack }) => {
     setShowCodeHint(false);
 
     try {
-      const apiKey = getApiKey();
+      const apiKey = getGeminiApiKey();
       if (!apiKey) {
         showToast('API 키가 설정되지 않았습니다.');
         setLoading(false);
@@ -346,19 +347,18 @@ const LevelUpView = ({ userData, onBack }) => {
       const tier = getTier(subjectXP);
       const prompt = buildQuizPrompt(selectedSubject, tier.id, level, wrongHistory);
 
-      const res = await fetch(OPENAI_CHAT_URL, {
+      const res = await fetch(`${GEMINI_CHAT_URL(MODELS.GEMINI_QUIZ)}?key=${apiKey}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: MODELS.CHAT,
-          messages: [{ role: 'system', content: prompt }],
-          temperature: 0.8,
-          max_tokens: 800,
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.8 },
         }),
       });
 
       const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || '';
+      if (data.error) throw new Error(data.error.message);
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       // JSON 파싱 (코드블록 래핑 제거)
       const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -391,17 +391,18 @@ const LevelUpView = ({ userData, onBack }) => {
     setSelectedOption(null);
     setShowCodeHint(false);
     try {
-      const apiKey = getApiKey();
+      const apiKey = getGeminiApiKey();
       if (!apiKey) { showToast('API 키가 설정되지 않았습니다.'); setLoading(false); return; }
       const tier = TIERS[placementTierIdx];
       const prompt = buildPlacementBatchPrompt(selectedSubject, tier.id);
-      const res = await fetch(OPENAI_CHAT_URL, {
+      const res = await fetch(`${GEMINI_CHAT_URL(MODELS.GEMINI_QUIZ)}?key=${apiKey}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: MODELS.CHAT, messages: [{ role: 'system', content: prompt }], temperature: 0.9, max_tokens: 4000 }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9 } }),
       });
       const data = await res.json();
-      const content = data.choices?.[0]?.message?.content || '';
+      if (data.error) throw new Error(data.error.message);
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const quizList = JSON.parse(jsonStr);
       if (!Array.isArray(quizList) || quizList.length === 0) throw new Error('빈 배열');
@@ -747,7 +748,7 @@ const LevelUpView = ({ userData, onBack }) => {
     if (!placementStarted) {
       const START_IDX = 0; // 브론즈
       return (
-        <div className="flex flex-col h-full animate-fade-in-up px-6">
+        <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden animate-fade-in-up px-6" style={{ background: '#0d0d0d' }}>
           <div className="shrink-0 pt-6">
             <button onClick={() => setPhase('select')}
               className="flex items-center gap-2 text-gray-400 hover:text-white text-base font-semibold hover:bg-white/[0.04] px-3 py-2 rounded-lg transition-all">
@@ -756,7 +757,7 @@ const LevelUpView = ({ userData, onBack }) => {
             </button>
           </div>
           <div className="flex-1 flex items-center justify-center">
-            <div className="w-full max-w-2xl text-center">
+            <div className="w-full max-w-2xl text-center relative">
             <div className="text-4xl mb-3 placement-float placement-row-1">⚔️</div>
             <h2 className="text-5xl font-black text-white mb-3 tracking-tight placement-row-2">배치고사</h2>
             <p className="text-lg font-bold text-gray-200 mb-7 placement-row-3">{subjectInfo2?.label} · 어느 티어에 배치될까요?</p>
@@ -838,13 +839,26 @@ const LevelUpView = ({ userData, onBack }) => {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => setPlacementStarted(true)}
-                className="placement-row-5 w-full py-5 rounded-2xl font-black text-lg text-black transition-all hover:-translate-y-1 hover:scale-[1.02] placement-btn-shimmer"
-                style={{ boxShadow: '0 8px 32px rgba(234,179,8,0.45), 0 0 0 1px rgba(234,179,8,0.2)' }}
-              >
-                배치고사 시작 →
-              </button>
+              <>
+                {placementDevNotice && (
+                  <div
+                    className="absolute z-20 flex flex-col items-center justify-center cursor-pointer"
+                    style={{ top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100vw', background: 'rgba(160,0,0,0.35)', backdropFilter: 'blur(3px)' }}
+                    onClick={() => setPlacementDevNotice(false)}
+                  >
+                    <p className="text-red-100 text-[11px] font-black tracking-[0.25em] uppercase mb-3">⚠ WARNING</p>
+                    <p className="text-white font-black text-3xl mb-2" style={{ textShadow: '0 0 20px rgba(255,255,255,0.4)' }}>기능 준비중입니다</p>
+                    <p className="text-white/70 text-sm">곧 만나요!</p>
+                  </div>
+                )}
+                <button
+                  onClick={() => { setPlacementDevNotice(true); setTimeout(() => setPlacementDevNotice(false), 2500); }}
+                  className="placement-row-5 w-full py-5 rounded-2xl font-black text-lg text-black transition-all hover:-translate-y-1 hover:scale-[1.02] placement-btn-shimmer"
+                  style={{ boxShadow: '0 8px 32px rgba(234,179,8,0.45), 0 0 0 1px rgba(234,179,8,0.2)' }}
+                >
+                  배치고사 시작 →
+                </button>
+              </>
             )}
             </div>
           </div>
@@ -855,7 +869,7 @@ const LevelUpView = ({ userData, onBack }) => {
     // 배치 완료 결과 화면
     if (placementDone) {
       return (
-        <div className="flex flex-col items-center justify-center h-full animate-fade-in-up px-4">
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-auto animate-fade-in-up px-4" style={{ background: '#0d0d0d' }}>
           <div className="w-full max-w-md text-center">
             <div className="mb-4 flex justify-center" style={{ color: placementTier.color }}><placementTier.icon size={56} /></div>
             <h2 className="text-2xl font-black text-white mb-1">배치 완료!</h2>
@@ -887,7 +901,7 @@ const LevelUpView = ({ userData, onBack }) => {
 
     // 배치고사 진행 화면
     return (
-      <div className="flex flex-col h-full overflow-hidden relative">
+      <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden relative" style={{ background: '#0d0d0d' }}>
         {/* 토스트 */}
         {toast && (
           <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl font-semibold text-sm shadow-2xl flex items-center gap-3 animate-fade-in-up"
@@ -1212,7 +1226,7 @@ const LevelUpView = ({ userData, onBack }) => {
     const comment = pool[Math.floor(Math.random() * pool.length)];
 
     return (
-      <div className="flex flex-col items-center justify-center h-full animate-fade-in-up px-4">
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-auto animate-fade-in-up px-4" style={{ background: '#0d0d0d' }}>
         <div className="w-full max-w-md">
           <h2 className="text-2xl font-black text-white mb-1 text-center">세션 종료</h2>
           <p className="text-sm text-gray-400 text-center mb-8">{subjectLabel}</p>
@@ -1282,7 +1296,7 @@ const LevelUpView = ({ userData, onBack }) => {
   const tierProgress = nextTier ? ((subjectXP - tier.minXP) / (nextTier.minXP - tier.minXP)) * 100 : 100;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden relative">
+    <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden relative" style={{ background: '#0d1117' }}>
       {/* 토스트 */}
       {toast && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl font-semibold text-sm shadow-2xl flex items-center gap-3 animate-fade-in-up"
