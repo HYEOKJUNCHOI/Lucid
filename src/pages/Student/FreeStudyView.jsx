@@ -38,9 +38,6 @@ const FreeStudyView = ({ onBack }) => {
   const [editorFontSize, setEditorFontSize] = useState(14);
   const editorRef = useRef(null);
   const [isReadOnly, setIsReadOnly] = useState(false);
-  const [isQuizUnlocked, setIsQuizUnlocked] = useState(false);
-  const [isUnlocking, setIsUnlocking] = useState(false);
-  const [justUnlocked, setJustUnlocked] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [isTypingPractice, setIsTypingPractice] = useState(false);
   const isTypingPracticeRef = useRef(false);
@@ -50,12 +47,12 @@ const FreeStudyView = ({ onBack }) => {
   const [isCheating, setIsCheating] = useState(false);
   // 20줄 미만 코드 여부 — 치팅과 동일 패턴으로 기록만 저장 스킵, 뱃지 없음
   const [isShortCode, setIsShortCode] = useState(false);
-  const [quizLockHover, setQuizLockHover] = useState(null); // { top, left }
   // Lucid Tutor 컨텍스트 핸드오프 (퀴즈 결과 → 튜터)
   const [chatKey, setChatKey] = useState(0);
   const [chatGreeting, setChatGreeting] = useState('코드에 대해 뭐든 물어보세요');
   const [chatSystemPrompt, setChatSystemPrompt] = useState(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [focusedPanel, setFocusedPanel] = useState(null); // 'left' | 'right'
   const { user } = useAuth();
 
   // ─── 치팅 감지용 ref ───────────────────────────────────
@@ -149,25 +146,6 @@ ${mainCode.slice(0, 3000)}`;
     }
   };
 
-  // 문제풀기 잠금 해제 트리거 (버튼 클릭 / Alt+4 공통)
-  const triggerUnlockQuiz = () => {
-    if (isUnlocking || isQuizUnlocked) return;
-    setIsUnlocking(true);
-    if (navigator.vibrate) navigator.vibrate([30, 40, 60]);
-    setTimeout(() => {
-      setIsUnlocking(false);
-      setIsQuizUnlocked(true);
-      setJustUnlocked(true);
-      setActiveRightTab('quiz');
-      setTimeout(() => setJustUnlocked(false), 1500);
-    }, 1400);
-  };
-
-  // keydown useEffect([])에서 최신 state/함수 접근용 ref
-  const isQuizUnlockedRef = useRef(false);
-  const triggerUnlockQuizRef = useRef(() => {});
-  isQuizUnlockedRef.current = isQuizUnlocked;
-  triggerUnlockQuizRef.current = triggerUnlockQuiz;
 
   // 퀴즈/채팅 코드 토큰 Ctrl+Click → 왼쪽 에디터 하이라이트
   const monacoRef = useRef(null);
@@ -397,14 +375,11 @@ ${mainCode.slice(0, 3000)}`;
       editor.addCommand(monaco.KeyMod.Alt | digitCode, fn);
       editor.addCommand(monaco.KeyMod.Alt | numpadCode, fn);
     };
-    bindTab(monaco.KeyCode.Digit1, monaco.KeyCode.Numpad1, () => setActiveTab(TABS[0].id));
-    bindTab(monaco.KeyCode.Digit2, monaco.KeyCode.Numpad2, () => setActiveTab(TABS[1].id));
-    bindTab(monaco.KeyCode.Digit3, monaco.KeyCode.Numpad3, () => setActiveRightTab(RIGHT_TABS[0].id));
-    bindTab(monaco.KeyCode.Digit4, monaco.KeyCode.Numpad4, () => {
-      if (!isQuizUnlockedRef.current) triggerUnlockQuizRef.current();
-      else setActiveRightTab(RIGHT_TABS[1].id);
-    });
-    bindTab(monaco.KeyCode.Digit5, monaco.KeyCode.Numpad5, () => setActiveRightTab(RIGHT_TABS[2].id));
+    bindTab(monaco.KeyCode.Digit1, monaco.KeyCode.Numpad1, () => { setActiveTab(TABS[0].id); setFocusedPanel('left'); });
+    bindTab(monaco.KeyCode.Digit2, monaco.KeyCode.Numpad2, () => { setActiveTab(TABS[1].id); setFocusedPanel('left'); });
+    bindTab(monaco.KeyCode.Digit3, monaco.KeyCode.Numpad3, () => { setActiveRightTab(RIGHT_TABS[0].id); setFocusedPanel('right'); });
+    bindTab(monaco.KeyCode.Digit4, monaco.KeyCode.Numpad4, () => { setActiveRightTab(RIGHT_TABS[1].id); setFocusedPanel('right'); });
+    bindTab(monaco.KeyCode.Digit5, monaco.KeyCode.Numpad5, () => { setActiveRightTab(RIGHT_TABS[2].id); setFocusedPanel('right'); });
   };
 
   // Alt+1/2 → 왼쪽 탭, Alt+3/4 → 오른쪽 탭, F2 → 해석 카드 순환, F4 → 타자연습 열기
@@ -455,23 +430,19 @@ ${mainCode.slice(0, 3000)}`;
 
       if (isKey('Digit1', 'Numpad1')) {
         e.preventDefault(); e.stopPropagation();
-        setActiveTab(TABS[0].id);
+        setActiveTab(TABS[0].id); setFocusedPanel('left');
       } else if (isKey('Digit2', 'Numpad2')) {
         e.preventDefault(); e.stopPropagation();
-        setActiveTab(TABS[1].id);
+        setActiveTab(TABS[1].id); setFocusedPanel('left');
       } else if (isKey('Digit3', 'Numpad3')) {
         e.preventDefault(); e.stopPropagation();
-        setActiveRightTab(RIGHT_TABS[0].id);
+        setActiveRightTab(RIGHT_TABS[0].id); setFocusedPanel('right');
       } else if (isKey('Digit4', 'Numpad4')) {
         e.preventDefault(); e.stopPropagation();
-        if (!isQuizUnlockedRef.current) {
-          triggerUnlockQuizRef.current();
-        } else {
-          setActiveRightTab(RIGHT_TABS[1].id);
-        }
+        setActiveRightTab(RIGHT_TABS[1].id); setFocusedPanel('right');
       } else if (isKey('Digit5', 'Numpad5')) {
         e.preventDefault(); e.stopPropagation();
-        setActiveRightTab(RIGHT_TABS[2].id);
+        setActiveRightTab(RIGHT_TABS[2].id); setFocusedPanel('right');
       }
   };
   useEffect(() => {
@@ -512,6 +483,7 @@ ${mainCode.slice(0, 3000)}`;
       <div
         className="relative flex flex-col bg-[var(--free-editor-bg)] rounded-lg overflow-hidden border border-[#2c313a] shadow-lg shrink-0"
         style={{ width: `${splitRatio * 100}%` }}
+        onFocusCapture={() => setFocusedPanel('left')}
       >
         {/* 탭 바 */}
         <div className="free-tab-bar flex items-end shrink-0" style={{ minHeight: 42 }}>
@@ -556,7 +528,13 @@ ${mainCode.slice(0, 3000)}`;
         </div>
 
         {/* Monaco 액자라운드 */}
-        <div className="relative flex-1 min-h-0 mx-1.5 mb-1.5 mt-1 rounded-2xl border border-[#e0be7a]/40 bg-[#0d1518] overflow-hidden">
+        <div
+          className="relative flex-1 min-h-0 mx-1.5 mb-1.5 mt-1 rounded-2xl border bg-[#0d1518] overflow-hidden transition-all duration-200"
+          style={focusedPanel === 'left'
+            ? { borderColor: 'rgba(224,190,122,0.75)', boxShadow: '0 0 16px rgba(224,190,122,0.1)' }
+            : { borderColor: 'rgba(224,190,122,0.4)' }
+          }
+        >
           {/* 에디터 글씨 크기 조절 */}
           <div className="absolute top-2 right-3 z-10 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
             <button
@@ -654,37 +632,22 @@ ${mainCode.slice(0, 3000)}`;
       </div>
 
       {/* ── 오른쪽: 채팅 패널 ── */}
-      <div className="relative flex-1 min-w-0 flex flex-col bg-[var(--free-editor-bg)] rounded-lg overflow-hidden border border-[#2c313a] shadow-lg">
+      <div
+        className="relative flex-1 min-w-0 flex flex-col bg-[var(--free-editor-bg)] rounded-lg overflow-hidden border border-[#2c313a] shadow-lg"
+        onFocusCapture={() => setFocusedPanel('right')}
+      >
         {/* 탭 바 */}
         <div className="free-tab-bar flex items-end shrink-0" style={{ minHeight: 42 }}>
-          {RIGHT_TABS.map((tab, idx) => {
-            const locked = tab.id === 'quiz' && !isQuizUnlocked;
-            const isQuizTab = tab.id === 'quiz';
-            return (
-              <button
-                key={tab.id}
-                onClick={() => { if (!locked) setActiveRightTab(tab.id); }}
-                disabled={locked}
-                className={`free-tab
-                  ${activeRightTab === tab.id ? 'free-tab-active' : 'free-tab-inactive'}
-                  ${locked ? 'opacity-50 cursor-not-allowed' : ''}
-                  ${isQuizTab && isUnlocking ? 'tab-unlocking' : ''}
-                  ${isQuizTab && justUnlocked ? 'tab-unlocked-pop' : ''}
-                `}
-                onMouseEnter={locked ? (e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  setQuizLockHover({ top: r.bottom + 8, left: r.left });
-                } : undefined}
-                onMouseLeave={locked ? () => setQuizLockHover(null) : undefined}
-              >
-                <span className="flex items-center gap-1">
-                  {locked && <span className="lock-icon text-[11px]">🔒</span>}
-                  {tab.label}
-                </span>
-                {!locked && <span className="free-tab-shortcut">Alt + {idx + 3}</span>}
-              </button>
-            );
-          })}
+          {RIGHT_TABS.map((tab, idx) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveRightTab(tab.id)}
+              className={`free-tab ${activeRightTab === tab.id ? 'free-tab-active' : 'free-tab-inactive'}`}
+            >
+              <span>{tab.label}</span>
+              <span className="free-tab-shortcut">Alt + {idx + 3}</span>
+            </button>
+          ))}
           <div className="free-tab-right-panel ml-auto self-stretch flex items-center gap-1.5 px-3 pt-[1px]">
             <button
               onClick={() => setShowExitConfirm(true)}
@@ -696,22 +659,16 @@ ${mainCode.slice(0, 3000)}`;
         </div>
 
         {/* 탭 콘텐츠 */}
-        <div className="relative flex-1 flex flex-col min-h-0 mx-1.5 mt-1 mb-1.5 rounded-2xl border border-[#e0be7a]/40 bg-[#0d1518] overflow-hidden">
+        <div
+          className="relative flex-1 flex flex-col min-h-0 mx-1.5 mt-1 mb-1.5 rounded-2xl border bg-[#0d1518] overflow-hidden transition-all duration-200"
+          style={focusedPanel === 'right'
+            ? { borderColor: 'rgba(224,190,122,0.75)', boxShadow: '0 0 16px rgba(224,190,122,0.1)' }
+            : { borderColor: 'rgba(224,190,122,0.4)' }
+          }
+        >
 
           {/* 💬 Lucid Tutor */}
           <div className={`flex-1 flex flex-col min-h-0 ${activeRightTab === 'tutor' ? '' : 'hidden'}`}>
-              {!isQuizUnlocked && (
-                <button
-                  disabled={isUnlocking}
-                  onClick={triggerUnlockQuiz}
-                  className="absolute bottom-20 right-4 z-10 flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg font-bold bg-violet-500/15 backdrop-blur-sm border border-violet-400/40 text-violet-300 hover:bg-violet-500/25 hover:text-violet-100 shadow-md shadow-violet-950/30 transition-all disabled:opacity-60 disabled:cursor-wait"
-                >
-                  <span>🔓 문제풀기</span>
-                  <span className="text-[9px] font-bold px-1 py-0.5 rounded border border-white/15 bg-white/10 text-gray-500">
-                    Alt+4
-                  </span>
-                </button>
-              )}
               <ChatPanel
                 key={chatKey}
                 getCodeContext={() => tabContents[activeTab]}
@@ -791,25 +748,6 @@ ${mainCode.slice(0, 3000)}`;
             }
           }}
         />
-      )}
-
-      {/* 문제풀기 잠금 탭 호버 카드 */}
-      {quizLockHover && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{ top: quizLockHover.top, left: quizLockHover.left }}
-        >
-          <div className="bg-[#1a1f2e] border border-violet-500/30 rounded-xl px-4 py-3 shadow-2xl shadow-violet-950/40 w-[220px]">
-            <div className="text-violet-300 text-[11px] font-black tracking-wide mb-1.5">🎯 문제풀기</div>
-            <div className="text-gray-300 text-[11px] leading-relaxed">
-              코드가 이해되시면<br/>문제에 도전하세요
-            </div>
-            <div className="mt-2 pt-2 border-t border-white/5 text-gray-500 text-[10px] flex items-center gap-1">
-              <span>🔓</span>
-              <span>아래 버튼 또는 Alt+4 로 잠금 해제</span>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* 학습 종료 확인 모달 */}
