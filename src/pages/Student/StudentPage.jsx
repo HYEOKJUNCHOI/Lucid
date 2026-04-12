@@ -18,6 +18,7 @@ import { calcStreakStatus, claimLoginXPFS, useFreezeOnDateFS, getDailyXPFromStat
 import { getApiKey } from '../../lib/apiKey';
 import Toast, { showToast } from '../../components/common/Toast';
 import TypingBadge from '../../components/common/TypingBadge';
+import MemoInventory from '../../components/memo/MemoInventory';
 
 
 const StudentPage = ({ user, userData, onLogout }) => {
@@ -153,6 +154,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
     }
   }, [completedFiles, selectedRepoKey]);
   const [statusPop, setStatusPop] = useState(false); // 모드카드 클릭 시 스테이터스 박스 pop
+  const [memoInventoryOpen, setMemoInventoryOpen] = useState(false); // 학습메모 인벤토리
   const [selectedChapter, setSelectedChapter] = useState(null); // 2패널: 선택된 챕터
   const [chapterHover, setChapterHover] = useState(null); // 챕터 호버 미리보기 { name, files, top, left }
   const [freezeHover, setFreezeHover] = useState(null); // 얼리기 호버 툴팁 { top, left }
@@ -978,7 +980,11 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     <span className="text-[6px] font-bold">펼치기</span>
                   </button>
                   {/* 날짜 */}
-                  <div className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.08] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition" title={`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${dayNames[now.getDay()]}요일`}>
+                  <div
+                    onClick={() => setMemoInventoryOpen(true)}
+                    className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.08] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition"
+                    title={`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${dayNames[now.getDay()]}요일\n클릭하여 학습메모 보기`}
+                  >
                     <span className="text-[15px] font-black text-white leading-none">{now.getDate()}</span>
                     <span className="text-[8px] font-bold text-[#569cd6]">{dayNames[now.getDay()]}</span>
                   </div>
@@ -2363,6 +2369,17 @@ const StudentPage = ({ user, userData, onLogout }) => {
         </div>
       )}
       <Toast />
+
+      {/* 학습메모 인벤토리 */}
+      <MemoInventory
+        isOpen={memoInventoryOpen}
+        onClose={() => setMemoInventoryOpen(false)}
+        onSelectMemo={(memo) => {
+          setMemoInventoryOpen(false);
+          setStep('freestudy');
+          setMode('freestudy');
+        }}
+      />
     </div>
   );
 };
