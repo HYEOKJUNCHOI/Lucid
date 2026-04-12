@@ -63,7 +63,7 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
 
   // ─── 랜딩 패널 상태 ────────────────────────────────────
   const [landingVisible, setLandingVisible] = useState(showLanding);
-  const [landingSection, setLandingSection] = useState(null); // null | 'github' | 'keyword'
+  const [landingSection, setLandingSection] = useState(null); // null | 'github' | 'keyword' | 'keyword-guide'
   // 담당강사 있으면 항상 체크 ON으로 시작
   const [useTeacherGithub, setUseTeacherGithub] = useState(() => {
     const saved = localStorage.getItem('lucid_github_use_teacher');
@@ -135,7 +135,12 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
   // AI 코드 생성 (Alt+2 탭) — 1번탭 코드를 읽고 같은 패턴·다른 소재로 새 예제 생성
   const generateAiCode = async () => {
     const mainCode = tabContentsRef.current.main;
-    if (!mainCode.trim() || isGeneratingAi) return;
+    if (!mainCode.trim()) {
+      // 코드노트가 비어있으면 가이던스 팝업 띄우기
+      setLandingSection('keyword-guide');
+      return;
+    }
+    if (isGeneratingAi) return;
 
     const apiKey = getGeminiApiKey();
     if (!apiKey) {
@@ -740,7 +745,7 @@ ${mainCode.slice(0, 3000)}`;
       )}
 
       {/* ── AI 키워드 가이던스 팝업 ── */}
-      {landingSection === 'keyword' && (() => {
+      {landingSection === 'keyword-guide' && (() => {
         const codeNoteEmpty = !tabContents.main.trim();
         const aiCodeGenerated = tabContents.ai.trim();
 
@@ -768,14 +773,14 @@ ${mainCode.slice(0, 3000)}`;
 
         return (
           <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={() => { setLandingSection(null); setLandingKeyword(''); }}>
+            onClick={() => setLandingSection(null)}>
             <div className="w-full max-w-sm mx-4 rounded-2xl p-6 shadow-2xl"
               style={{ background: '#111827', border: '1px solid rgba(167,139,250,0.25)' }}
               onClick={e => e.stopPropagation()}>
 
               <div className="flex items-center justify-between mb-5">
                 <p className="text-white font-bold text-base">✨ AI 키워드 코드생성</p>
-                <button onClick={() => { setLandingSection(null); setLandingKeyword(''); }}
+                <button onClick={() => setLandingSection(null)}
                   className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
               </div>
 
@@ -822,7 +827,7 @@ ${mainCode.slice(0, 3000)}`;
                 </div>
               </div>
 
-              {/* 상태별 버튼 */}
+              {/* 상태별 컨텐츠 */}
               {codeNoteEmpty ? (
                 <button onClick={() => { setLandingSection(null); setActiveTab('main'); }}
                   className="w-full py-2.5 rounded-xl font-bold text-sm transition-all"
@@ -836,19 +841,75 @@ ${mainCode.slice(0, 3000)}`;
                   🤖 AI 생성코드 보러가기
                 </button>
               ) : (
-                <button onClick={generateKeywordCode} disabled={landingKeywordLoading || !tabContents.main.trim()}
-                  className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-                  style={{ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.4)', color: '#fb7185',
-                    boxShadow: landingKeywordLoading ? 'none' : '0 0 16px rgba(244,63,94,0.15)' }}>
-                  {landingKeywordLoading
-                    ? <><span className="inline-block animate-spin mr-1">⟳</span>생성 중...</>
-                    : '✨ AI 코드 생성'}
-                </button>
+                <>
+                  <div className="mb-4">
+                    <label className="text-xs text-gray-400 mb-2.5 block">난이도 선택</label>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-500 whitespace-nowrap">쉬움</span>
+                      <input
+                        type="range"
+                        min="0" max="2"
+                        value={aiDifficulty}
+                        onChange={e => setAiDifficulty(parseInt(e.target.value))}
+                        className="flex-1 h-2 rounded-lg cursor-pointer"
+                        style={{ background: 'linear-gradient(to right, rgba(244,63,94,0.3), rgba(244,63,94,0.6))' }}
+                      />
+                      <span className="text-xs text-gray-500 whitespace-nowrap">어려움</span>
+                    </div>
+                    <div className="text-center mt-2 text-xs text-gray-500">
+                      {['쉬움', '보통', '어려움'][aiDifficulty]}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { generateAiCode(); }}
+                    disabled={isGeneratingAi}
+                    className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                    style={{ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.4)', color: '#fb7185',
+                      boxShadow: isGeneratingAi ? 'none' : '0 0 16px rgba(244,63,94,0.15)' }}>
+                    {isGeneratingAi
+                      ? <><span className="inline-block animate-spin mr-1">⟳</span>생성 중...</>
+                      : '✨ AI 코드생성'}
+                  </button>
+                </>
               )}
             </div>
           </div>
         );
       })()}
+
+      {/* ── AI 키워드 모달 (원래대로) ── */}
+      {landingSection === 'keyword' && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => { setLandingSection(null); setLandingKeyword(''); }}>
+          <div className="w-full max-w-xs mx-4 rounded-2xl p-5 shadow-2xl"
+            style={{ background: '#111827', border: '1px solid rgba(167,139,250,0.25)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-white font-bold text-sm">✨ AI 코드생성</p>
+              <button onClick={() => { setLandingSection(null); setLandingKeyword(''); }}
+                className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
+            </div>
+            <p className="text-gray-500 text-[11px] mb-4">싱글톤, 배열, 상속... 뭐든 OK</p>
+            <input
+              value={landingKeyword}
+              onChange={e => setLandingKeyword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generateKeywordCode()}
+              placeholder="예: 싱글톤 패턴"
+              autoFocus
+              className="w-full rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none mb-3"
+              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}
+            />
+            <button onClick={generateKeywordCode} disabled={landingKeywordLoading || !landingKeyword.trim()}
+              className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+              style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd',
+                boxShadow: landingKeywordLoading ? 'none' : '0 0 16px rgba(167,139,250,0.2)' }}>
+              {landingKeywordLoading
+                ? <><span className="inline-block animate-spin mr-1">⟳</span>생성 중...</>
+                : '✨ AI 코드 생성'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── 왼쪽: 코드 패널 ── */}
       <div
