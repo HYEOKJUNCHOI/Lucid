@@ -136,6 +136,14 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
   const generateAiCode = async () => {
     const mainCode = tabContentsRef.current.main;
     if (!mainCode.trim() || isGeneratingAi) return;
+
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) {
+      console.error('Gemini API 키 없음');
+      alert('⚠️ AI 코드 생성을 위한 API 키가 설정되지 않았습니다.\n\n로컬: .env 파일에 VITE_GEMINI_API_KEY 추가\nVercel: 프로젝트 설정 → Environment Variables에서 VITE_GEMINI_API_KEY 추가');
+      return;
+    }
+
     setIsGeneratingAi(true);
     try {
       const difficultyInstruction = [
@@ -156,7 +164,7 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
 ${mainCode.slice(0, 3000)}`;
 
       const res = await fetch(
-        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${getGeminiApiKey()}`,
+        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -167,6 +175,9 @@ ${mainCode.slice(0, 3000)}`;
         }
       );
       const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error?.message || '생성 실패');
+      }
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
       // 코드블록 마크다운 제거 후 Java 코드 시작점까지 앞부분 잘라내기
       const stripped = raw.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
@@ -179,6 +190,7 @@ ${mainCode.slice(0, 3000)}`;
       }
     } catch (err) {
       console.error('AI 코드 생성 실패:', err);
+      alert('❌ AI 코드 생성 중 오류가 발생했습니다.\n\n' + err.message);
     } finally {
       setIsGeneratingAi(false);
     }
@@ -208,6 +220,14 @@ ${mainCode.slice(0, 3000)}`;
   // ─── 랜딩: 키워드 AI 코드 생성 → 코드노트에 삽입 ────────
   const generateKeywordCode = async () => {
     if (!landingKeyword.trim() || landingKeywordLoading) return;
+
+    const apiKey = getGeminiApiKey();
+    if (!apiKey) {
+      console.error('Gemini API 키 없음');
+      alert('⚠️ AI 코드 생성을 위한 API 키가 설정되지 않았습니다.\n\n로컬: .env 파일에 VITE_GEMINI_API_KEY 추가\nVercel: 프로젝트 설정 → Environment Variables에서 VITE_GEMINI_API_KEY 추가');
+      return;
+    }
+
     setLandingKeywordLoading(true);
     try {
       const prompt = `Java 개념 "${landingKeyword.trim()}"을 학습할 수 있는 예제 코드를 작성해라.
@@ -217,11 +237,14 @@ ${mainCode.slice(0, 3000)}`;
 - package·import 없이 클래스만.
 - 30~60줄 분량의 실용적 예제.`;
       const res = await fetch(
-        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${getGeminiApiKey()}`,
+        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${apiKey}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.8 } }) }
       );
       const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error?.message || '생성 실패');
+      }
       const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
       const stripped = raw.replace(/```[\w]*\n?/g, '').replace(/```/g, '').trim();
       const lines = stripped.split('\n');
@@ -232,7 +255,10 @@ ${mainCode.slice(0, 3000)}`;
         setLandingSection(null);
         setLandingVisible(false);
       }
-    } catch (err) { console.error('키워드 코드 생성 실패:', err); }
+    } catch (err) {
+      console.error('키워드 코드 생성 실패:', err);
+      alert('❌ AI 코드 생성 중 오류가 발생했습니다.\n\n' + err.message);
+    }
     finally { setLandingKeywordLoading(false); }
   };
 
@@ -713,39 +739,116 @@ ${mainCode.slice(0, 3000)}`;
         </div>
       )}
 
-      {/* ── AI 키워드 모달 ── */}
-      {landingSection === 'keyword' && (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => { setLandingSection(null); setLandingKeyword(''); }}>
-          <div className="w-full max-w-xs mx-4 rounded-2xl p-5 shadow-2xl"
-            style={{ background: '#111827', border: '1px solid rgba(167,139,250,0.25)' }}
-            onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-white font-bold text-sm">✨ AI 코드생성</p>
-              <button onClick={() => { setLandingSection(null); setLandingKeyword(''); }}
-                className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
+      {/* ── AI 키워드 가이던스 팝업 ── */}
+      {landingSection === 'keyword' && (() => {
+        const codeNoteEmpty = !tabContents.main.trim();
+        const aiCodeGenerated = tabContents.ai.trim();
+
+        let state, stateColor, icon, title, description;
+
+        if (codeNoteEmpty) {
+          state = 'empty';
+          stateColor = { bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.3)', text: '#9ca3af' };
+          icon = '⭕';
+          title = '코드노트가 비어있어요';
+          description = '먼저 💻 코드노트 탭에서 학습할 코드를 입력하세요.';
+        } else if (aiCodeGenerated) {
+          state = 'generated';
+          stateColor = { bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.4)', text: '#fbbf24' };
+          icon = '✅';
+          title = 'AI 코드가 준비됐어요!';
+          description = '🤖 AI 생성코드 탭에서 AI가 만든 새로운 코드를 확인할 수 있습니다.';
+        } else {
+          state = 'ready';
+          stateColor = { bg: 'rgba(244,63,94,0.1)', border: 'rgba(244,63,94,0.4)', text: '#fb7185' };
+          icon = '⏳';
+          title = '코드를 분석했어요';
+          description = '코드노트에서 공부한 코드를 분석해서 새로운 코드를 AI가 생성해줍니다. 생성을 시작하려면 아래 버튼을 클릭하세요.';
+        }
+
+        return (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => { setLandingSection(null); setLandingKeyword(''); }}>
+            <div className="w-full max-w-sm mx-4 rounded-2xl p-6 shadow-2xl"
+              style={{ background: '#111827', border: '1px solid rgba(167,139,250,0.25)' }}
+              onClick={e => e.stopPropagation()}>
+
+              <div className="flex items-center justify-between mb-5">
+                <p className="text-white font-bold text-base">✨ AI 키워드 코드생성</p>
+                <button onClick={() => { setLandingSection(null); setLandingKeyword(''); }}
+                  className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
+              </div>
+
+              {/* 상태 표시 영역 */}
+              <div className="mb-5 p-4 rounded-xl" style={{ background: stateColor.bg, border: `1px solid ${stateColor.border}` }}>
+                <div className="flex items-start gap-3">
+                  <div className="text-3xl mt-0.5">{icon}</div>
+                  <div className="flex-1">
+                    <p className="font-bold text-sm mb-1" style={{ color: stateColor.text }}>{title}</p>
+                    <p className="text-gray-400 text-xs leading-relaxed">{description}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3가지 상태 플로우 표시 */}
+              <div className="mb-5 bg-[#0f172a] rounded-lg p-3">
+                <div className="flex items-center justify-between text-xs gap-2">
+                  {/* 상태 1 */}
+                  <div className={`flex-1 text-center p-2 rounded ${codeNoteEmpty ? 'bg-gray-700 text-gray-200' : 'bg-gray-900 text-gray-500'}`}>
+                    <div className="mb-1">📝</div>
+                    <div className="font-semibold text-[10px]">코드노트</div>
+                    <div className="text-[9px] text-gray-400 mt-0.5">입력</div>
+                  </div>
+
+                  {/* 화살표 1 */}
+                  <div className="text-gray-600">→</div>
+
+                  {/* 상태 2 */}
+                  <div className={`flex-1 text-center p-2 rounded ${!codeNoteEmpty && !aiCodeGenerated ? 'bg-pink-900 text-pink-200' : 'bg-gray-900 text-gray-500'}`}>
+                    <div className="mb-1">🤖</div>
+                    <div className="font-semibold text-[10px]">생성 준비</div>
+                    <div className="text-[9px] text-gray-400 mt-0.5">대기</div>
+                  </div>
+
+                  {/* 화살표 2 */}
+                  <div className="text-gray-600">→</div>
+
+                  {/* 상태 3 */}
+                  <div className={`flex-1 text-center p-2 rounded ${aiCodeGenerated ? 'bg-amber-900 text-amber-200' : 'bg-gray-900 text-gray-500'}`}>
+                    <div className="mb-1">✨</div>
+                    <div className="font-semibold text-[10px]">코드 생성</div>
+                    <div className="text-[9px] text-gray-400 mt-0.5">완료</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 상태별 버튼 */}
+              {codeNoteEmpty ? (
+                <button onClick={() => { setLandingSection(null); setActiveTab('main'); }}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm transition-all"
+                  style={{ background: 'rgba(107,114,128,0.2)', border: '1px solid rgba(107,114,128,0.4)', color: '#d1d5db' }}>
+                  💻 코드노트로 이동
+                </button>
+              ) : aiCodeGenerated ? (
+                <button onClick={() => { setLandingSection(null); setActiveTab('ai'); }}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm transition-all"
+                  style={{ background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24' }}>
+                  🤖 AI 생성코드 보러가기
+                </button>
+              ) : (
+                <button onClick={generateKeywordCode} disabled={landingKeywordLoading || !tabContents.main.trim()}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                  style={{ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.4)', color: '#fb7185',
+                    boxShadow: landingKeywordLoading ? 'none' : '0 0 16px rgba(244,63,94,0.15)' }}>
+                  {landingKeywordLoading
+                    ? <><span className="inline-block animate-spin mr-1">⟳</span>생성 중...</>
+                    : '✨ AI 코드 생성'}
+                </button>
+              )}
             </div>
-            <p className="text-gray-500 text-[11px] mb-4">싱글톤, 배열, 상속... 뭐든 OK</p>
-            <input
-              value={landingKeyword}
-              onChange={e => setLandingKeyword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && generateKeywordCode()}
-              placeholder="예: 싱글톤 패턴"
-              autoFocus
-              className="w-full rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none mb-3"
-              style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}
-            />
-            <button onClick={generateKeywordCode} disabled={landingKeywordLoading || !landingKeyword.trim()}
-              className="w-full py-2.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
-              style={{ background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.4)', color: '#c4b5fd',
-                boxShadow: landingKeywordLoading ? 'none' : '0 0 16px rgba(167,139,250,0.2)' }}>
-              {landingKeywordLoading
-                ? <><span className="inline-block animate-spin mr-1">⟳</span>생성 중...</>
-                : '✨ AI 코드 생성'}
-            </button>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── 왼쪽: 코드 패널 ── */}
       <div
