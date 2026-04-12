@@ -24,7 +24,7 @@ const TABS = [
 const RIGHT_TABS = [
   { id: 'tutor', label: '💬 Lucid Tutor' },
   { id: 'quiz',  label: '🎯 문제풀기' },
-  { id: 'memo',  label: '📝 메모' },
+  { id: 'memo',  label: '📝 학습메모' },
 ];
 
 const FreeStudyView = ({ onBack }) => {
@@ -380,6 +380,47 @@ ${mainCode.slice(0, 3000)}`;
     bindTab(monaco.KeyCode.Digit3, monaco.KeyCode.Numpad3, () => { setActiveRightTab(RIGHT_TABS[0].id); setFocusedPanel('right'); });
     bindTab(monaco.KeyCode.Digit4, monaco.KeyCode.Numpad4, () => { setActiveRightTab(RIGHT_TABS[1].id); setFocusedPanel('right'); });
     bindTab(monaco.KeyCode.Digit5, monaco.KeyCode.Numpad5, () => { setActiveRightTab(RIGHT_TABS[2].id); setFocusedPanel('right'); });
+
+    // ─── Java 스니펫 등록 ────────────────────────────────
+    monaco.languages.registerCompletionItemProvider('java', {
+      provideCompletionItems: (model, position) => {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+          startColumn: word.startColumn, endColumn: word.endColumn,
+        };
+        const snippets = [
+          {
+            label: 'sout',
+            insertText: 'System.out.println(${1});',
+            documentation: 'System.out.println()',
+          },
+          {
+            label: 'soutf',
+            insertText: 'System.out.printf("${1}"%{2});',
+            documentation: 'System.out.printf()',
+          },
+          {
+            label: 'fori',
+            insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {\n\t${3}\n}',
+            documentation: 'for 반복문',
+          },
+          {
+            label: 'psvm',
+            insertText: 'public static void main(String[] args) {\n\t${1}\n}',
+            documentation: 'main 메서드',
+          },
+        ];
+        return {
+          suggestions: snippets.map(s => ({
+            ...s,
+            kind: monaco.languages.CompletionItemKind.Snippet,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range,
+          })),
+        };
+      },
+    });
   };
 
   // Alt+1/2 → 왼쪽 탭, Alt+3/4 → 오른쪽 탭, F2 → 해석 카드 순환, F4 → 타자연습 열기

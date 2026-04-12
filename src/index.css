@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* prose blockquote 따옴표 제거 */
+.prose blockquote p::before,
+.prose blockquote p::after { content: none !important; }
+
 /* ─── FreeStudyView 색상 토큰 (그룹화) ─────────────
    한 번 바꾸면 탭/에디터/채팅/Monaco 테마까지 모두 동기화됨
    ────────────────────────────────────────────────── */

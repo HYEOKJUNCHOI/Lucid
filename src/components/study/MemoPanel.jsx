@@ -10,15 +10,24 @@ import { useAuth } from '../../hooks/useAuth';
 import { getGeminiApiKey } from '../../lib/apiKey';
 import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
 
-const TODAY = new Date().toLocaleDateString('ko-KR', {
-  year: 'numeric', month: 'long', day: 'numeric', weekday: 'short',
-});
+const _today = new Date();
+const TODAY_DATE = _today.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+const TODAY_WEEKDAY = _today.toLocaleDateString('ko-KR', { weekday: 'short' });
+const TODAY_DOW = _today.getDay(); // 0=일, 6=토
+const TODAY_WEEKDAY_COLOR = TODAY_DOW === 0 ? '#f87171' : TODAY_DOW === 6 ? '#60a5fa' : null;
 
 const SLASH_COMMANDS = {
-  '/구분선': '\n\n---\n\n',
-  '/체크':   '- [ ] ',
-  '/중요':   '> ⚠️ **중요:** ',
+  '/완료':   '- [x] ',
+  '/미완료': '- [ ] ',
+  '/콜아웃': '> 💡 ',
 };
+
+const EMOJIS = [
+  '✅','❌','⚠️','💡','🔥','⭐','📝','📌','🎯','💻',
+  '🖥️','⌨️','🔑','📊','📈','🚀','💯','🎉','🤔','😊',
+  '😅','😭','💪','👍','👎','✨','🌟','📚','✏️','📋',
+  '🔍','💬','🎓','🏆','❓','❗','💥','🛠️','🧩','🐛',
+];
 
 export default function MemoPanel() {
   const { user } = useAuth();
@@ -35,15 +44,18 @@ export default function MemoPanel() {
   const [searchMatches, setSearchMatches] = useState([]);
   const [searchIndex, setSearchIndex]     = useState(0);
   const [codePopup, setCodePopup]         = useState(false);
+  const [emojiOpen, setEmojiOpen]         = useState(false);
   const [codeValue, setCodeValue]         = useState('');
   const [codeLang, setCodeLang]           = useState('java');
 
-  const textareaRef   = useRef(null);
-  const insertPosRef  = useRef(0);
-  const previewRef    = useRef(null);
-  const searchInputRef = useRef(null);
-  const contentRef    = useRef('');
-  contentRef.current  = content;
+  const textareaRef        = useRef(null);
+  const insertPosRef       = useRef(0);
+  const previewRef         = useRef(null);
+  const searchInputRef     = useRef(null);
+  const panelRef           = useRef(null);
+  const suppressNextChange = useRef(false);
+  const contentRef         = useRef('');
+  contentRef.current       = content;
 
   // ── Firestore 로드 ──────────────────────────────
   useEffect(() => {
@@ -100,6 +112,12 @@ export default function MemoPanel() {
           return !v;
         });
       }
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+        if (panelRef.current?.contains(document.activeElement)) {
+          e.preventDefault();
+          setMode(m => m === 'edit' ? 'preview' : 'edit');
+        }
+      }
       if (e.key === 'Escape') {
         setSearchVisible(false);
         setCodePopup(false);
@@ -144,18 +162,38 @@ export default function MemoPanel() {
     scrollToMatch(searchMatches, ni, searchQuery);
   };
 
+  // ── 커서 위치에 텍스트 삽입 (버튼 클릭용) ─────────
+  const insertAtCursor = (text) => {
+    const ta = textareaRef.current;
+    const start = ta ? ta.selectionStart : content.length;
+    const newContent = content.slice(0, start) + text + content.slice(start);
+    setContent(newContent);
+    setTimeout(() => {
+      if (ta) { ta.focus(); ta.setSelectionRange(start + text.length, start + text.length); }
+    }, 0);
+  };
+
   // ── 슬래시 명령어 + /코드 감지 ────────────────────
   const handleChange = (e) => {
     const val = e.target.value;
+
+    // 명령어 실행 직후 IME가 한 번 더 onChange를 발동하는 것 억제
+    if (suppressNextChange.current) {
+      suppressNextChange.current = false;
+      setContent(val);
+      return;
+    }
+
     const cursor = e.target.selectionStart;
     const before = val.slice(0, cursor);
 
-    // 슬래시 명령어 일반 (/구분선, /체크, /중요)
+// 슬래시 명령어 일반 (/완료, /미완료, /콜아웃)
     for (const [cmd, insert] of Object.entries(SLASH_COMMANDS)) {
       const re = new RegExp(`(^|\\n)(${cmd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})$`);
       if (re.test(before)) {
         const removeStart = before.lastIndexOf(cmd);
-        const newContent = val.slice(0, removeStart) + insert + val.slice(cursor);
+        const newContent = val.slice(0, removeStart) + insert + val.slice(removeStart + cmd.length);
+        suppressNextChange.current = true;
         setContent(newContent);
         setTimeout(() => {
           if (textareaRef.current) {
@@ -170,15 +208,27 @@ export default function MemoPanel() {
     // /요약 → AI 3줄 요약 실행
     if (/(^|\n)(\/요약)$/.test(before)) {
       const removeStart = before.lastIndexOf('/요약');
-      setContent(val.slice(0, removeStart) + val.slice(cursor));
+      suppressNextChange.current = true;
+      setContent(val.slice(0, removeStart) + val.slice(removeStart + '/요약'.length));
       setTimeout(() => handleSummarize(), 0);
+      return;
+    }
+
+    // /이모지 → 이모지 팝업
+    if (/(^|\n)(\/이모지)$/.test(before)) {
+      const removeStart = before.lastIndexOf('/이모지');
+      suppressNextChange.current = true;
+      setContent(val.slice(0, removeStart) + val.slice(removeStart + '/이모지'.length));
+      insertPosRef.current = removeStart;
+      setEmojiOpen(true);
       return;
     }
 
     // /코드 → Monaco 팝업
     if (/(^|\n)(\/코드)$/.test(before)) {
       const removeStart = before.lastIndexOf('/코드');
-      setContent(val.slice(0, removeStart) + val.slice(cursor));
+      suppressNextChange.current = true;
+      setContent(val.slice(0, removeStart) + val.slice(removeStart + '/코드'.length));
       insertPosRef.current = removeStart;
       setCodeValue('');
       setCodePopup(true);
@@ -262,7 +312,7 @@ table{border-collapse:collapse;width:100%;margin:.5em 0}th,td{border:1px solid #
 .hbar{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:16px}
 .hbar .t{font-size:13pt;font-weight:700;color:#333}.hbar .d{font-size:9pt;color:#777}
 </style></head><body>
-<div class="hbar"><span class="t">📝 Lucid 학습 메모</span><span class="d">${TODAY}</span></div>
+<div class="hbar"><span class="t">📝 Lucid 학습 메모</span><span class="d">${TODAY_DATE} (${TODAY_WEEKDAY})</span></div>
 ${el.innerHTML}
 </body></html>`);
     win.document.close();
@@ -281,27 +331,18 @@ ${el.innerHTML}
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 p-3 gap-2">
+    <div ref={panelRef} className="flex-1 flex flex-col min-h-0 p-3 gap-2">
 
-      {/* 헤더 */}
-      <div className="flex items-center justify-between shrink-0 px-1">
+      {/* 1행: 날짜 + 저장 */}
+      <div className="flex shrink-0 px-1 items-center justify-between">
+        <span className="text-[14px] font-semibold text-white">
+          {TODAY_DATE}{' '}
+          <span style={TODAY_WEEKDAY_COLOR ? { color: TODAY_WEEKDAY_COLOR } : {}}>({TODAY_WEEKDAY})</span>
+        </span>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-300 font-semibold">학습 메모</span>
-          <div className="flex items-center bg-white/[0.06] rounded-lg p-0.5 gap-0.5">
-            {['edit', 'preview'].map(m => (
-              <button key={m} onClick={() => setMode(m)}
-                className={`text-[10px] px-2 py-0.5 rounded-md transition-all ${
-                  mode === m ? 'bg-white/20 text-white font-semibold' : 'text-gray-400 hover:text-white'
-                }`}
-              >{m === 'edit' ? '편집' : '미리보기'}</button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-400">{content.length.toLocaleString()}자</span>
           {saveMsg
             ? <span className="text-[10px] text-emerald-400">{saveMsg}</span>
-            : <span className={`text-[10px] ${isUnsaved ? 'text-amber-400' : 'text-gray-500'}`}>{isUnsaved ? '● 미저장' : '저장됨'}</span>
+            : <span className={`text-[10px] ${isUnsaved ? 'text-amber-400' : 'text-gray-300'}`}>{isUnsaved ? '● 미저장' : '저장됨'}</span>
           }
           <button onClick={handleSave} disabled={!user || isSaving || !isUnsaved}
             className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all ${
@@ -313,9 +354,50 @@ ${el.innerHTML}
         </div>
       </div>
 
-      {/* 날짜 */}
-      <div className="shrink-0 px-1">
-        <span className="text-[14px] font-semibold text-white">{TODAY}</span>
+      {/* 2행: 도구모음 */}
+      <div className="flex shrink-0 items-center gap-1.5 px-2 py-1.5 rounded-xl border border-violet-500/30 bg-violet-500/[0.06]">
+        <div className="shrink-0 border border-violet-400/40 bg-violet-500/10 rounded-lg px-2 py-1 leading-tight text-center">
+          <span className="text-[11px] text-violet-300 font-medium block">마크다운</span>
+          <span className="text-[11px] text-violet-300 font-medium block">도구모음</span>
+        </div>
+        <span className="text-[14px] text-violet-500/60 shrink-0">»</span>
+        <div className="border border-white/10 rounded-xl px-2 py-1.5 bg-white/[0.02]">
+          <div className="flex items-center gap-1.5">
+            {[
+              { label: 'H1', action: () => insertAtCursor('# '), size: 'text-[14px] font-bold' },
+              { label: 'H2', action: () => insertAtCursor('## '), size: 'text-[12px] font-semibold' },
+              { label: 'H3', action: () => insertAtCursor('### '), size: 'text-[10px] font-medium' },
+              { label: '――', action: () => {
+                const ta = textareaRef.current;
+                const start = ta ? ta.selectionStart : content.length;
+                const insert = '-'.repeat(40) + '\n';
+                const newContent = content.slice(0, start) + insert + content.slice(start);
+                setContent(newContent);
+                setTimeout(() => { if (ta) { ta.focus(); ta.setSelectionRange(start + insert.length, start + insert.length); } }, 0);
+              }},
+              { label: '💻', action: () => { insertPosRef.current = textareaRef.current?.selectionStart ?? content.length; setCodeValue(''); setCodePopup(true); } },
+              { label: '💡', action: () => insertAtCursor('> 💡 ') },
+              { label: '☐',  action: () => insertAtCursor('- [ ] ') },
+              { label: '✅', action: () => insertAtCursor('- [x] ') },
+              { label: '😊', action: () => setEmojiOpen(v => !v) },
+            ].map(({ label, action, size }) => (
+              <button key={label} onClick={action}
+                className={`${size ?? 'text-[11px]'} px-1.5 py-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-gray-400
+                  hover:border-violet-400/40 hover:text-violet-200 hover:bg-violet-500/10
+                  hover:shadow-[0_0_8px_rgba(167,139,250,0.25)] transition-all duration-150`}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center bg-white/[0.06] rounded-lg p-0.5 gap-0.5">
+          {['edit', 'preview'].map(m => (
+            <button key={m} onClick={() => setMode(m)}
+              className={`text-[10px] px-2 py-0.5 rounded-md transition-all ${
+                mode === m ? 'bg-white/20 text-white font-semibold' : 'text-gray-400 hover:text-white'
+              }`}
+            >{m === 'edit' ? '편집' : '미리보기'}</button>
+          ))}
+        </div>
       </div>
 
       {/* 검색바 */}
@@ -355,7 +437,7 @@ ${el.innerHTML}
           ref={textareaRef}
           value={content}
           onChange={handleChange}
-          placeholder={`배운 내용을 자유롭게 정리해보세요.\n\n/코드 · /구분선 · /체크 · /중요 · /요약`}
+          placeholder={`배운 내용을 자유롭게 정리해보세요.`}
           className="flex-1 min-h-0 resize-none bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-[13px] text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-white/20 leading-relaxed font-[Pretendard,sans-serif]"
           spellCheck={false}
         />
@@ -375,7 +457,7 @@ ${el.innerHTML}
                 prose-strong:text-gray-100
                 prose-code:text-[#9cdcfe] prose-code:bg-white/10 prose-code:px-1 prose-code:rounded prose-code:text-[12px]
                 prose-pre:p-0 prose-pre:bg-transparent
-                prose-blockquote:border-l-amber-400/60 prose-blockquote:bg-amber-500/[0.07] prose-blockquote:px-3 prose-blockquote:py-1 prose-blockquote:rounded-r-lg prose-blockquote:text-amber-200 prose-blockquote:not-italic
+                prose-blockquote:border-l-amber-400/60 prose-blockquote:bg-amber-500/[0.07] prose-blockquote:px-3 prose-blockquote:py-1 prose-blockquote:rounded-r-lg prose-blockquote:text-amber-200 prose-blockquote:not-italic prose-blockquote:before:content-none prose-blockquote:after:content-none
                 prose-hr:border-white/10
                 prose-a:text-violet-400
                 prose-table:text-[12px] prose-th:bg-white/[0.05] prose-th:text-gray-300 prose-td:text-gray-300"
@@ -400,8 +482,40 @@ ${el.innerHTML}
                     }
                     return <code className={className} {...props}>{children}</code>;
                   },
-                  input({ checked, ...props }) {
-                    return <input type="checkbox" checked={checked} readOnly className="mr-1" {...props} />;
+                  li({ children, ...props }) {
+                    const childArr = Array.isArray(children) ? children : [children].filter(Boolean);
+                    const first = childArr[0];
+                    // remark-gfm이 제대로 파싱한 경우 (input 엘리먼트가 첫 번째 자식)
+                    if (first?.type === 'input') {
+                      return (
+                        <li style={{ listStyle: 'none', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                          <input type="checkbox" checked={!!first.props.checked} readOnly
+                            style={{ marginTop: '3px', accentColor: '#a78bfa', flexShrink: 0 }} />
+                          <span>{childArr.slice(1)}</span>
+                        </li>
+                      );
+                    }
+                    // 텍스트로 내려온 경우 ([x] / [ ] 포함)
+                    const text = typeof first === 'string' ? first : '';
+                    if (text.startsWith('[x]') || text.startsWith('[X]')) {
+                      return (
+                        <li style={{ listStyle: 'none', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                          <input type="checkbox" checked readOnly
+                            style={{ marginTop: '3px', accentColor: '#a78bfa', flexShrink: 0 }} />
+                          <span>{text.slice(3).trimStart()}{childArr.slice(1)}</span>
+                        </li>
+                      );
+                    }
+                    if (text.startsWith('[ ]')) {
+                      return (
+                        <li style={{ listStyle: 'none', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                          <input type="checkbox" checked={false} readOnly
+                            style={{ marginTop: '3px', accentColor: '#a78bfa', flexShrink: 0 }} />
+                          <span>{text.slice(3).trimStart()}{childArr.slice(1)}</span>
+                        </li>
+                      );
+                    }
+                    return <li {...props}>{children}</li>;
                   },
                 }}
               >
@@ -436,29 +550,50 @@ ${el.innerHTML}
             ? <span className="text-gray-500 animate-pulse">요약을 생성하고 있어요...</span>
             : summary
               ? <span className="text-gray-300">{summary}</span>
-              : <span className="text-gray-600">메모를 작성한 뒤 생성 버튼을 눌러보세요.</span>
+              : <span className={`font-semibold ${isUnsaved && content.trim() ? 'text-emerald-400' : 'text-gray-600'}`}>
+                  {isUnsaved && content.trim() ? 'AI 3줄 요약 기능을 이용해보세요' : '메모를 작성한 뒤 생성 버튼을 눌러보세요.'}
+                </span>
           }
         </div>
       </div>
 
+      {/* 이모티콘 팝업 */}
+      {emojiOpen && (
+        <div className="shrink-0 bg-[#1a2227] border border-white/10 rounded-xl p-2">
+          <div className="grid grid-cols-10 gap-0.5">
+            {EMOJIS.map(em => (
+              <button
+                key={em}
+                onClick={() => { insertAtCursor(em); setEmojiOpen(false); }}
+                className="text-[16px] w-7 h-7 flex items-center justify-center rounded hover:bg-white/10 transition-colors"
+              >{em}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 하단 바 */}
-      <div className="flex items-center justify-between shrink-0">
-        <span className="text-[10px] text-gray-500 px-1">
-          /코드 · /구분선 · /체크 · /중요 · /요약 &nbsp;·&nbsp; Ctrl+F 검색
-        </span>
-        <div className="flex items-center gap-1.5">
-          {/* 내보내기 */}
+      <div className="flex items-center justify-end shrink-0 gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => { setSearchVisible(v => !v); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+            className={`text-[11px] px-2 py-0.5 rounded-lg border transition-all ${
+              searchVisible
+                ? 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300'
+                : 'border-white/[0.07] bg-white/[0.03] text-gray-500 hover:text-gray-200 hover:border-white/15'
+            }`}
+          >🔍</button>
           {mode === 'preview' && (
             <button onClick={handlePrint}
               className="text-[10px] px-2.5 py-1 rounded-lg border border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
             >📄 PDF</button>
           )}
           <button onClick={handleDownloadMd}
-            className="text-[10px] px-2.5 py-1 rounded-lg border border-white/10 bg-white/[0.04] text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+            className="text-[10px] px-2.5 py-1 rounded-lg border border-white/10 bg-white/[0.04] text-gray-200 hover:text-white hover:bg-white/10 transition-all"
           >⬇️ .md</button>
           <button
             onClick={() => { if (!content.trim()) return; if (window.confirm('메모를 모두 지울까요?')) setContent(''); }}
-            className="text-[10px] text-gray-500 hover:text-gray-200 transition-colors px-2 py-1"
+            className="text-[10px] text-gray-300 hover:text-white transition-colors px-2 py-1"
           >전체 지우기</button>
         </div>
       </div>
