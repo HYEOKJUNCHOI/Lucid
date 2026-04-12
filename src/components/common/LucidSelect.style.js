@@ -53,7 +53,7 @@ export const S = {
     top: calc(100% + 8px);
     left: 0;
     width: 100%;
-    max-height: 280px;
+    max-height: 480px;
     background: rgba(20, 20, 20, 0.9);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -79,7 +79,7 @@ export const S = {
   `,
 
   OptionItem: styled.div`
-    padding: 12px 16px;
+    padding: 8px 16px;
     cursor: pointer;
     display: flex;
     flex-direction: column;

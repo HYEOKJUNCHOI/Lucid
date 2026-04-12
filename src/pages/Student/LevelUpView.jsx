@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { getApiKey } from '../../lib/apiKey';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 import { auth } from '../../lib/firebase';
 import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { addDailyXP } from '../../services/learningService';
+import { addDailyXPCapped } from '../../services/userStateService';
 import { GiAnvilImpact, GiSilverBullet, GiGoldBar, GiDiamondTrophy, GiLaurelCrown } from 'react-icons/gi';
 
 // ─── 과목 목록 ───────────────────────────────────
@@ -345,11 +346,11 @@ const LevelUpView = ({ userData, onBack }) => {
       const tier = getTier(subjectXP);
       const prompt = buildQuizPrompt(selectedSubject, tier.id, level, wrongHistory);
 
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: 'gpt-4.1-nano',
+          model: MODELS.CHAT,
           messages: [{ role: 'system', content: prompt }],
           temperature: 0.8,
           max_tokens: 800,
@@ -394,10 +395,10 @@ const LevelUpView = ({ userData, onBack }) => {
       if (!apiKey) { showToast('API 키가 설정되지 않았습니다.'); setLoading(false); return; }
       const tier = TIERS[placementTierIdx];
       const prompt = buildPlacementBatchPrompt(selectedSubject, tier.id);
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [{ role: 'system', content: prompt }], temperature: 0.9, max_tokens: 4000 }),
+        body: JSON.stringify({ model: MODELS.CHAT, messages: [{ role: 'system', content: prompt }], temperature: 0.9, max_tokens: 4000 }),
       });
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content || '';
@@ -606,7 +607,8 @@ const LevelUpView = ({ userData, onBack }) => {
       // XP 획득 (세션 단계별 + 하루 상한 체크)
       const nextAttempt = totalAttempts + 1;
       const rawXP = getQuizXP(nextAttempt);
-      const actualXP = addDailyXP(rawXP, 'levelup', true);
+      const uid = auth.currentUser?.uid;
+      const actualXP = uid ? await addDailyXPCapped(uid, 'levelup', rawXP, userData, true) : 0;
       const newXP = subjectXP + actualXP;
       setSubjectXP(newXP);
       setSessionXP(prev => prev + actualXP);

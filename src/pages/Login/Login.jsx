@@ -188,12 +188,33 @@ const TypingBlock = ({ lines, posStyle, startDelay = 0 }) => {
 };
 
 /* ── 메인 컴포넌트 ── */
-// loginLoading: null | 'google' | 'github'
-const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
+// loginLoading: null | 'google' | 'github' | 'email' | 'admin'
+const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin, onEmailLogin }) => {
+  const [showAdminForm, setShowAdminForm] = useState(false);
+  const [adminId, setAdminId] = useState('');
+  const [adminPw, setAdminPw] = useState('');
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailVal, setEmailVal] = useState('');
+  const [emailPw, setEmailPw] = useState('');
   // 위치와 순서를 고정
   const positions = useMemo(() => makePositions(), []);
   const codeOrder = useMemo(() => Array.from({ length: positions.length }, () => Math.floor(Math.random() * CODE_POOLS.length)), [positions]);
   const delays = useRandomDelays(positions.length);
+
+  // 중복 로그인 감지 시 3초 후 자동 새로고침
+  const [reloadCountdown, setReloadCountdown] = useState(null);
+  const isDuplicateLogin = loginError?.includes('다른 기기에서');
+  useEffect(() => {
+    if (!isDuplicateLogin) { setReloadCountdown(null); return; }
+    setReloadCountdown(3);
+    const iv = setInterval(() => {
+      setReloadCountdown(prev => {
+        if (prev <= 1) { clearInterval(iv); window.location.reload(); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [isDuplicateLogin]);
 
   return (
     <div className="relative flex items-center justify-center min-h-svh bg-theme-bg overflow-hidden text-gray-200">
@@ -229,8 +250,8 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
           <h1 className="text-5xl font-black tracking-tight text-white mb-2 pb-1">
             Lucid
           </h1>
-          <p className="text-base text-gray-400 font-medium text-center">
-            Focus On, <span className="text-[#4ec9b0] font-bold">Noise Off</span>
+          <p className="text-base font-medium text-center">
+            <span className="text-white font-bold">Focus On,</span> <span className="text-[#4ec9b0] font-bold" style={{ textShadow: '0 0 12px rgba(78,201,176,0.7)' }}>Noise Off</span>
           </p>
         </div>
 
@@ -244,7 +265,47 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
             <GoogleIcon />
             {loginLoading === 'google' ? '인증 중...' : 'Google로 시작하기'}
           </button>
-          
+
+          {/* 이메일 로그인/가입 */}
+          <button
+            onClick={() => { setShowEmailForm(v => !v); setShowAdminForm(false); }}
+            disabled={loginLoading !== null}
+            className="w-full flex items-center justify-center gap-3 bg-white/[0.07] text-white font-semibold py-3.5 px-4 rounded-xl border border-white/[0.12] hover:bg-white/[0.12] hover:-translate-y-0.5 transition-all duration-300 disabled:cursor-wait disabled:transform-none"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+            </svg>
+            {loginLoading === 'email' ? '처리 중...' : '이메일로 시작하기'}
+          </button>
+          {showEmailForm && (
+            <div className="flex flex-col gap-2 -mt-1">
+              <input
+                type="email"
+                placeholder="이메일"
+                value={emailVal}
+                onChange={e => setEmailVal(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && onEmailLogin?.(emailVal, emailPw)}
+                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+              />
+              <input
+                type="password"
+                placeholder="비밀번호 (6자 이상)"
+                value={emailPw}
+                onChange={e => setEmailPw(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && onEmailLogin?.(emailVal, emailPw)}
+                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+              />
+              <button
+                onClick={() => onEmailLogin?.(emailVal, emailPw)}
+                disabled={loginLoading !== null || !emailVal || !emailPw}
+                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {loginLoading === 'email' ? '처리 중...' : '로그인 / 가입'}
+              </button>
+              <p className="text-[10px] text-gray-600 text-center">학원에서 등록한 이메일로 가입해 주세요</p>
+            </div>
+          )}
+
           <button
             onClick={() => showToast('카카오 로그인은 v2에서 지원 예정입니다.', 'warn')}
             className="w-full flex items-center justify-center gap-3 bg-[#FEE500]/90 text-[#191919] font-semibold py-3.5 px-4 rounded-xl hover:bg-[#FEE500] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300"
@@ -252,7 +313,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
             <KakaoIcon />
             카카오로 시작하기
           </button>
-          
+
           <button
             onClick={onGithubLogin}
             disabled={loginLoading !== null}
@@ -266,6 +327,45 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin }) => {
         {loginError && (
           <div className="mt-5 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-lg">
             <p className="text-red-400 text-xs text-center font-medium">{loginError}</p>
+            {reloadCountdown !== null && (
+              <p className="text-red-400/60 text-[11px] text-center mt-1">{reloadCountdown}초 후 자동 새로고침...</p>
+            )}
+          </div>
+        )}
+
+        {/* 관리자 로그인 토글 */}
+        <button
+          onClick={() => setShowAdminForm(v => !v)}
+          className="mt-6 text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          {showAdminForm ? '▲ 관리자 로그인 접기' : '관리자'}
+        </button>
+
+        {showAdminForm && (
+          <div className="w-full mt-3 flex flex-col gap-2">
+            <input
+              type="text"
+              placeholder="아이디"
+              value={adminId}
+              onChange={e => setAdminId(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && onAdminLogin?.(adminId, adminPw)}
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+            />
+            <input
+              type="password"
+              placeholder="비밀번호"
+              value={adminPw}
+              onChange={e => setAdminPw(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && onAdminLogin?.(adminId, adminPw)}
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+            />
+            <button
+              onClick={() => onAdminLogin?.(adminId, adminPw)}
+              disabled={loginLoading !== null || !adminId || !adminPw}
+              className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loginLoading === 'admin' ? '로그인 중...' : '로그인'}
+            </button>
           </div>
         )}
       </div>

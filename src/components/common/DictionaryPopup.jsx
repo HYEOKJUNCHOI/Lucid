@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { auth } from '../../lib/firebase';
 import { getCachedWord, cacheWord, updateCachedWord } from '../../services/dictionaryService';
 import { getApiKey } from '../../lib/apiKey';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 
 // 프로그래밍 키워드 로컬 사전
 // { ko: 코딩에서의 뜻, en: 영어 단어 자체의 한국어 본뜻, desc: 설명 }
@@ -171,7 +172,7 @@ const DictionaryPopup = () => {
     setError(null);
   }, []);
 
-  // 더블클릭 감지
+  // 트리플 클릭 감지
   useEffect(() => {
     const getWordAt = (node, offset) => {
       if (!node || node.nodeType !== Node.TEXT_NODE) return '';
@@ -184,6 +185,11 @@ const DictionaryPopup = () => {
     };
 
     const handleDblClick = (e) => {
+      if (e.detail !== 2 || !e.altKey) return; // Alt + 더블클릭만
+      // 학습 페이지(/home, /freestudy)에서만 동작
+      const { pathname } = window.location;
+      if (!pathname.startsWith('/home') && pathname !== '/freestudy') return;
+
       let word = '';
       if (document.caretRangeFromPoint) {
         const range = document.caretRangeFromPoint(e.clientX, e.clientY);
@@ -209,8 +215,8 @@ const DictionaryPopup = () => {
       setPopup({ word, x, y });
     };
 
-    window.addEventListener('dblclick', handleDblClick);
-    return () => window.removeEventListener('dblclick', handleDblClick);
+    window.addEventListener('click', handleDblClick);
+    return () => window.removeEventListener('click', handleDblClick);
   }, [close]);
 
   // 외부 클릭 / ESC 닫기
@@ -279,14 +285,14 @@ const DictionaryPopup = () => {
     setEditFeedback(null);
 
     const callGPT = async (prompt, maxTokens = 150) => {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getApiKey()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4.1-nano',
+          model: MODELS.CHAT,
           messages: [{ role: 'user', content: prompt }],
           temperature: 0,
           max_tokens: maxTokens,
@@ -397,14 +403,14 @@ const DictionaryPopup = () => {
     setEditFeedback(null);
     const word = popup.word.toLowerCase();
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getApiKey()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4.1-nano',
+          model: MODELS.CHAT,
           messages: [{
             role: 'user',
             content: `너는 코딩 사전 검수자야. 제출된 모든 필드가 단어의 실제 의미와 일치하는지 엄격하게 판단해.

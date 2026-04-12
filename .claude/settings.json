@@ -3,7 +3,26 @@
     "allow": [
       "Bash(ls /c/Users/gurwn/Desktop/Project/Lucid/.env*)",
       "Bash(npx vite:*)",
-      "Bash(ls /c/Users/gurwn/Desktop/Project/Lucid/*.md)"
+      "Bash(ls /c/Users/gurwn/Desktop/Project/Lucid/*.md)",
+      "Bash(npm run:*)",
+      "Read(//c/Users/gurwn/Desktop/Project/**)",
+      "Bash(python3 -c \"import datetime; print\\(datetime.datetime.fromtimestamp\\(1775608089\\)\\)\")",
+      "Bash(node -e \"console.log\\(new Date\\(1775608089*1000\\).toLocaleString\\(\\)\\)\")",
+      "Read(//c/Users/gurwn/.claude/projects/c--Users-gurwn-Desktop-Project-Lucid/**)",
+      "Bash(python3 -c \" import sys, json for line in sys.stdin: try: obj = json.loads\\(line\\) if obj.get\\('type'\\) == 'summary': msg = obj.get\\('summary',''\\) if msg: print\\('SUMMARY:', msg[:200]\\) elif 'message' in obj: msg = obj['message'] if isinstance\\(msg, dict\\) and msg.get\\('role'\\) == 'user': content = msg.get\\('content',''\\) if isinstance\\(content, list\\): for c in content: if isinstance\\(c, dict\\) and c.get\\('type'\\) == 'text': print\\('USER:', c['text'][:300]\\) elif isinstance\\(content, str\\): print\\('USER:', content[:300]\\) except: pass \")",
+      "Bash(python3 -c \" import json with open\\(r'C:/Users/gurwn/.claude/projects/c--Users-gurwn-Desktop-Project-Lucid/e38b70d9-ab26-4527-b80f-455df526bbb1.jsonl', 'r', encoding='utf-8'\\) as f: for line in f: try: obj = json.loads\\(line\\) t = obj.get\\('type',''\\) if t == 'human': msg = obj.get\\('message',{}\\) content = msg.get\\('content',''\\) if isinstance\\(msg, dict\\) else '' if isinstance\\(content, list\\): for c in content: if isinstance\\(c, dict\\) and c.get\\('type'\\) == 'text' and len\\(c.get\\('text',''\\)\\) > 5: print\\('USER:', c['text'][:400]\\) print\\('---'\\) elif isinstance\\(content, str\\) and len\\(content\\) > 5: print\\('USER:', content[:400]\\) print\\('---'\\) except: pass \")",
+      "Bash(python3 -c ':*)",
+      "Bash(python -c ':*)",
+      "Read(//tmp/**)",
+      "Bash(ls c:/Users/gurwn/Desktop/Project/Lucid/*.md)",
+      "mcp__claude_ai_Notion__notion-search",
+      "mcp__claude_ai_Notion__notion-create-pages",
+      "mcp__claude_ai_Notion__notion-move-pages",
+      "mcp__claude_ai_Notion__notion-update-page",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "WebSearch",
+      "Bash(node -e ':*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

@@ -1,5 +1,7 @@
 const LS_KEY = 'lucid_openai_api_key';
 
+export const getGeminiApiKey = () => import.meta.env.VITE_GEMINI_API_KEY || '';
+
 /** 현재 사용할 API 키 반환 (개인 키 우선, 없으면 환경변수 폴백) */
 export const getApiKey = () => {
   return localStorage.getItem(LS_KEY) || import.meta.env.VITE_OPENAI_API_KEY || '';

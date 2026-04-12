@@ -61,7 +61,7 @@ const FifaCard = ({ student, onClick, isActive, draggable, onDragStart, onDragEn
   const activity    = getActivityTier(student.lastStudiedAt);
   const theme       = getCardTheme(student.studentType);
   const streak      = student.streak || 0;
-  const dailyXP     = student.dailyXP || 0;
+  const dailyXP     = student.dailyXPTotal ?? (typeof student.dailyXP === 'number' ? student.dailyXP : 0);
   const weeklyQuest = student.weeklyQuestClear || student.weeklyRoutineClear || 0;
   const initials    = (student.displayName || '?')[0].toUpperCase();
   const outerProps = {

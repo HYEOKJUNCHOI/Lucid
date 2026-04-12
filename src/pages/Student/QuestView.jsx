@@ -6,11 +6,15 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { getApiKey } from '../../lib/apiKey';
 import { auth } from '../../lib/firebase';
-import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, serverTimestamp, arrayRemove } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { addDailyXP, onQuestComplete, syncStreakToFirestore, getStreakMultiplier, getQuestRepeatCount, recordQuestRepeat, getQuestDropRate, rollBeanDrop, getBeanCount } from '../../services/learningService';
+import { getQuestDropRate } from '../../services/learningService';
+import { onQuestCompleteFS, getUserState, getQuestRepeatCountFS, recordQuestRepeatFS, addDailyXPCapped, rollBeanDropFS } from '../../services/userStateService';
 import BeanRewardCard from '../../components/common/BeanRewardCard';
 import nightOwlTheme from '../../themes/nightOwl.json';
+import ChatBubble from '../../components/chat/ChatBubble';
+import ChatInput from '../../components/chat/ChatInput';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 
 // ─── 파일 확장자 → Monaco language ──────────────
 const extToLang = (name) => {
@@ -77,13 +81,7 @@ const EASIER_PROMPT = `학생이 이전 설명을 이해하지 못했습니다. 
 
 절대 이전 설명을 반복하지 마. 구조도 비유도 전부 새로 써.`;
 
-// ─── 난이도 필터 ────────────────────────────────
-const getDiffLevel = () => parseInt(localStorage.getItem('lucid_difficulty_level') || '1');
-const setDiffLevel = (lv) => localStorage.setItem('lucid_difficulty_level', String(Math.max(0, Math.min(4, lv))));
-const adjustDifficulty = (correct) => {
-  const cur = getDiffLevel();
-  setDiffLevel(correct ? cur + 1 : cur - 1);
-};
+// ─── 난이도 레이블 ────────────────────────────────
 
 const DIFF_LABELS = ['왕초보', '초보', '기본', '중급', '고급'];
 
@@ -396,10 +394,12 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
     return () => el.removeEventListener('wheel', handler);
   });
 
-  // ─── 약점 파일 ────────────────────────────────
-  const getWeakFiles = () => { try { return JSON.parse(localStorage.getItem('lucid_weak_files') || '[]'); } catch { return []; } };
-  const addWeakFile = (path) => { const w = getWeakFiles(); if (!w.includes(path)) localStorage.setItem('lucid_weak_files', JSON.stringify([...w, path])); };
-  const removeWeakFile = (path) => localStorage.setItem('lucid_weak_files', JSON.stringify(getWeakFiles().filter(p => p !== path)));
+  // ─── 약점 파일 (Firestore 기반) ──────────────────
+  const getWeakFiles = () => userData?.weakFiles || [];
+  const removeWeakFile = (path) => {
+    const uid = auth.currentUser?.uid;
+    if (uid) updateDoc(doc(db, 'users', uid), { weakFiles: arrayRemove(path) });
+  };
 
   // ─── 챕터 파일 자동 로드 ──────────────────────
   const [filesLoading, setFilesLoading] = useState(false);
@@ -520,20 +520,20 @@ const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, 
 
         // Agent 1: 기능적 해석
         const prompt1 = `${codeContext}\n\n위 코드를 마이크로 단위로 해석해라.\n\n[규칙]\n- 코드의 각 핵심 라인이 무슨 일을 하는지 구체적으로 설명\n- 변수명, 메서드명, 타입명을 반드시 백틱으로 감싸서 포함\n- "값이 어디서 생기고, 어디로 가고, 어떻게 변하는지" 흐름을 짚어라\n- 불필요한 일반 설명 금지 (프로그램 시작점, import 설명 등)\n- package, import 줄은 언급하지 마라\n- 결과는 '### 🧩 기능적 해석'으로 시작\n- 번호 매겨서 단계별로 작성`;
-        const res1Data = await fetch('https://api.openai.com/v1/chat/completions', {
+        const res1Data = await fetch(OPENAI_CHAT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [{ role: 'user', content: prompt1 }], temperature: 0.7, max_tokens: 800 }),
+          body: JSON.stringify({ model: MODELS.CHAT, messages: [{ role: 'user', content: prompt1 }], temperature: 0.7, max_tokens: 800 }),
         });
         const res1 = (await res1Data.json()).choices?.[0]?.message?.content?.trim() || '';
         if (cancelled) return;
 
         // Agent 2: 메타포
         const prompt2 = `너는 10년차 코딩 강사이자, 비유의 천재다.\n코드의 각 요소를 현실 세계의 무언가에 1:1로 매핑하는 메타포 설명을 만들어라.\n\n[핵심 원칙]\n- 소재는 자유롭게 골라라. 단, 코드 구조/역할과 진짜 비슷한 것으로.\n- 하나의 세계관 안에서 일관되게\n- 코드의 주요 요소(클래스, 변수, 메서드)마다 현실에서 정확히 뭐에 해당하는지 매핑해라.\n\n[출력 형식]\n- 제목/섹션 헤딩 없이 요소별 매핑만 나열\n- 마크다운 헤딩(#, ##, ###) 사용 금지\n- 각 항목의 코드 요소 이름은 반드시 **굵게** 표시 예: **클래스**: 설명`;
-        const res2Data = await fetch('https://api.openai.com/v1/chat/completions', {
+        const res2Data = await fetch(OPENAI_CHAT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [
+          body: JSON.stringify({ model: MODELS.CHAT, messages: [
             { role: 'user', content: prompt1 },
             { role: 'assistant', content: res1 },
             { role: 'user', content: prompt2 },
@@ -580,10 +580,10 @@ ${usedList}
 - 제목/섹션 헤딩 없이 요소별 매핑만 나열
 - 마크다운 헤딩(#, ##, ###) 사용 금지
 - 각 항목의 코드 요소 이름은 반드시 **굵게** 표시 예: **클래스**: 설명`;
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4.1-nano', messages: [
+        body: JSON.stringify({ model: MODELS.CHAT, messages: [
           { role: 'user', content: `파일명: ${item.file.name}\n\n코드:\n${code.substring(0, 3000)}` },
           { role: 'assistant', content: analysisResult.functional },
           { role: 'user', content: prompt2 },
@@ -622,12 +622,13 @@ ${usedList}
       const apiKey = getApiKey();
       if (!apiKey) { setQuizLoading(false); return; }
       const item = routineItems[currentIdx];
-      const diff = isEasier ? Math.max(0, getDiffLevel() - 1) : getDiffLevel();
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const curDiff = userData?.difficultyLevel ?? 1;
+      const diff = isEasier ? Math.max(0, curDiff - 1) : curDiff;
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: 'gpt-4.1-nano',
+          model: MODELS.CHAT,
           messages: [
             { role: 'system', content: buildQuizPrompt(item.file.name, code, diff, isEasier) },
             { role: 'user', content: code },
@@ -669,23 +670,32 @@ ${usedList}
 
     setSelectedAnswer(answer);
     setQuizFeedback({ correct: isCorrect, explanation: q.explanation });
-    adjustDifficulty(isCorrect);
+    // 난이도 Firestore 갱신
+    { const uid = auth.currentUser?.uid;
+      if (uid) {
+        const cur = userData?.difficultyLevel ?? 1;
+        const next = Math.max(0, Math.min(4, cur + (isCorrect ? 1 : -1)));
+        updateDoc(doc(db, 'users', uid), { difficultyLevel: next });
+      }
+    }
 
     if (isCorrect) {
       // 반복 드랍률 계산
       const filePath = routineItems[currentIdx]?.file?.path || '';
-      const repeatCount = getQuestRepeatCount(filePath);
+      const uid = auth.currentUser?.uid;
+      const repeatCount = uid ? await getQuestRepeatCountFS(uid, filePath) : 1;
       const { multiplier, fixed } = getQuestDropRate(repeatCount);
       // 세트별 XP: 빈칸채우기=100 / OX·객관식=50 (반복 드랍률 적용)
       const baseXP = q.type === 'fill_blank' ? 100 : 50;
       const droppedXP = fixed !== null ? fixed : Math.round(baseXP * multiplier);
-      const xp = addDailyXP(droppedXP, 'quest', true);
+      let xp = 0;
+      if (uid) {
+        const state = await getUserState(uid);
+        xp = await addDailyXPCapped(uid, 'quest', droppedXP, state, true);
+        if (xp > 0) await updateDoc(doc(db, 'users', uid), { totalXP: increment(xp), lastStudiedAt: serverTimestamp() });
+      }
       setEarnedXP(prev => prev + xp);
       setQuizCorrect(prev => prev + 1);
-      try {
-        const uid = auth.currentUser?.uid;
-        if (uid && xp > 0) await updateDoc(doc(db, 'users', uid), { totalXP: increment(xp), lastStudiedAt: serverTimestamp() });
-      } catch {}
     } else {
       // 하트 소멸 애니메이션 + 화면 플래시
       setHeartLostIdx(quizHearts - 1);
@@ -701,7 +711,8 @@ ${usedList}
     if (quizHearts <= (quizFeedback?.correct ? 0 : 1) || quizIdx + 1 >= quizQuestions.length) {
       // 반복 횟수 기록 (드랍률 계산용)
       const filePath = routineItems[currentIdx]?.file?.path || '';
-      if (filePath) recordQuestRepeat(filePath);
+      const uid = auth.currentUser?.uid;
+      if (filePath && uid) recordQuestRepeatFS(uid, filePath);
       setQuizDone(true);
       setQuizFeedback(null);
     } else {
@@ -746,11 +757,11 @@ ${usedList}
     if (!apiKey) { setChatLoading(false); return; }
     const item = routineItems[currentIdx];
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: quizVisible ? 'gpt-4o-mini' : 'gpt-4.1-nano',
+          model: quizVisible ? MODELS.VERIFY : MODELS.CHAT,
           messages: [
             { role: 'system', content: `${CHAT_SYSTEM}\n\n파일: ${item.file.name}\n코드:\n${code}${
   quizVisible && curQ
@@ -800,10 +811,10 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
 
 반드시 JSON만 응답: {"valid": true/false, "reason": "한 줄 이유"}`;
 
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: verifyPrompt }], temperature: 0, max_tokens: 100 }),
+        body: JSON.stringify({ model: MODELS.VERIFY, messages: [{ role: 'user', content: verifyPrompt }], temperature: 0, max_tokens: 100 }),
       });
       const data = await res.json();
       const raw = data.choices?.[0]?.message?.content || '{}';
@@ -832,14 +843,18 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
   useEffect(() => {
     if (phase === 'done' && !routineCompletedRef.current) {
       routineCompletedRef.current = true;
-      onQuestComplete();
       const uid = auth.currentUser?.uid;
-      if (uid) syncStreakToFirestore(uid);
-      // 원두 드랍 판정 (1.5초 딜레이 — 완료 화면 먼저 보여준 후)
-      setTimeout(() => {
-        const result = rollBeanDrop();
-        if (result.dropped) setBeanDrop({ isFirst: result.isFirst, beanCount: result.beanCount });
-      }, 1500);
+      if (uid) {
+        getUserState(uid).then(async (state) => {
+          await onQuestCompleteFS(uid, state);
+          // 원두 드랍 판정 (1.5초 딜레이 — 완료 화면 먼저 보여준 후)
+          setTimeout(async () => {
+            const freshState = await getUserState(uid);
+            const result = await rollBeanDropFS(uid, freshState);
+            if (result.dropped) setBeanDrop({ isFirst: result.isFirst, beanCount: result.beanCount });
+          }, 1500);
+        });
+      }
     }
   }, [phase]);
 
@@ -1109,17 +1124,13 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                     );
                   }
                   return (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${
-                        m.role === 'user' ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20' : 'bg-white/[0.03] text-gray-300 border border-white/[0.06]'
-                      }`}>
-                        {m.role === 'assistant' ? (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert max-w-none text-[11px] prose-p:my-1 prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
-                            {m.content}
-                          </ReactMarkdown>
-                        ) : m.content}
-                      </div>
-                    </div>
+                    <ChatBubble key={i} role={m.role}>
+                      {m.role === 'assistant' ? (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert max-w-none text-[12px] prose-p:my-1 prose-code:text-[#fbbf24] prose-code:bg-white/5 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none">
+                          {m.content}
+                        </ReactMarkdown>
+                      ) : m.content}
+                    </ChatBubble>
                   );
                 })}
                 {chatLoading && (
@@ -1151,21 +1162,15 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                   </button>
                 </div>
               )}
-              {/* 채팅 입력 */}
-              <div className="shrink-0 px-3 py-2 border-t border-white/[0.06]">
-                <div className="flex gap-2">
-                  <input
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
-                    placeholder="이 코드에서 궁금한 거 물어보세요..."
-                    className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-[11px] text-gray-200 placeholder:text-gray-600 outline-none focus:border-[#f59e0b]/30"
-                  />
-                  <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
-                    className="px-3 py-2 rounded-lg bg-[#f59e0b]/15 text-[#f59e0b] text-[11px] font-bold border border-[#f59e0b]/30 disabled:opacity-30 hover:bg-[#f59e0b]/25 transition-all">
-                    전송
-                  </button>
-                </div>
+              {/* 채팅 입력 — 공용 ChatInput */}
+              <div className="shrink-0 px-1.5 pb-1.5 pt-1">
+                <ChatInput
+                  value={chatInput}
+                  onChange={setChatInput}
+                  onSubmit={sendChat}
+                  disabled={chatLoading}
+                  placeholder="이 코드에서 궁금한 거 물어보세요..."
+                />
               </div>
             </div>
           )}

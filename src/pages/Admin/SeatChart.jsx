@@ -6,6 +6,7 @@ import LucidLoader from '../../components/common/LucidLoader';
 import CustomSelect from '../../components/common/CustomSelect';
 import FifaCard, { getActivityTier } from '../../components/admin/FifaCard';
 import Toast, { showToast } from '../../components/common/Toast';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 
 const ROWS = 5;
 const TABLES_PER_ROW = 2;
@@ -57,14 +58,14 @@ ${JSON.stringify(studentData, null, 2)}
 tableIndex: 0 ~ ${tableCount - 1}, seatIndex: 0 ~ ${seatsPerTable - 1}
 `;
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(OPENAI_CHAT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: MODELS.VERIFY,
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       temperature: 0.3,
@@ -208,6 +209,9 @@ const SeatChart = () => {
   const getUserById = (uid) => users.find(u => u.id === uid);
 
   const groupStudents   = users.filter(u => u.groupIDs?.includes(selectedGroup));
+  const majorCount      = groupStudents.filter(u => u.studentType === 'major').length;
+  const expCount        = groupStudents.filter(u => u.studentType === 'experienced').length;
+  const beginnerCount   = groupStudents.filter(u => !u.studentType || u.studentType === 'beginner').length;
   const assignedUserIds = new Set(Object.values(seatMap));
   const unassigned      = groupStudents.filter(u => !assignedUserIds.has(u.id));
 
@@ -250,48 +254,76 @@ const SeatChart = () => {
   };
 
   // ── 랜덤 배치 ──────────────────────────────────────────────
+  // 규칙:
+  //  1. 전공(major)   → 테이블 중앙 좌석, 바로 옆에 경험자 1명 배치
+  //  2. 남은 경험자   → 퐁당퐁당 (각자 새 테이블 중앙, 초보자 봐주기)
+  //  3. 초보자        → 앞 줄부터 빈 자리 채우기 (전원 배치, 대기석 0)
   const handleRandomAssign = () => {
-    const pool = shuffle(groupStudents);
     const newMap = {};
 
+    // 테이블별 좌석 목록 (좌석 번호 오름차순 정렬)
     const tableSeats = {};
     ALL_SEAT_IDS.forEach(id => {
-      const m = id.match(/R(\d+)T(\d+)S/);
+      const m = id.match(/R(\d+)T(\d+)S(\d+)/);
       const key = `R${m[1]}T${m[2]}`;
       if (!tableSeats[key]) tableSeats[key] = [];
       tableSeats[key].push(id);
     });
+    Object.values(tableSeats).forEach(seats =>
+      seats.sort((a, b) => parseInt(a.match(/S(\d+)/)[1]) - parseInt(b.match(/S(\d+)/)[1]))
+    );
 
-    const anchors   = [...shuffle(pool.filter(u => u.studentType === 'major')),
-                       ...shuffle(pool.filter(u => u.studentType === 'experienced'))];
-    const beginners = shuffle(pool.filter(u => !u.studentType || u.studentType === 'beginner'));
-    const tableKeys = shuffle(Object.keys(tableSeats));
-
-    const grps = anchors.map(() => []);
-    beginners.forEach((b, i) => {
-      if (anchors.length > 0) grps[i % anchors.length].push(b);
+    // 앞 줄(Row 오름차순) → 같은 줄 내 테이블 순 정렬
+    const tableKeys = Object.keys(tableSeats).sort((a, b) => {
+      const ra = parseInt(a.match(/R(\d+)/)[1]), rb = parseInt(b.match(/R(\d+)/)[1]);
+      if (ra !== rb) return ra - rb;
+      return parseInt(a.match(/T(\d+)/)[1]) - parseInt(b.match(/T(\d+)/)[1]);
     });
 
-    const assignedIds = new Set();
-    anchors.forEach((anchor, i) => {
-      if (assignedIds.has(anchor.id)) return;
-      const key = tableKeys[i];
-      if (!key) return;
-      const seats = shuffle(tableSeats[key]);
-      let si = 0;
-      newMap[seats[si++]] = anchor.id;
-      assignedIds.add(anchor.id);
-      grps[i].forEach(b => {
-        if (si < seats.length && !assignedIds.has(b.id)) {
-          newMap[seats[si++]] = b.id;
-          assignedIds.add(b.id);
-        }
-      });
-    });
+    // 중앙 인덱스: S2(index 1) / S3(index 2) 랜덤 선택
+    const centerIdx = Math.random() < 0.5 ? 1 : 2;
 
-    if (anchors.length === 0) {
-      const seats = shuffle(ALL_SEAT_IDS);
-      beginners.forEach((u, i) => { if (i < seats.length) newMap[seats[i]] = u.id; });
+    // 중앙 기준 인접 순 정렬 헬퍼
+    const sortByProximity = (seats, ci) =>
+      seats
+        .map((s, i) => ({ s, i }))
+        .filter(({ i }) => i !== ci)
+        .sort((a, b) => Math.abs(a.i - ci) - Math.abs(b.i - ci))
+        .map(({ s }) => s);
+
+    // 퐁당퐁당 앵커 큐: 전공-경험자 번갈아 (M, E, M, E...)
+    const mArr = shuffle(groupStudents.filter(u => u.studentType === 'major'));
+    const eArr = shuffle(groupStudents.filter(u => u.studentType === 'experienced'));
+    const anchorAll = [];
+    for (let i = 0; i < Math.max(mArr.length, eArr.length); i++) {
+      if (i < mArr.length) anchorAll.push(mArr[i]);
+      if (i < eArr.length) anchorAll.push(eArr[i]);
+    }
+    const beginAll = shuffle(groupStudents.filter(u => !u.studentType || u.studentType === 'beginner'));
+
+    // 필요 테이블 수 (올림, 최대 실제 테이블 수)
+    const tablesNeeded = Math.min(
+      Math.ceil(groupStudents.length / SEATS_PER_TABLE),
+      tableKeys.length
+    );
+
+    // 테이블당 앵커 1명 배분 — 초과 앵커는 fillQueue 앞에 넣어 남은 자리 채움
+    const primaryAnchors = anchorAll.splice(0, Math.min(anchorAll.length, tablesNeeded));
+    const fillQueue = [...anchorAll, ...beginAll]; // 남은 앵커 + 일반
+
+    for (let ti = 0; ti < tablesNeeded; ti++) {
+      const seats  = tableSeats[tableKeys[ti]];
+      const center = seats[centerIdx];
+      const others = sortByProximity(seats, centerIdx);
+
+      if (ti < primaryAnchors.length) {
+        // 앵커 → 중앙, 나머지 → fillQueue (인접 순)
+        newMap[center] = primaryAnchors[ti].id;
+        others.forEach(s => { if (fillQueue.length > 0) newMap[s] = fillQueue.shift().id; });
+      } else {
+        // 앵커 부족 (앵커 < 테이블 수) — fillQueue로만 채우기
+        seats.forEach(s => { if (fillQueue.length > 0) newMap[s] = fillQueue.shift().id; });
+      }
     }
 
     setSeatMap(newMap);
@@ -572,6 +604,13 @@ const SeatChart = () => {
             </div>
             <div className="flex items-center gap-2">
               {saving && <span className="text-xs text-gray-500 animate-pulse">저장 중...</span>}
+              {groupStudents.length > 0 && (
+                <div className="flex items-center gap-1 text-[10px] font-bold">
+                  {majorCount > 0    && <span className="px-1.5 py-0.5 rounded bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/20">🎓 {majorCount}</span>}
+                  {expCount > 0      && <span className="px-1.5 py-0.5 rounded bg-[#569cd6]/10 text-[#569cd6] border border-[#569cd6]/20">⚡ {expCount}</span>}
+                  {beginnerCount > 0 && <span className="px-1.5 py-0.5 rounded bg-white/[0.04] text-gray-400 border border-white/[0.08]">일 {beginnerCount}</span>}
+                </div>
+              )}
               <CustomSelect value={selectedGroup} onChange={val => setSelectedGroup(val)}
                 className="w-40" options={groups.map(g => ({ value: g.id, label: g.name }))} />
               <button onClick={() => setSeatMode(false)}
@@ -679,6 +718,13 @@ const SeatChart = () => {
             <div className="flex items-center gap-2 justify-between">
               <Legend />
               <div className="flex items-center gap-2">
+              {groupStudents.length > 0 && (
+                <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                  {majorCount > 0    && <span className="px-1.5 py-0.5 rounded bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/20">🎓 전공 {majorCount}명</span>}
+                  {expCount > 0      && <span className="px-1.5 py-0.5 rounded bg-[#569cd6]/10 text-[#569cd6] border border-[#569cd6]/20">⚡ 경험 {expCount}명</span>}
+                  {beginnerCount > 0 && <span className="px-1.5 py-0.5 rounded bg-white/[0.04] text-gray-400 border border-white/[0.08]">일반 {beginnerCount}명</span>}
+                </div>
+              )}
               <button onClick={handleRandomAssign}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#4ec9b0]/10 hover:bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 text-sm text-[#4ec9b0] font-bold transition-all">
                 🎲 랜덤 배치

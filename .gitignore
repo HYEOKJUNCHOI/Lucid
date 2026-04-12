@@ -49,6 +49,10 @@ desktop.ini
 .claude/
 .gemini/
 
+# Service account keys (절대 커밋 금지)
+scripts/serviceAccount.json
+*-firebase-adminsdk-*.json
+
 # Project-specific exclusions
 Lucid_AI리포트/
 Lucid_AI리포트

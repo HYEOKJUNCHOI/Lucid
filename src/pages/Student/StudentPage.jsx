@@ -11,10 +11,11 @@ import DiagnosisView from './DiagnosisView';
 import FreeStudyView from './FreeStudyView';
 import useLearningStore from '../../store/useLearningStore';
 import ApiKeyModal from '../../components/common/ApiKeyModal';
-import { calcLevel, xpToNextLevel, LEVEL_TABLE, getDailyXP, claimLoginXP, checkStreak, getStreakFreezes, isWeekend, getRewardStatus, DAILY_XP_CAP, syncVisitedFile, loadProgressFromFirestore, syncUserStatus, getBeanCount } from '../../services/learningService';
-import { onQuestComplete } from '../../services/learningService';
+import { calcLevel, xpToNextLevel, LEVEL_TABLE, isWeekend, getRewardStatus, DAILY_XP_CAP, syncVisitedFile, syncUserStatus } from '../../services/learningService';
+import { calcStreakStatus, claimLoginXPFS, useFreezeOnDateFS, getDailyXPFromState, getUserState } from '../../services/userStateService';
 import { getApiKey } from '../../lib/apiKey';
 import Toast, { showToast } from '../../components/common/Toast';
+import TypingBadge from '../../components/common/TypingBadge';
 
 
 const StudentPage = ({ user, userData, onLogout }) => {
@@ -48,6 +49,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
     if (p === '/home/chapter') return 'chapter';
     if (p === '/home/quest') return 'quest';
     if (p === '/home/levelup') return 'levelup';
+    if (p === '/freestudy') return 'freeStudy';
     return null;
   });
   const [sidebarMini, setSidebarMini] = useState(false); // 사이드바 미니모드
@@ -56,45 +58,47 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   const [dailyXP, setDailyXP] = useState({ total: 0, quest: 0, levelup: 0, login: 0 });
   const [freezeCount, setFreezeCount] = useState(0);
-  const [beanCount, setBeanCount] = useState(() => getBeanCount());
+  const [beanCount, setBeanCount] = useState(0);
   const [loginXPClaimed, setLoginXPClaimed] = useState(false);
 
-  // 연속 출석 + 접속 XP + 얼리기 (하루에 한 번만)
+  // 로그인 시 1회 실행: 스트릭 계산 + 접속 XP + 파일 진도 복원
   useEffect(() => {
-    // 연속 출석 체크
-    const { streak: newStreak, status, repairCount: rc } = checkStreak();
-    setStreak(newStreak);
-    setStreakStatus(status);
-    setRepairCount(rc);
-    setFreezeCount(getStreakFreezes());
-
-    // 오늘의 XP 로드
-    setDailyXP(getDailyXP());
-
-    // 접속 보상 50 XP
     const uid = user?.uid;
-    if (uid) {
-      claimLoginXP(uid).then((xp) => {
-        if (xp > 0) {
-          setLoginXPClaimed(true);
-          setDailyXP(getDailyXP());
-        }
-        // 대시보드 준비물: 사용자 상태 동기화 (접속 XP 지급 후)
-        syncUserStatus(uid, user?.displayName || user?.email?.split('@')[0] || '');
-      });
-
-      // Firestore 진도 → store 병합 (기기 간 동기화)
-      loadProgressFromFirestore(uid).then(({ visitedFiles: vf, completedFiles: cf }) => {
-        vf.forEach(p => markFileVisited(p));
-        cf.forEach(p => markFileCompleted(p));
-      });
+    if (!uid) {
+      setStreak(0); setStreakStatus('ok'); setRepairCount(-1);
+      return;
     }
+    getUserState(uid).then(async (state) => {
+      if (!state) return;
+      // 방문/완료 파일 복원
+      (state.visitedFiles  || []).forEach(p => markFileVisited(p));
+      (state.completedFiles || []).forEach(p => markFileCompleted(p));
+      // 스트릭 상태 계산 (Firestore 기반 — 필요 시 FS 자동 갱신)
+      const { streak: newStreak, status, repairCount: rc } = await calcStreakStatus(uid, state);
+      setStreak(newStreak);
+      setStreakStatus(status);
+      setRepairCount(rc);
+      // 접속 보상 50 XP (하루 1회) — calcStreakStatus가 FS를 수정했을 수 있으므로 재조회
+      const freshState = await getUserState(uid);
+      const xp = await claimLoginXPFS(uid, freshState);
+      if (xp > 0) setLoginXPClaimed(true);
+      syncUserStatus(uid, user?.displayName || user?.email?.split('@')[0] || '');
+    });
   }, [user]);
+
+  // userData(onSnapshot) 변경 시 UI 실시간 동기화
+  useEffect(() => {
+    if (!userData) return;
+    setFreezeCount(userData.streakFreezes || 0);
+    setBeanCount(userData.beanCount || 0);
+    setDailyXP(getDailyXPFromState(userData));
+    if (userData.streak != null) setStreak(userData.streak);
+  }, [userData]);
 
 
   // mode 변경 시 URL 동기화
   useEffect(() => {
-    const pathMap = { chapter: '/home/chapter', quest: '/home/quest', levelup: '/home/levelup' };
+    const pathMap = { chapter: '/home/chapter', quest: '/home/quest', levelup: '/home/levelup', freeStudy: '/freestudy' };
     const target = pathMap[mode] || '/home';
     if (location.pathname !== target) navigate(target, { replace: true });
   }, [mode]);
@@ -144,6 +148,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [selectedChapter, setSelectedChapter] = useState(null); // 2패널: 선택된 챕터
   const [chapterHover, setChapterHover] = useState(null); // 챕터 호버 미리보기 { name, files, top, left }
   const [freezeHover, setFreezeHover] = useState(null); // 얼리기 호버 툴팁 { top, left }
+  const [freezeConfirm, setFreezeConfirm] = useState(null); // 얼리기 사용 확인 모달 { dateStr, day }
+  // frozenDates는 userData.frozenDates로 FS에서 직접 읽음 (별도 state 불필요)
 
   // 레포 목록 로드
   useEffect(() => {
@@ -162,7 +168,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
               const t = { id: tSnap.id, ...tSnap.data() };
               const genMatch = group.name.match(/(\d+)기/);
               const gen = genMatch ? genMatch[1] : null;
-              const res = await fetch(`https://api.github.com/users/${t.githubUsername}/repos?per_page=100&sort=updated`);
+              // GitHub API 인증 헤더 — 비인증 60/h → 인증 5000/h
+              const ghHeaders = {};
+              if (import.meta.env.VITE_GITHUB_TOKEN) ghHeaders['Authorization'] = `token ${import.meta.env.VITE_GITHUB_TOKEN}`;
+              const res = await fetch(
+                `https://api.github.com/users/${t.githubUsername}/repos?per_page=100&sort=updated`,
+                { headers: ghHeaders }
+              );
               let repos = [];
               if (res.ok) {
                 const data = await res.json();
@@ -594,6 +606,69 @@ const StudentPage = ({ user, userData, onLogout }) => {
         </div>
       )}
 
+      {/* 얼리기 사용 확인 모달 */}
+      {freezeConfirm && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setFreezeConfirm(null)}
+        >
+          <div
+            className="w-[320px] rounded-2xl overflow-hidden"
+            style={{ background: 'linear-gradient(160deg, #1c2530 0%, #161c26 100%)', border: '1px solid rgba(147,210,255,0.35)', boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(147,210,255,0.1), 0 0 40px rgba(86,156,214,0.25)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 헤더 */}
+            <div className="px-5 pt-5 pb-4 text-center" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="text-3xl mb-2">🧊</div>
+              <div className="text-[15px] font-black text-white mb-1">지난 결석일 얼리기</div>
+              <div className="text-[11px] text-gray-400">
+                {freezeConfirm.dateStr.slice(0, 4)}년 {parseInt(freezeConfirm.dateStr.slice(5, 7), 10)}월 <span className="text-[#93d2ff] font-bold">{freezeConfirm.day}일</span>을 얼리겠습니까?
+              </div>
+            </div>
+            {/* 본문 */}
+            <div className="px-5 py-4 text-center">
+              <p className="text-[11px] text-gray-300 leading-relaxed">
+                얼리기 1개를 사용해 이 날을<br/>
+                <span className="text-[#93d2ff] font-bold">연속 출석일</span>에 포함시킵니다
+              </p>
+              <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-gray-500">
+                <span>보유:</span>
+                <span className="text-[#569cd6] font-black text-[12px]">🧊 {freezeCount}개</span>
+                <span>→</span>
+                <span className="text-[#569cd6]/60 font-black text-[12px]">{freezeCount - 1}개</span>
+              </div>
+            </div>
+            {/* 버튼 */}
+            <div className="px-5 pb-5 flex gap-2">
+              <button
+                onClick={() => setFreezeConfirm(null)}
+                className="flex-1 py-2.5 rounded-lg text-[12px] font-bold text-gray-400 hover:text-white transition-colors"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  const uid = user?.uid;
+                  if (!uid) return;
+                  const state = await getUserState(uid);
+                  const { success, remaining, newStreak } = await useFreezeOnDateFS(uid, freezeConfirm.dateStr, state);
+                  if (success) {
+                    setFreezeCount(remaining);
+                    setStreak(newStreak);
+                  }
+                  setFreezeConfirm(null);
+                }}
+                className="flex-1 py-2.5 rounded-lg text-[12px] font-black text-white transition-all hover:brightness-110"
+                style={{ background: 'linear-gradient(135deg, #569cd6, #4a8bc2)', border: '1px solid rgba(147,210,255,0.6)', boxShadow: '0 0 16px rgba(86,156,214,0.4), inset 0 1px 0 rgba(255,255,255,0.15)' }}
+              >
+                🧊 사용
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 얼리기 호버 툴팁 (fixed) */}
       {freezeHover && (
         <div
@@ -621,22 +696,22 @@ const StudentPage = ({ user, userData, onLogout }) => {
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[9px] mt-px">🔥</span>
-                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}><span style={{ color: '#fbbf24' }}>14일 연속 달성</span> 시<br />1개 추가 지급</p>
+                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}><span style={{ color: '#fbbf24' }}>10일 연속 달성</span> 시<br />1개 추가 지급</p>
               </div>
             </div>
           </div>
 
-          {/* 14일 진행 */}
+          {/* 10일 진행 */}
           <div className="px-3.5 py-2.5">
             <div className="flex items-center justify-between mb-1.5">
-              <p className="text-[7.5px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>14일 달성까지</p>
-              <p className="text-[8px] font-black" style={{ color: '#fbbf24' }}>{freezeHover.streak % 14}<span style={{ color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}> / 14</span></p>
+              <p className="text-[7.5px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.25)' }}>10일 달성까지</p>
+              <p className="text-[8px] font-black" style={{ color: '#fbbf24' }}>{freezeHover.streak % 10}<span style={{ color: 'rgba(255,255,255,0.25)', fontWeight: 400 }}> / 10</span></p>
             </div>
             <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.min(((freezeHover.streak % 14) / 14) * 100, 100)}%`, background: 'linear-gradient(90deg, #fbbf24, #f97316)', boxShadow: '0 0 6px rgba(251,191,36,0.6)' }} />
+              <div className="h-full rounded-full" style={{ width: `${Math.min(((freezeHover.streak % 10) / 10) * 100, 100)}%`, background: 'linear-gradient(90deg, #fbbf24, #f97316)', boxShadow: '0 0 6px rgba(251,191,36,0.6)' }} />
             </div>
-            {freezeHover.streak >= 14 && (
-              <p className="text-[7.5px] mt-1" style={{ color: 'rgba(251,191,36,0.6)' }}>✓ {Math.floor(freezeHover.streak / 14)}회 달성</p>
+            {freezeHover.streak >= 10 && (
+              <p className="text-[7.5px] mt-1" style={{ color: 'rgba(251,191,36,0.6)' }}>✓ {Math.floor(freezeHover.streak / 10)}회 달성</p>
             )}
           </div>
 
@@ -721,7 +796,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       <line x1="9" y1="3" x2="9" y2="21" />
                       <path d="m14 9 3 3-3 3" />
                     </svg>
-                    <span className="text-[7px] font-bold">펼치기</span>
+                    <span className="text-[6px] font-bold">펼치기</span>
                   </button>
                   {/* 날짜 */}
                   <div className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.08] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition" title={`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${dayNames[now.getDay()]}요일`}>
@@ -796,7 +871,89 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 <>
 
                   {/* 프로필 + 레벨 — 최상단 */}
-                  <div className="p-3 rounded-xl mb-2" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.12) 0%, rgba(139,92,246,0.06) 100%)', border: '1px solid rgba(167,139,250,0.3)', boxShadow: '0 0 20px rgba(139,92,246,0.1)' }}>
+                  <div className="relative p-3 rounded-xl mb-2" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.12) 0%, rgba(139,92,246,0.06) 100%)', border: '1px solid rgba(167,139,250,0.3)', boxShadow: '0 0 20px rgba(139,92,246,0.1)' }}>
+                    {/* ── 배지 트레이 ──────────────────────────────────────────
+                         순서: 치팅(0) > 타자(1) > 성실(2)
+                         각 배지는 독립 absolute. 위치는 자기 위에 있는 배지 수로 계산.
+                         BADGE_STEP: 배지 1칸 높이(22px) + gap(6px) = 28px                 */}
+                    {(() => {
+                      const STEP = 20;
+                      const BASE = 8;
+                      const hasCheating = !!userData?.badges?.cheatBadge;
+                      const hasTyping   = !!(userData?.typingStats?.bestCpm);
+                      const hasStreak   = (userData?.streak ?? 0) >= 7;
+                      // 각 배지 위치 = BASE + (자기 위에 있는 배지 수 × STEP)
+                      const cheatTopPx  = BASE;
+                      const typingTopPx = BASE + (hasCheating ? STEP : 0);
+                      const streakTopPx = BASE + (hasCheating ? STEP : 0) + (hasTyping ? STEP : 0);
+                      return (
+                        <>
+                          {/* 🤫 치팅 배지 */}
+                          {hasCheating && (
+                            <div className="absolute right-2 scale-[0.77] origin-top-right group" style={{ top: cheatTopPx }}>
+                              <div
+                                className="flex items-center gap-0.5 px-1 h-[22px] rounded cursor-default select-none"
+                                style={{
+                                  background: `linear-gradient(135deg, rgba(148,163,184,0.18) 0%, rgba(148,163,184,0.06) 100%)`,
+                                  border: `1px solid rgba(148,163,184,0.6)`,
+                                  boxShadow: `0 0 8px rgba(148,163,184,0.3)`,
+                                }}
+                              >
+                                <span className="text-[11px] leading-none">🤫</span>
+                                <span className="text-[11px] font-black tracking-[-0.02em] leading-none" style={{ color: `rgba(148,163,184,1)` }}>개발자정신</span>
+                              </div>
+                              <div className="pointer-events-none absolute top-full right-0 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50">
+                                <div className="bg-[#1a1f2e] border border-slate-400/25 rounded-xl px-3.5 py-2.5 shadow-2xl shadow-black/40 w-[180px]">
+                                  <div className="text-slate-300 text-[10px] font-black mb-1.5">🤫 개발자정신</div>
+                                  <div className="text-gray-300 text-[10px] leading-relaxed">
+                                    코드를 살짝 만져보고<br/>타자친 분에게 드리는<br/>비밀 이스터에그 ㅋ
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {/* ⌨️ 타자 배지 */}
+                          <div className="absolute right-2 scale-[0.77] origin-top-right" style={{ top: typingTopPx }}>
+                            <TypingBadge typingStats={userData?.typingStats} />
+                          </div>
+                          {/* 🔥 성실 배지 */}
+                          {hasStreak && (
+                            <div className="absolute right-2 scale-[0.77] origin-top-right group" style={{ top: streakTopPx }}>
+                              <div
+                                className="flex items-center gap-0.5 px-1.5 h-[22px] rounded cursor-default select-none"
+                                style={{
+                                  background: `linear-gradient(135deg, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0.06) 100%)`,
+                                  border: `1px solid rgba(251,191,36,0.6)`,
+                                  boxShadow: `0 0 8px rgba(251,191,36,0.3)`,
+                                }}
+                              >
+                                <span className="text-[11px] leading-none">🔥</span>
+                                <div className="flex items-baseline gap-[2px] leading-none">
+                                  <span className="text-[11px] font-black tabular-nums" style={{ color: `rgba(251,191,36,1)` }}>{userData?.streak}</span>
+                                  <span className="text-[9px] font-black" style={{ color: `rgba(251,191,36,0.85)` }}>일</span>
+                                </div>
+                              </div>
+                              <div className="pointer-events-none absolute top-full right-0 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50">
+                                <div className="bg-[#1a1f2e] rounded-xl px-4 py-3 shadow-2xl shadow-black/40 w-[210px]" style={{ border: '1px solid rgba(251,191,36,0.35)' }}>
+                                  <div className="text-[12px] font-black mb-2" style={{ color: `rgba(251,191,36,1)` }}>🔥 연속 출석 배지</div>
+                                  <div className="flex items-baseline gap-1.5 mb-3">
+                                    <span className="text-[10px] font-bold tracking-wider" style={{ color: `rgba(251,191,36,0.6)` }}>연속 출석 :</span>
+                                    <span className="text-[18px] font-black tabular-nums" style={{ color: `rgba(251,191,36,1)` }}>{userData?.streak}</span>
+                                    <span className="text-[12px] font-bold" style={{ color: `rgba(251,191,36,0.7)` }}>일</span>
+                                  </div>
+                                  <div className="text-[11px] leading-relaxed" style={{ color: 'rgba(209,213,219,1)' }}>
+                                    <span style={{ color: '#facc15' }}>하루도 빠짐없이</span> 접속한<br />진짜 공부 괴물에게 주는 배지.
+                                  </div>
+                                  <div className="text-[10px] leading-relaxed mt-1.5" style={{ color: 'rgba(107,114,128,1)' }}>
+                                    (7일 이상 공부 루틴을 지키면 획득)
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="flex items-center gap-3 mb-2">
                       <div className="w-14 h-14 rounded-full flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.3), rgba(139,92,246,0.2))', border: '2px solid rgba(167,139,250,0.6)', boxShadow: '0 0 16px rgba(139,92,246,0.5)' }}>
                         <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(216,180,254,0.7)' }}>LV</span>
@@ -820,7 +977,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     <div className="text-center p-2 rounded-xl border border-[#4ec9b0]/20 transition-colors" style={{ background: 'linear-gradient(135deg, rgba(78,201,176,0.18), rgba(78,201,176,0.06))' }}>
                       <div className="text-[8px] font-bold text-gray-500 tracking-widest mb-0.5">{now.getFullYear()}.{String(month).padStart(2,'0')}</div>
                       <div className="text-lg font-black text-white leading-none">{date}</div>
-                      <div className="text-[8px] font-bold mt-0.5" style={{ color: now.getDay() === 0 ? 'rgba(248,113,113,0.9)' : now.getDay() === 6 ? 'rgba(96,165,250,0.9)' : 'rgba(255,255,255,0.5)' }}>{dayName}요일{isWeekend() ? ' 자유' : ''}</div>
+                      <div className="text-[8px] font-bold mt-0.5" style={{ color: now.getDay() === 0 ? 'rgba(248,113,113,0.9)' : now.getDay() === 6 ? 'rgba(96,165,250,0.9)' : 'rgba(255,255,255,0.5)' }}>{dayName}요일</div>
                     </div>
                     {/* 얼리기 — fixed 툴팁 트리거 */}
                     <div
@@ -847,18 +1004,28 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     const firstDow = new Date(year, mon, 1).getDay(); // 1일의 요일
                     const daysInMonth = new Date(year, mon + 1, 0).getDate();
 
-                    // streak 기준으로 출석일 역산
-                    const attendedDates = new Set();
-                    for (let i = 0; i < streak; i++) {
-                      const d = new Date(now);
-                      d.setDate(todayDate - i);
-                      if (d.getMonth() === mon) attendedDates.add(d.getDate());
-                    }
+                    // Firestore userData의 실제 출석 날짜 사용
+                    const yearStr = String(year);
+                    const monStr = String(mon + 1).padStart(2, '0');
+                    const attendedDates = new Set(
+                      (userData?.attendedDates || [])
+                        .filter(s => s.startsWith(`${yearStr}-${monStr}-`))
+                        .map(s => parseInt(s.slice(8), 10))
+                    );
 
-                    // 달력 셀 배열 (빈칸 + 날짜)
+                    // 달력 셀 배열 (앞 빈칸 + 날짜 + 뒤 빈칸으로 7의 배수 맞춤)
                     const cells = [];
                     for (let i = 0; i < firstDow; i++) cells.push(null);
                     for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                    const remainder = cells.length % 7;
+                    if (remainder > 0) for (let i = 0; i < 7 - remainder; i++) cells.push(null);
+
+                    // 얼리기 사용 날짜 — Firestore userData에서 직접 읽기
+                    const frozenDates = new Set(
+                      (userData?.frozenDates || [])
+                        .filter(s => s.startsWith(`${yearStr}-${monStr}-`))
+                        .map(s => parseInt(s.slice(8), 10))
+                    );
 
                     return (
                       <div className="mb-2 p-2 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(245,158,11,0.04) 100%)', border: '1px solid rgba(251,191,36,0.22)' }}>
@@ -869,37 +1036,83 @@ const StudentPage = ({ user, userData, onLogout }) => {
                         {/* 요일 헤더 */}
                         <div className="grid grid-cols-7 mb-1">
                           {dayLabels.map((d, idx) => (
-                            <div key={d} className="text-center text-[7px] font-bold" style={{ color: idx === 0 ? 'rgba(248,113,113,0.8)' : idx === 6 ? 'rgba(96,165,250,0.8)' : 'rgba(255,255,255,0.35)' }}>{d}</div>
+                            <div key={d} className="text-center text-[6px] font-bold" style={{ color: idx === 0 ? 'rgba(248,113,113,0.8)' : idx === 6 ? 'rgba(96,165,250,0.8)' : 'rgba(255,255,255,0.35)' }}>{d}</div>
                           ))}
                         </div>
                         {/* 날짜 셀 */}
                         <div className="grid grid-cols-7">
                           {cells.map((d, i) => {
-                            if (!d) return <div key={i} />;
+                            if (!d) return (
+                              <div key={i} className="aspect-square rounded" style={{ border: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.01)' }} />
+                            );
                             const isToday = d === todayDate;
                             const attended = attendedDates.has(d);
                             const isFuture = d > todayDate;
+                            const col = i % 7;
+                            const isWeekend = col === 0 || col === 6; // 일=0, 토=6
+                            const isFrozen = frozenDates.has(d) && !attended;
+                            // 지나간 결석일 + 얼리기 보유 시 클릭해서 얼릴 수 있음
+                            const canFreeze = !attended && !isFrozen && !isFuture && !isToday && freezeCount > 0;
+                            const dateStr = `${yearStr}-${monStr}-${String(d).padStart(2,'0')}`;
+                            if (isFrozen) return (
+                              <div key={i} className="aspect-square relative flex items-center justify-center rounded"
+                                style={{
+                                  background: 'linear-gradient(145deg, rgba(147,210,255,0.4) 0%, rgba(86,156,214,0.25) 100%)',
+                                  border: '1px solid rgba(147,210,255,0.7)',
+                                  boxShadow: '0 0 10px rgba(86,156,214,0.5), inset 0 0 8px rgba(147,210,255,0.2)',
+                                }}>
+                                {/* 얼음 광택 — 대각선 하이라이트 */}
+                                <div className="absolute inset-0 pointer-events-none rounded"
+                                  style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 55%)' }} />
+                                {/* 숫자 — 얼음 속에 갇힌 느낌 */}
+                                <span className="relative text-[7px] font-black"
+                                  style={{ color: '#fff', textShadow: '0 0 5px rgba(147,210,255,0.9), 0 0 12px rgba(86,156,214,0.5)' }}>{d}</span>
+                                {/* 🧊 코너 뱃지 — 살짝 위로/옆으로 넛지 */}
+                                <span className="absolute -top-[3px] -right-[3px] text-[9px] leading-none">🧊</span>
+                              </div>
+                            );
+
                             return (
                               <div key={i}
-                                className="aspect-square flex items-center justify-center rounded text-[7px] font-black transition-all"
+                                onClick={canFreeze ? () => setFreezeConfirm({ dateStr, day: d }) : undefined}
+                                className={`aspect-square relative flex items-center justify-center rounded text-[7px] font-black transition-all ${canFreeze ? 'cursor-pointer hover:scale-110 hover:!border-[rgba(147,210,255,0.7)] hover:!text-[rgba(147,210,255,0.9)] hover:!bg-[rgba(86,156,214,0.12)]' : ''}`}
                                 style={
                                   isToday ? {
-                                    background: 'linear-gradient(135deg, rgba(251,191,36,0.45), rgba(245,158,11,0.3))',
-                                    color: '#fbbf24',
-                                    boxShadow: '0 0 10px rgba(251,191,36,0.6), inset 0 0 4px rgba(251,191,36,0.1)',
-                                    border: '1px solid rgba(251,191,36,0.7)',
+                                    background: isWeekend
+                                      ? 'linear-gradient(135deg, rgba(167,139,250,0.45), rgba(139,92,246,0.3))'
+                                      : 'linear-gradient(135deg, rgba(251,191,36,0.45), rgba(245,158,11,0.3))',
+                                    color: isWeekend ? '#d8b4fe' : '#fbbf24',
+                                    boxShadow: isWeekend
+                                      ? '0 0 10px rgba(167,139,250,0.6), inset 0 0 4px rgba(167,139,250,0.1)'
+                                      : '0 0 10px rgba(251,191,36,0.6), inset 0 0 4px rgba(251,191,36,0.1)',
+                                    border: isWeekend ? '1px solid rgba(167,139,250,0.7)' : '1px solid rgba(251,191,36,0.7)',
                                   } : attended ? {
-                                    background: 'linear-gradient(135deg, rgba(251,191,36,0.28), rgba(253,224,71,0.15))',
-                                    color: '#fde047',
-                                    boxShadow: '0 0 6px rgba(251,191,36,0.35)',
-                                    border: '1px solid rgba(251,191,36,0.35)',
+                                    background: isWeekend
+                                      ? 'linear-gradient(135deg, rgba(167,139,250,0.28), rgba(196,134,192,0.15))'
+                                      : 'linear-gradient(135deg, rgba(251,191,36,0.28), rgba(253,224,71,0.15))',
+                                    color: isWeekend ? '#d8b4fe' : '#fde047',
+                                    boxShadow: isWeekend ? '0 0 6px rgba(167,139,250,0.35)' : '0 0 6px rgba(251,191,36,0.35)',
+                                    border: isWeekend ? '1px solid rgba(167,139,250,0.35)' : '1px solid rgba(251,191,36,0.35)',
                                   } : isFuture ? {
-                                    color: 'rgba(255,255,255,0.12)',
+                                    color: 'rgba(255,255,255,0.07)',
+                                    border: '1px solid rgba(255,255,255,0.03)',
+                                    background: 'transparent',
+                                  } : canFreeze ? {
+                                    color: 'rgba(147,210,255,0.55)',
+                                    border: '1px dashed rgba(147,210,255,0.3)',
+                                    background: 'rgba(86,156,214,0.04)',
                                   } : {
-                                    color: 'rgba(255,255,255,0.22)',
+                                    color: 'rgba(255,255,255,0.18)',
+                                    border: '1px solid rgba(255,255,255,0.04)',
+                                    background: 'transparent',
                                   }
                                 }>
-                                {attended && !isToday ? '✓' : d}
+                                {attended ? (
+                                  <>
+                                    {d}
+                                    <span className="absolute top-0 right-[1px] text-[9px] font-black leading-none" style={{ color: '#f87171' }}>✔</span>
+                                  </>
+                                ) : d}
                               </div>
                             );
                           })}
@@ -1081,20 +1294,15 @@ const StudentPage = ({ user, userData, onLogout }) => {
               userData={userData}
               onBack={(completed) => {
                 setMode(null); setStep(0);
-                setBeanCount(getBeanCount()); // 원두 지갑 동기화
-                if (completed) {
-                  // onQuestComplete()가 이미 localStorage streak을 +1 했으므로 즉시 반영
-                  const newStreak = parseInt(localStorage.getItem('lucid_streak') || '0');
-                  setStreak(newStreak);
-                  setQuestDoneModal(completed);
-                }
+                // beanCount / streak은 userData onSnapshot으로 자동 반영됨
+                if (completed) setQuestDoneModal(completed);
               }}
               onFileSelect={(file, ch) => { handleFileSelect(file, ch); setMode('chapter'); }}
             />
 
           ) : mode === 'freeStudy' ? (
             // ─── 자유 학습 ────────────────────────────────────────
-            <FreeStudyView onBack={() => setMode(null)} />
+            <FreeStudyView onBack={() => { setMode(null); navigate('/home'); }} />
 
           ) : mode === 'levelup' ? (
             // ─── 레벨업 문제지옥 ─────────────────────────────────
@@ -1452,7 +1660,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
                 {/* 자유 예습 카드 */}
                 <button
-                  onClick={() => setMode('freeStudy')}
+                  onClick={() => { setMode('freeStudy'); navigate('/freestudy'); }}
                   className="group relative bg-gradient-to-br from-[#38bdf8]/[0.10] to-[#818cf8]/[0.04] border border-[#38bdf8]/25 rounded-2xl p-6 text-left shadow-[0_4px_24px_rgba(56,189,248,0.08)] hover:-translate-y-2 hover:border-[#38bdf8]/55 hover:from-[#38bdf8]/[0.18] hover:to-[#818cf8]/[0.08] transition-all duration-300 hover:shadow-[0_14px_48px_rgba(56,189,248,0.22)]"
                 >
                   <div className="flex items-start gap-4 mb-4">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getApiKey } from '../../lib/apiKey';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 import Toast, { showToast } from '../../components/common/Toast';
 
 // ─── 배점 ──────────────────────────────────────────
@@ -23,11 +24,11 @@ const getPlacement = (score, totalFiles) => {
 
 // ─── GPT 호출 ──────────────────────────────────────
 const callGPT = async (apiKey, messages, systemPrompt) => {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(OPENAI_CHAT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'gpt-4.1-nano',
+      model: MODELS.CHAT,
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       temperature: 0.7,
       max_tokens: 2000,

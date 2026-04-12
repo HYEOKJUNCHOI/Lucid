@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { getApiKey } from '../../lib/apiKey';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 import Toast, { showToast } from '../../components/common/Toast';
 
 const LANG_NAMES_D = ['python', 'java', 'javascript', 'js', 'sql', 'html', 'css', 'bash', 'c', 'cpp', 'kotlin'];
@@ -47,11 +48,11 @@ const renderQuestionD = (q) => {
 
 // ─── GPT 호출 ──────────────────────────────────────
 const callGPT = async (apiKey, systemPrompt, userMsg) => {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(OPENAI_CHAT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'gpt-4.1-nano',
+      model: MODELS.CHAT,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       temperature: 0.7,
       max_tokens: 1200,

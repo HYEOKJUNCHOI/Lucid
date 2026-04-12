@@ -145,7 +145,7 @@ const StudentDashboard = () => {
   }).length;
 
   const avgDailyXP = users.length > 0
-    ? Math.round(users.reduce((s, u) => s + (u.dailyXP || 0), 0) / users.length)
+    ? Math.round(users.reduce((s, u) => s + (u.dailyXPTotal ?? (typeof u.dailyXP === 'number' ? u.dailyXP : 0)), 0) / users.length)
     : 0;
 
   const displayGroups = selectedGroup === 'all'

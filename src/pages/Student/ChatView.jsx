@@ -8,6 +8,9 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getMetaphorDoc, saveOrUpdateMetaphor, voteSectionMetaphor } from '../../services/metaphorService';
 import { saveLearningResult, XP_WEIGHTS } from '../../services/learningService';
 import { getApiKey } from '../../lib/apiKey';
+import ChatBubble from '../../components/chat/ChatBubble';
+import ChatInput from '../../components/chat/ChatInput';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 
 // GPT 응답 텍스트의 단일 줄바꿈(\n)을 마크다운 문단 구분(\n\n)으로 변환하는 전처리 함수
 // 이유: react-markdown은 단일 \n을 공백으로 처리하는 CommonMark 스펙을 따르기 때문
@@ -287,14 +290,14 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
         payloadMessages = [{ role: 'system', content: systemPromptOverride }, ...payloadMessages];
       }
 
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(OPENAI_CHAT_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getApiKey()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: MODELS.TUTOR,
           messages: payloadMessages,
           temperature: 0.7,
         }),
@@ -1115,15 +1118,15 @@ OPTIONS_END
                 }`}
               >
                 <div
-                  className={`max-w-[95%] transition-all ${
+                  className={`max-w-[95%] transition-all leading-relaxed ${
                     msg.role === 'user'
-                      ? 'bg-cyan-500/10 text-cyan-100 px-6 py-4 rounded-2xl border border-cyan-500/20 shadow-sm'
-                      : 'bg-transparent text-gray-200 py-2 border-none shadow-none w-full'
+                      ? 'bg-chat-user text-gray-900 px-4 py-2.5 rounded-2xl rounded-br-sm border-2 border-chat-user-border/60 shadow-sm'
+                      : 'bg-chat-assistant text-gray-100 px-4 py-2.5 rounded-2xl rounded-bl-sm w-full'
                   }`}
                 >
                   {/* 사용자일 경우만 '나' 표시 (선택사항) */}
                   {msg.role === 'user' && (
-                    <div className="text-[10px] uppercase tracking-widest text-cyan-400/80 mb-2 font-bold opacity-60">You</div>
+                    <div className="text-[10px] uppercase tracking-widest text-amber-900/70 mb-1 font-bold opacity-80">You</div>
                   )}
                   {renderMessageContent(msg, i)}
                   
@@ -1302,33 +1305,23 @@ OPTIONS_END
                 확인 →
               </button>
             ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                    sendMessage(input);
-                  }
-                }}
-                disabled={loading || learningPhase === 'idle' || learningPhase === 'analyzing' || learningPhase === 'metaphor'}
-                placeholder={
-                  learningPhase === 'analyzing' || learningPhase === 'metaphor' ? "AI가 분석 중입니다..." :
-                  "질문이나 정답을 입력하세요... (퀴즈시 1,2,3,4 키보드 입력 가능)"
-                }
-                tabIndex="0"
-                className="flex-1 bg-[#111111] text-white text-sm rounded-lg px-3 py-2 md:py-3 focus:outline-none focus:ring-1 focus:ring-cyan-500 border border-[#333333] focus:border-cyan-500 disabled:opacity-50 transition-colors"
-              />
-              <button
-                onClick={() => sendMessage(input)}
-                tabIndex="0"
-                disabled={!input.trim() || loading || learningPhase === 'idle' || learningPhase === 'analyzing' || learningPhase === 'metaphor' || learningPhase === 'completed'}
-                className="bg-cyan-500 text-black text-sm font-bold px-4 py-2 md:px-5 md:py-3 rounded-lg hover:bg-cyan-400 transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-cyan-300"
-              >
-                전송
-              </button>
-            </div>
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSubmit={() => sendMessage(input)}
+              disabled={
+                loading ||
+                learningPhase === 'idle' ||
+                learningPhase === 'analyzing' ||
+                learningPhase === 'metaphor' ||
+                learningPhase === 'completed'
+              }
+              placeholder={
+                learningPhase === 'analyzing' || learningPhase === 'metaphor'
+                  ? 'AI가 분석 중입니다...'
+                  : '질문이나 정답을 입력하세요... (퀴즈시 1,2,3,4 키보드 입력 가능)'
+              }
+            />
             )}
           </div>
           </>

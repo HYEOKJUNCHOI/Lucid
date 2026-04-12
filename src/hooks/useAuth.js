@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   GithubAuthProvider,
   fetchSignInMethodsForEmail,
@@ -13,7 +15,6 @@ import {
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import useLearningStore from '../store/useLearningStore';
-import { restoreStreakFromFirestore } from '../services/learningService';
 
 export const useAuth = () => {
   const [user, setUser]               = useState(undefined); // undefined = 확인 중
@@ -22,6 +23,8 @@ export const useAuth = () => {
   const [loading, setLoading]         = useState(true);
   const [loginLoading, setLoginLoading] = useState(null); // null | 'google' | 'github'
   const [loginError, setLoginError]   = useState(null);
+  // 중복 로그인 감지용 세션 ID (메모리 전용 — 탭/기기 간 킥)
+  const sessionIdRef = useRef(null);
 
   useEffect(() => {
     setPersistence(auth, browserSessionPersistence);
@@ -49,10 +52,9 @@ export const useAuth = () => {
             if (snap.metadata.fromCache && snap.metadata.hasPendingWrites) return;
             if (snap.exists()) {
               const data = snap.data();
-              // 중복 로그인 감지
-              const localSessionId = sessionStorage.getItem('lucid_session_id');
-              if (localSessionId && data.sessionId && data.sessionId !== localSessionId) {
-                sessionStorage.removeItem('lucid_session_id');
+              // 중복 로그인 감지 — useRef 기반 (탭 종료 시 메모리 소멸, 스토리지 불필요)
+              if (sessionIdRef.current && data.sessionId && data.sessionId !== sessionIdRef.current) {
+                sessionIdRef.current = null;
                 await signOut(auth);
                 setLoginError('다른 기기에서 로그인되어 자동 로그아웃되었습니다.');
                 return;
@@ -159,9 +161,6 @@ export const useAuth = () => {
         setRole(null);
         setLoading(false);
       }
-      // 로그인 시 streak 데이터 localStorage 복원
-      if (firebaseUser) await restoreStreakFromFirestore(firebaseUser.uid);
-
       setUser(firebaseUser);
     });
 
@@ -176,7 +175,7 @@ export const useAuth = () => {
     setLoginLoading(key);
     try {
       const newSessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
-      sessionStorage.setItem('lucid_session_id', newSessionId);
+      sessionIdRef.current = newSessionId;
       const result = await signInWithPopup(auth, provider);
       await setDoc(doc(db, 'users', result.user.uid), { sessionId: newSessionId }, { merge: true });
     } catch (e) {
@@ -217,13 +216,88 @@ export const useAuth = () => {
     return loginWithProvider(provider, 'github');
   };
 
+  /**
+   * 학생 이메일/비밀번호 로그인 or 최초 가입
+   * - 이미 계정 있으면: 로그인
+   * - 계정 없으면: invited_students/{email} 대조 → 있으면 회원가입, 없으면 에러
+   */
+  const loginOrSignupWithEmail = async (email, password) => {
+    setLoginError(null);
+    setLoginLoading('email');
+    try {
+      const newSessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionIdRef.current = newSessionId;
+
+      let result;
+      try {
+        // 1차: 기존 계정으로 로그인 시도
+        result = await signInWithEmailAndPassword(auth, email, password);
+      } catch (loginErr) {
+        if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
+          // 계정 없음 → invited_students 대조
+          const inviteRef = doc(db, 'invited_students', email.toLowerCase());
+          const inviteSnap = await getDoc(inviteRef);
+          if (!inviteSnap.exists()) {
+            setLoginError('등록되지 않은 이메일입니다. 학원에 문의해 주세요.');
+            return;
+          }
+          // 사전등록 확인됨 → 신규 계정 생성
+          result = await createUserWithEmailAndPassword(auth, email, password);
+        } else if (loginErr.code === 'auth/wrong-password') {
+          setLoginError('비밀번호가 올바르지 않습니다.');
+          return;
+        } else {
+          throw loginErr;
+        }
+      }
+      await setDoc(doc(db, 'users', result.user.uid), { sessionId: newSessionId }, { merge: true });
+    } catch (e) {
+      console.error('[email login error]', e.code, e.message);
+      if (e.code === 'auth/weak-password') {
+        setLoginError('비밀번호는 6자 이상이어야 합니다.');
+      } else if (e.code === 'auth/invalid-email') {
+        setLoginError('이메일 형식이 올바르지 않습니다.');
+      } else {
+        setLoginError('로그인에 실패했습니다: ' + e.message);
+      }
+    } finally {
+      setLoginLoading(null);
+    }
+  };
+
+  /**
+   * 관리자 아이디/비밀번호 로그인
+   * Firebase Auth 이메일 형식: {id}@lucid.admin
+   * Firebase Console에서 해당 계정을 미리 생성해야 함
+   */
+  const loginWithAdmin = async (id, password) => {
+    setLoginError(null);
+    setLoginLoading('admin');
+    try {
+      const email = `${id.trim()}@lucid.admin`;
+      const newSessionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionIdRef.current = newSessionId;
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await setDoc(doc(db, 'users', result.user.uid), { sessionId: newSessionId }, { merge: true });
+    } catch (e) {
+      console.error('[admin login error]', e.code, e.message);
+      if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+        setLoginError('아이디 또는 비밀번호가 올바르지 않습니다.');
+      } else {
+        setLoginError('로그인에 실패했습니다: ' + e.message);
+      }
+    } finally {
+      setLoginLoading(null);
+    }
+  };
+
   const logout = () => {
-    sessionStorage.removeItem('lucid_session_id');
+    sessionIdRef.current = null;
     useLearningStore.getState().reset();
     setLoginLoading(null); // null이어야 버튼 disabled가 풀림 (false면 cursor-wait 유지됨)
     setLoginError(null);
     signOut(auth);
   };
 
-  return { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, loginWithGithub, logout };
+  return { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, loginWithGithub, loginWithAdmin, loginOrSignupWithEmail, logout };
 };

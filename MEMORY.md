@@ -1,0 +1,5 @@
+- [문제지옥 시스템 설계](project_levelup_system.md) — 과목/티어/XP/루틴/보상 전체 설계 (2026-04-08 회의)
+- [UI 서브텍스트 색상 기준](feedback_ui_text_color.md) — 부제목/설명은 gray-300 이상, gray-500 이하 금지
+- [UI 브레인스토밍 회의](project_ui_meeting_0410.md) — 탭구조/단축키/하트/가독성/메타포DB 결정 (2026-04-10)
+- [퀘스트 시스템 설계](project_quest_system_0410.md) — 루틴→퀘스트 개명, 원두 채굴 23%, 범용 엔진 방향 (2026-04-10)
+- [에디터 테마 파스텔톤 선호](feedback_theme_pastel.md) — Monaco 신택스는 파스텔 베이스, 쨍한 원색 금지. 예외: 메서드 노랑 #ffc66d 보존
