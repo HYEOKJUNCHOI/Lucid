@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { auth } from '../../lib/firebase';
 import { getCachedWord, cacheWord, updateCachedWord } from '../../services/dictionaryService';
 import { getApiKey } from '../../lib/apiKey';
-import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
+import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
+import { getGeminiApiKey } from '../../lib/apiKey';
 
 // 프로그래밍 키워드 로컬 사전
 // { ko: 코딩에서의 뜻, en: 영어 단어 자체의 한국어 본뜻, desc: 설명 }
@@ -285,21 +286,19 @@ const DictionaryPopup = () => {
     setEditFeedback(null);
 
     const callGPT = async (prompt, maxTokens = 150) => {
-      const res = await fetch(OPENAI_CHAT_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${getApiKey()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: MODELS.CHAT,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0,
-          max_tokens: maxTokens,
-        }),
-      });
+      const res = await fetch(
+        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${getGeminiApiKey()}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0, maxOutputTokens: maxTokens },
+          }),
+        }
+      );
       const data = await res.json();
-      return data.choices?.[0]?.message?.content?.trim() || '';
+      return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
     };
 
     const fetchAll = async () => {
@@ -403,17 +402,16 @@ const DictionaryPopup = () => {
     setEditFeedback(null);
     const word = popup.word.toLowerCase();
     try {
-      const res = await fetch(OPENAI_CHAT_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${getApiKey()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: MODELS.CHAT,
-          messages: [{
-            role: 'user',
-            content: `너는 코딩 사전 검수자야. 제출된 모든 필드가 단어의 실제 의미와 일치하는지 엄격하게 판단해.
+      const res = await fetch(
+        `${GEMINI_CHAT_URL(MODELS.FREESTUDY_TUTOR)}?key=${getGeminiApiKey()}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              role: 'user',
+              parts: [{
+                text: `너는 코딩 사전 검수자야. 제출된 모든 필드가 단어의 실제 의미와 일치하는지 엄격하게 판단해.
 
 단어: "${word}"
 한국어 뜻(코딩): ${editKo}
@@ -426,14 +424,15 @@ const DictionaryPopup = () => {
 4. 반드시 반려할 것: 반의어, 욕설·비방, 명백한 허위 정보, "${word}"와 전혀 무관한 내용
 5. 의심스럽지만 완전히 틀리진 않으면 통과시켜라 (관대하게 판단)
 
-JSON으로만 답해: {"valid": true} 또는 {"valid": false, "reason": "구체적 반려 이유"}`,
-          }],
-          temperature: 0,
-          max_tokens: 80,
-        }),
-      });
+JSON으로만 답해: {"valid": true} 또는 {"valid": false, "reason": "구체적 반려 이유"}`
+              }]
+            }],
+            generationConfig: { temperature: 0, maxOutputTokens: 80 },
+          }),
+        }
+      );
       const data = await res.json();
-      const raw = data.choices?.[0]?.message?.content?.trim() || '{}';
+      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
 
       if (parsed.valid) {
