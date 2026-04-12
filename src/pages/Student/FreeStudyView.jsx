@@ -5,6 +5,7 @@ import { getGeminiApiKey } from '../../lib/apiKey';
 import TypingPractice from '../../components/study/TypingPractice';
 import ChatPanel from '../../components/chat/ChatPanel';
 import FreeStudyQuiz from '../../components/study/FreeStudyQuiz';
+import MemoPanel from '../../components/study/MemoPanel';
 import { SAMPLE_JAVA_CODE } from '../../lib/sampleCode';
 import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
 import { useAuth } from '../../hooks/useAuth';
@@ -736,13 +737,7 @@ ${mainCode.slice(0, 3000)}`;
           </div>
 
           {/* 📝 메모 */}
-          {activeRightTab === 'memo' && (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500 select-none">
-              <span className="text-3xl">📝</span>
-              <span className="text-sm font-bold">메모 준비 중</span>
-              <span className="text-[11px] text-gray-600">마크다운 메모 기능이 곧 추가됩니다</span>
-            </div>
-          )}
+          {activeRightTab === 'memo' && <MemoPanel />}
 
         </div>
       </div>
