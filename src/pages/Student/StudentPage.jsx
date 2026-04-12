@@ -982,7 +982,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   {/* 날짜 */}
                   <div
                     onClick={() => setMemoInventoryOpen(true)}
-                    className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.08] border border-[#569cd6]/15 flex flex-col items-center justify-center cursor-pointer hover:border-[#569cd6]/40 transition"
+                    className="w-12 h-12 rounded-xl bg-[#569cd6]/[0.08] border border-[#569cd6]/15 flex flex-col items-center justify-center hover:border-[#569cd6]/40 transition"
+                    style={{ cursor: 'pointer' }}
                     title={`${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${dayNames[now.getDay()]}요일\n클릭하여 학습메모 보기`}
                   >
                     <span className="text-[15px] font-black text-white leading-none">{now.getDate()}</span>
