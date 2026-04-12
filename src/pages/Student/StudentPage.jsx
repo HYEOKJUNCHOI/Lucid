@@ -1164,9 +1164,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       }}
                       onMouseLeave={() => setFreezeHover(null)}
                     >
-                      <div className="text-center p-2 rounded-xl h-full flex flex-col items-center justify-center transition-colors" style={{ background: 'rgba(86,156,214,0.06)', border: '1px solid rgba(86,156,214,0.15)' }}>
-                        <div className="text-lg font-black" style={{ color: '#569cd6' }}>{freezeCount}</div>
-                        <div className="text-[8px] font-semibold text-gray-500 mt-0.5">얼리기 🧊</div>
+                      <div className="text-center p-2 rounded-xl h-full flex flex-col items-center justify-center transition-colors" style={{ background: 'rgba(147,197,253,0.08)', border: '1px solid rgba(147,197,253,0.35)' }}>
+                        <div className="text-lg font-black" style={{ color: '#93c5fd' }}>{freezeCount}</div>
+                        <div className="text-[8px] font-semibold text-gray-400 mt-0.5">얼리기 🧊</div>
                       </div>
                     </div>
                   </div>
