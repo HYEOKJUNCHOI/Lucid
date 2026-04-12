@@ -103,9 +103,7 @@ export default function ChatPanel({
     const saved = localStorage.getItem('lucid_chat_font_size');
     return saved ? Number(saved) : 13;
   });
-  const [favoriteGame, setFavoriteGame] = useState(() =>
-    localStorage.getItem('lucid_favorite_game') || ''
-  );
+  const [favoriteGame, setFavoriteGame] = useState('');
 
   const chatAreaRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -120,11 +118,6 @@ export default function ChatPanel({
   useEffect(() => {
     localStorage.setItem('lucid_chat_font_size', chatFontSize);
   }, [chatFontSize]);
-
-  // 좋아하는 게임 → localStorage 저장
-  useEffect(() => {
-    localStorage.setItem('lucid_favorite_game', favoriteGame);
-  }, [favoriteGame]);
 
   const adjustFontSize = (delta) =>
     setChatFontSize((prev) => Math.max(10, Math.min(24, prev + delta)));
@@ -249,7 +242,7 @@ export default function ChatPanel({
           {rawQs.map((rawQ, qi) => {
             const isGameBtn = rawQ.includes('비유로 설명해줘');
             const fullQ = isGameBtn && favoriteGame.trim()
-              ? `${favoriteGame} 게임 배경을 바탕으로 비유로 설명해줘`
+              ? `${favoriteGame} 배경과 세계관을 바탕으로 비유로 설명해줘`
               : rawQ;
             return (
               <div key={qi} className="flex items-center rounded-lg border border-amber-500/30 bg-amber-500/10 overflow-hidden">
@@ -267,7 +260,7 @@ export default function ChatPanel({
                   onClick={() => sendMessage(fullQ)}
                   className="flex-1 text-[10px] px-2.5 py-1 text-amber-400 hover:bg-amber-500/20 hover:text-amber-200 transition-all text-left"
                 >
-                  💬 {isGameBtn ? `${favoriteGame ? favoriteGame + ' ' : ''}게임 배경을 바탕으로 비유로 설명해줘` : rawQ}
+                  💬 {isGameBtn ? `${favoriteGame ? favoriteGame + ' ' : ''}배경과 세계관을 바탕으로 비유로 설명해줘` : rawQ}
                 </button>
               </div>
             );
