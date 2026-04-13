@@ -712,8 +712,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
               <span className="text-base leading-none">🧊</span>
               <span className="text-[11px] font-black text-white tracking-tight">얼리기</span>
             </div>
-            <p className="text-[8.5px] leading-[1.6]" style={{ color: 'rgba(255,255,255,0.38)' }}>
-              연속 출석이 끊겨도<br />스트릭을 지켜주는 아이템
+            <p className="text-[8.5px] leading-[1.6]" style={{ color: 'rgba(255,255,255,0.85)' }}>
+              <span style={{ color: '#fbbf24' }}>연속출석</span>이 끊겨도 <span style={{ color: '#c084fc' }}>해당일</span>을 <span style={{ color: '#60a5fa' }}>얼려서</span> <span style={{ color: '#fbbf24' }}>연속출석</span>을 지켜주는 아이템
             </p>
           </div>
 
@@ -723,7 +723,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
             <div className="flex flex-col gap-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-[9px] mt-px">📅</span>
-                <p className="text-[8.5px] leading-[1.5]" style={{ color: 'rgba(255,255,255,0.5)' }}>주말 토·일 모두<br /><span style={{ color: 'rgba(255,255,255,0.7)' }}>퀘스트 완료</span> 시 1개</p>
+                <p className="text-[8.5px] leading-[1.5]" style={{ color: '#ffffff' }}>주말 <span style={{ color: '#60a5fa' }}>토</span>·<span style={{ color: '#f87171' }}>일</span> <span style={{ color: '#ffffff' }}>모두</span><br /><span style={{ color: 'rgba(255,255,255,0.7)' }}>퀘스트 완료</span> 시 1개</p>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[9px] mt-px">🔥</span>
@@ -1307,14 +1307,10 @@ const StudentPage = ({ user, userData, onLogout }) => {
                                 className={`aspect-square relative flex items-center justify-center rounded text-[7px] font-black transition-all ${canFreeze ? 'cursor-pointer hover:scale-110 hover:!border-[rgba(147,210,255,0.7)] hover:!text-[rgba(147,210,255,0.9)] hover:!bg-[rgba(86,156,214,0.12)]' : ''}`}
                                 style={
                                   isToday ? {
-                                    background: isWeekend
-                                      ? 'linear-gradient(135deg, rgba(167,139,250,0.45), rgba(139,92,246,0.3))'
-                                      : 'linear-gradient(135deg, rgba(251,191,36,0.45), rgba(245,158,11,0.3))',
-                                    color: isWeekend ? '#d8b4fe' : '#fbbf24',
-                                    boxShadow: isWeekend
-                                      ? '0 0 10px rgba(167,139,250,0.6), inset 0 0 4px rgba(167,139,250,0.1)'
-                                      : '0 0 10px rgba(251,191,36,0.6), inset 0 0 4px rgba(251,191,36,0.1)',
-                                    border: isWeekend ? '1px solid rgba(167,139,250,0.7)' : '1px solid rgba(251,191,36,0.7)',
+                                    background: 'linear-gradient(135deg, rgba(34,197,94,0.5), rgba(16,185,129,0.32))',
+                                    color: '#4ade80',
+                                    boxShadow: '0 0 10px rgba(34,197,94,0.55), inset 0 0 4px rgba(34,197,94,0.12)',
+                                    border: '1px solid rgba(34,197,94,0.75)',
                                   } : attended ? {
                                     background: isWeekend
                                       ? 'linear-gradient(135deg, rgba(167,139,250,0.28), rgba(196,134,192,0.15))'
@@ -1336,7 +1332,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                                     background: 'transparent',
                                   }
                                 }>
-                                {attended ? (
+                                {(attended || isToday) ? (
                                   <>
                                     {d}
                                     <span className="absolute top-0 right-[1px] text-[9px] font-black leading-none" style={{ color: '#f87171' }}>✔</span>
@@ -1359,10 +1355,12 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-[#f59e0b] to-[#f97316] rounded-full transition-all duration-500" style={{ width: `${Math.min((dailyXP.total / DAILY_XP_CAP) * 100, 100)}%` }} />
                     </div>
-                    <div className="flex justify-between text-[8px] text-gray-600 mt-1 px-0.5">
-                      <span>접속 {dailyXP.login > 0 ? '✓' : '-'}</span>
-                      <span>퀘스트 {dailyXP.quest}/{200}</span>
-                      <span>문제 {dailyXP.levelup}/{250}</span>
+                    <div className="flex justify-between text-[8px] mt-1 px-0.5">
+                      <span style={dailyXP.login > 0 ? { color: '#4ade80', textShadow: '0 0 6px rgba(74,222,128,0.7)', fontWeight: 700 } : { color: 'rgba(107,114,128,0.6)' }}>
+                        접속 {dailyXP.login > 0 ? '✓' : '-'}
+                      </span>
+                      <span className="text-gray-600">퀘스트 {dailyXP.quest}/{200}</span>
+                      <span className="text-gray-600">문제 {dailyXP.levelup}/{250}</span>
                     </div>
                   </div>
 
@@ -1875,7 +1873,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                   <span className="text-xl">💔</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-[#ef4444]">연속 퀘스트가 초기화됐어요</p>
-                    <p className="text-[11px] text-gray-400">퀘스트를 3일 연속 완료하면 기존 스트릭을 복구할 수 있어요!</p>
+                    <p className="text-[11px] text-gray-400">퀘스트를 3일 연속 완료하면 기존 연속출석을 복구할 수 있어요!</p>
                   </div>
                 </div>
               )}
@@ -1883,7 +1881,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                 <div className="w-full max-w-2xl mb-4 px-4 py-3 rounded-xl bg-[#a855f7]/10 border border-[#a855f7]/30 flex items-center gap-3">
                   <span className="text-xl">🔧</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-[#a855f7]">스트릭 복구 퀘스트 진행 중</p>
+                    <p className="text-sm font-bold text-[#a855f7]">연속출석 복구 퀘스트 진행 중</p>
                     <p className="text-[11px] text-gray-400">퀘스트 3연속 완료 시 복구! 현재 <span className="text-[#a855f7] font-bold">{repairCount}/3</span> 완료</p>
                   </div>
                   <div className="flex gap-1 shrink-0">

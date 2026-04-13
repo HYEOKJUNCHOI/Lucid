@@ -93,16 +93,22 @@ export default function ChatPanel({
   onGoToQuiz,
   notice = null,
   chatScrollRef = null,
+  fontSize: fontSizeProp = null,
+  onFontSizeChange = null,
 }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: greeting },
   ]);
   const [input, setInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [chatFontSize, setChatFontSize] = useState(() => {
-    const saved = localStorage.getItem('lucid_chat_font_size');
-    return saved ? Number(saved) : 13;
-  });
+  const [chatFontSizeInternal, setChatFontSizeInternal] = useState(13);
+  // prop이 있으면 외부 값 사용, 없으면 내부 상태 사용
+  const chatFontSize = fontSizeProp ?? chatFontSizeInternal;
+  const setChatFontSize = (updater) => {
+    const next = typeof updater === 'function' ? updater(chatFontSize) : updater;
+    if (onFontSizeChange) onFontSizeChange(next);
+    else setChatFontSizeInternal(next);
+  };
   const [favoriteGame, setFavoriteGame] = useState('');
 
   const chatAreaRef = useRef(null);
@@ -114,10 +120,6 @@ export default function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 글자 크기 변경 → localStorage 저장
-  useEffect(() => {
-    localStorage.setItem('lucid_chat_font_size', chatFontSize);
-  }, [chatFontSize]);
 
   const adjustFontSize = (delta) =>
     setChatFontSize((prev) => Math.max(10, Math.min(24, prev + delta)));

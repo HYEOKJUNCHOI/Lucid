@@ -39,7 +39,13 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
     ai: '',
   });
   const [splitRatio, setSplitRatio] = useState(0.5);
-  const [editorFontSize, setEditorFontSize] = useState(13);
+  const [tabFontSizes, setTabFontSizes] = useState({ main: 13, ai: 13 });
+  const editorFontSize = tabFontSizes[activeTab] ?? 13;
+  const setEditorFontSize = (updater) =>
+    setTabFontSizes(prev => {
+      const next = typeof updater === 'function' ? updater(prev[activeTab] ?? 13) : updater;
+      return { ...prev, [activeTab]: Math.max(10, Math.min(28, next)) };
+    });
   const editorRef = useRef(null);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -64,6 +70,7 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
   // ─── 랜딩 패널 상태 ────────────────────────────────────
   const [landingVisible, setLandingVisible] = useState(showLanding);
   const [landingSection, setLandingSection] = useState(null); // null | 'github' | 'keyword' | 'keyword-guide'
+  const [freeCodeMode, setFreeCodeMode] = useState(false);
   // 담당강사 있으면 항상 체크 ON으로 시작
   const [useTeacherGithub, setUseTeacherGithub] = useState(() => {
     const saved = localStorage.getItem('lucid_github_use_teacher');
@@ -529,6 +536,11 @@ ${mainCode.slice(0, 3000)}`;
             insertText: 'public static void main(String[] args) {\n\t${1}\n}',
             documentation: 'main 메서드',
           },
+          {
+            label: 'main',
+            insertText: 'public static void main(String[] args) {\n\t${1}\n}',
+            documentation: 'main 메서드',
+          },
         ];
         return {
           suggestions: snippets.map(s => ({
@@ -961,7 +973,7 @@ ${mainCode.slice(0, 3000)}`;
 
         {/* Monaco 액자라운드 */}
         <div
-          className="relative flex-1 min-h-0 mx-1.5 mb-1.5 mt-1 rounded-2xl border bg-[#0d1518] overflow-hidden transition-all duration-200"
+          className="relative flex flex-col flex-1 min-h-0 mx-1.5 mb-1.5 mt-1 rounded-2xl border bg-[#0d1518] overflow-hidden transition-all duration-200"
           style={landingVisible
             ? focusedPanel === 'left'
               ? { borderColor: 'rgba(255,255,255,0.45)', boxShadow: '0 0 24px rgba(255,255,255,0.1), 0 0 0 1px rgba(255,255,255,0.06)' }
@@ -991,7 +1003,7 @@ ${mainCode.slice(0, 3000)}`;
             {activeTab === 'main' && showLanding && !landingVisible && (
               <div
                 className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 cursor-pointer transition-all"
-                onClick={() => { if (fromChapter) { onBack(); } else { setLandingSection(null); setLandingVisible(true); } }}
+                onClick={() => { if (fromChapter) { onBack(); } else { setLandingSection(null); setLandingVisible(true); setFreeCodeMode(false); } }}
                 title="랜딩으로 돌아가기"
                 style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)' }}
               >
@@ -1173,7 +1185,12 @@ ${mainCode.slice(0, 3000)}`;
 
               {/* 자유 코드입력 (맨 밑, 서브 스타일) */}
               <button
-                onClick={() => { setTabContents(prev => ({ ...prev, main: '' })); setLandingVisible(false); }}
+                onClick={() => {
+                  const saved = localStorage.getItem('lucid_free_code') || '';
+                  setTabContents(prev => ({ ...prev, main: saved }));
+                  setFreeCodeMode(true);
+                  setLandingVisible(false);
+                }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all hover:-translate-y-0.5"
                 style={{ background: 'rgba(253,224,71,0.06)', border: '1px solid rgba(253,224,71,0.2)', color: '#fde047' }}>
                 ✏️ 자유 코드입력
@@ -1184,15 +1201,18 @@ ${mainCode.slice(0, 3000)}`;
 
         {/* Monaco */}
         <div
-          className="h-full overflow-hidden"
+          className="flex-1 min-h-0 overflow-hidden"
           ref={(el) => {
-            if (!el || el._wheelBound) return;
-            el._wheelBound = true;
-            el.addEventListener('wheel', (e) => {
+            if (!el) return;
+            if (el._wheelBound) { el._removeWheel?.(); }
+            const handler = (e) => {
               if (!(e.ctrlKey || e.metaKey)) return;
               e.preventDefault();
-              setEditorFontSize(prev => Math.max(10, Math.min(28, prev + (e.deltaY < 0 ? 1 : -1))));
-            }, { passive: false });
+              setEditorFontSize(prev => prev + (e.deltaY < 0 ? 1 : -1));
+            };
+            el.addEventListener('wheel', handler, { passive: false });
+            el._wheelBound = true;
+            el._removeWheel = () => el.removeEventListener('wheel', handler);
           }}
         >
           <Editor
@@ -1200,7 +1220,13 @@ ${mainCode.slice(0, 3000)}`;
             defaultLanguage="java"
             path={activeTab}
             value={tabContents[activeTab]}
-            onChange={(v) => setTabContents(prev => ({ ...prev, [activeTab]: v ?? '' }))}
+            onChange={(v) => {
+              const val = v ?? '';
+              setTabContents(prev => ({ ...prev, [activeTab]: val }));
+              if (freeCodeMode && activeTab === 'main') {
+                localStorage.setItem('lucid_free_code', val);
+              }
+            }}
             onMount={handleEditorMount}
             options={{
               fontSize: editorFontSize,
@@ -1236,6 +1262,17 @@ ${mainCode.slice(0, 3000)}`;
             🔒 읽기 모드 — 수정하려면 토글을 꺼주세요
           </div>
         )}
+          {/* 노트초기화 — 자유코드 모드일 때만, 액자 내부 우하단 절대 배치 */}
+          {freeCodeMode && (
+            <button
+              onClick={() => { setTabContents(prev => ({ ...prev, main: '' })); localStorage.removeItem('lucid_free_code'); }}
+              className="absolute bottom-[15px] right-3 z-10 flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 cursor-pointer transition-all"
+              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}
+            >
+              <span className="text-[14px]" style={{ color: '#ef4444' }}>🗑</span>
+              <span className="text-[9px] font-bold" style={{ color: '#ef4444' }}>노트초기화</span>
+            </button>
+          )}
         </div>{/* 액자 컨테이너 닫기 */}
       </div>
 
@@ -1321,6 +1358,7 @@ ${mainCode.slice(0, 3000)}`;
               onHighlightToken={highlightCodeToken}
               activeTab={activeTab}
               defaultCount={3}
+              isActive={activeRightTab === 'quiz'}
             />
           </div>
 
@@ -1330,10 +1368,10 @@ ${mainCode.slice(0, 3000)}`;
           {/* 문제풀기 바로가기 + ↑ 맨위로 버튼 — Lucid Tutor 탭일 때만 */}
           {activeRightTab === 'tutor' && (
             <div className="absolute bottom-[66px] right-3 z-10 flex flex-col items-end gap-1 pointer-events-auto">
-              {/* ↑ 맨위로 — 문제풀기 위에 얹기 */}
+              {/* ↑ 맨위로 — 2배 크기 */}
               <button
                 onClick={() => chatScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="flex items-center justify-center rounded font-black text-[11px] transition-all hover:-translate-y-0.5 px-2 py-1"
+                className="flex items-center justify-center rounded font-black text-[15px] transition-all hover:-translate-y-0.5 px-2.5 py-1.5"
                 style={{ background: 'rgba(253,224,71,0.1)', border: '1px solid rgba(253,224,71,0.3)', color: '#fde047', boxShadow: '0 0 8px rgba(253,224,71,0.1)' }}
                 title="맨 위로"
               >↑</button>

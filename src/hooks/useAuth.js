@@ -298,6 +298,7 @@ export const useAuth = () => {
     useLearningStore.getState().reset();
     setLoginLoading(null); // null이어야 버튼 disabled가 풀림 (false면 cursor-wait 유지됨)
     setLoginError(null);
+    localStorage.removeItem('lucid_free_code');
     signOut(auth);
   };
 

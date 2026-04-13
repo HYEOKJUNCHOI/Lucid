@@ -85,17 +85,18 @@ export default function AttendanceCalendar({ attendedDates = [], onAdd, onRemove
             <div
               key={i}
               onClick={() => toggle(d)}
-              className="aspect-square flex items-center justify-center rounded cursor-pointer text-[9px] font-bold transition-all hover:scale-105 select-none"
+              className="aspect-square flex flex-col items-center justify-center rounded cursor-pointer text-[9px] font-bold transition-all hover:scale-105 select-none relative"
               style={
-                attended ? {
+                isToday ? {
+                  background: 'linear-gradient(135deg, rgba(34,197,94,0.55), rgba(16,185,129,0.35))',
+                  border: '1px solid rgba(34,197,94,0.8)',
+                  color: '#4ade80',
+                  boxShadow: '0 0 8px rgba(34,197,94,0.45)',
+                } : attended ? {
                   background: 'linear-gradient(135deg, rgba(251,191,36,0.55), rgba(245,158,11,0.35))',
                   border: '1px solid rgba(251,191,36,0.8)',
                   color: '#fbbf24',
                   boxShadow: '0 0 6px rgba(251,191,36,0.4)',
-                } : isToday ? {
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  color: '#ffffff',
                 } : {
                   background: isSun || isSat ? 'rgba(167,139,250,0.04)' : 'rgba(255,255,255,0.02)',
                   border: '1px solid rgba(255,255,255,0.05)',
@@ -103,8 +104,10 @@ export default function AttendanceCalendar({ attendedDates = [], onAdd, onRemove
                 }
               }
             >
+              {(isToday || attended) && (
+                <span className="absolute top-0.5 right-1 text-[7px] leading-none" style={{ color: isToday ? '#4ade80' : '#fbbf24' }}>✓</span>
+              )}
               {d}
-              {attended && <span className="sr-only">✓</span>}
             </div>
           );
         })}

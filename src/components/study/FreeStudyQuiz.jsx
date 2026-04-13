@@ -220,7 +220,7 @@ const LOADING_MSGS = [
 const pickMsg = () => LOADING_MSGS[Math.floor(Math.random() * LOADING_MSGS.length)];
 
 // ═══════════════════════════════════════════════════
-export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlightToken, activeTab, defaultCount = 5 }) {
+export default function FreeStudyQuiz({ getCodeContext, onSendToTutor, onHighlightToken, activeTab, defaultCount = 5, isActive = true }) {
   const [phase, setPhase]             = useState('idle'); // idle | generating | active | result
   const [questions, setQuestions]     = useState([]);
   const [concept, setConcept]         = useState('');
@@ -472,6 +472,7 @@ ${curQ.type === 'fill_blank'
   // ─── Enter → 다음 / 한 문제 더 + 1~4 객관식 선택 ──
   useEffect(() => {
     const handler = (e) => {
+      if (!isActive) return;
       // Enter
       if (e.key === 'Enter') {
         if (e.nativeEvent?.isComposing || e.isComposing) return;
@@ -503,7 +504,7 @@ ${curQ.type === 'fill_blank'
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [phase, feedback, currentIdx, hearts, questions.length, suggestionLoading, curQ, resultEnterCount, wrongAttempts]);
+  }, [phase, feedback, currentIdx, hearts, questions.length, suggestionLoading, curQ, resultEnterCount, wrongAttempts, isActive]);
 
   // ─── fill_blank 입력창 자동 포커스 ────────────
   useEffect(() => {
@@ -626,7 +627,14 @@ ${curQ.type === 'fill_blank'
   if (phase === 'result') {
     const correctCount = results.filter(r => r?.correct).length;
     return (
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-y-auto relative">
+        <button
+          onClick={() => setPhase('idle')}
+          className="absolute top-3 right-3 z-10 py-1.5 px-2.5 rounded-lg text-[11px] font-bold bg-white/[0.04] border border-white/10 text-gray-400 hover:bg-white/[0.08] hover:text-white transition-all"
+          title="문제 출제 선택 화면으로"
+        >
+          ↩ 돌아가기
+        </button>
         <div className="flex-1 flex flex-col gap-3 p-4 mx-auto w-full max-w-[520px]">
           <div className="text-center pt-2">
             <div className="text-4xl mb-2">

@@ -24,7 +24,7 @@ export const MODELS = {
   GEMINI_QUIZ: 'gemini-2.5-flash-lite',
 
   // 🔤 한→영 번역 (타자연습 코드 번역, 저비용)
-  TRANSLATE: 'gemini-2.0-flash',
+  TRANSLATE: 'gpt-4.1-nano',
 
   // 🧪 Gemini 튜터 비교 테스트용 (2026-04-12 ListModels 확인)
   GEMINI_TUTOR_FLASH: 'gemini-2.0-flash',          // 1순위 (저렴)

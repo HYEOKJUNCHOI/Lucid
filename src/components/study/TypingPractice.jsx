@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { getGeminiApiKey } from '../../lib/apiKey';
-import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
+import { getApiKey } from '../../lib/apiKey';
+import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
 
 
 /**
@@ -214,16 +214,15 @@ export default function TypingPractice({ code, onClose, onComplete, onResetBest,
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
 
-    fetch(`${GEMINI_CHAT_URL(MODELS.TRANSLATE)}?key=${getGeminiApiKey()}`, {
+    fetch(OPENAI_CHAT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0, maxOutputTokens: 200 } }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getApiKey()}` },
+      body: JSON.stringify({ model: MODELS.TRANSLATE, messages: [{ role: 'user', content: prompt }], temperature: 0, max_tokens: 200 }),
       signal: controller.signal,
     })
-      .then(r => r.json())
       .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(data => {
-        const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
+        const raw = data.choices?.[0]?.message?.content?.trim() || '{}';
         const cleaned = raw.replace(/```json|```/g, '').trim();
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         const map = JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
