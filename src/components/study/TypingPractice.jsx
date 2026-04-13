@@ -221,12 +221,15 @@ export default function TypingPractice({ code, onClose, onComplete, onResetBest,
       signal: controller.signal,
     })
       .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(data => {
         const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '{}';
-        const map = JSON.parse(raw.replace(/```json|```/g, '').trim());
+        const cleaned = raw.replace(/```json|```/g, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        const map = JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
         let result = code;
         for (const [ko, en] of Object.entries(map)) result = result.replaceAll(ko, en);
-        translationCache.set(code, result); // 캐시 저장
+        translationCache.set(code, result);
         setResolvedCode(result);
       })
       .catch(() => setTranslateError(true))
