@@ -1,336 +1,82 @@
-# 🧠 Lucid — AI 기반 차세대 교육 플랫폼
+# 💎 Lucid (루시드)
+> **"고요한 몰입, 선명한 이해"** — 집중력을 지키고 데이터로 소통하는 AI 기반 올인원 학습 플랫폼
 
-> **AI와 게임화로 코딩 학습을 재정의하다**  
-> 교육 현장의 학생 맞춤형 학습, 강사 효율화, 관리자 인사이트를 한 플랫폼에서 해결
+<p align="center">
+  <img src="./assets/1. 랜딩.jpg" width="80%" alt="Lucid Landing Page">
+</p>
 
-![Lucid Dashboard](./public/lucid-demo.png)
+## 🚀 프로젝트 배경 (Problem & Solution)
+현대 교육 현장은 AI 덕분에 정답을 얻기는 쉬워졌으나, 학생이 무엇을 모르는지 강사가 파악하기 어려운 **'데이터 단절'** 현상을 겪고 있습니다. 
 
----
-
-## 📌 프로젝트 개요
-
-**Lucid**는 AI를 활용하여 교육 현장의 **실질적인 문제**를 해결하는 차세대 교육 솔루션입니다.
-
-### 해결하는 핵심 문제점
-
-| 문제 | Lucid의 해결책 |
-|------|---------------|
-재작성
+**Lucid**는 듀오링고(Duolingo)의 게이미피케이션 모델을 벤치마킹하여, 파편화된 학습 도구를 하나로 통합하고 학습 행위를 실시간 데이터로 전환합니다. 이를 통해 학생에게는 **몰입**을, 강사에게는 **데이터 기반의 선제적 관리**를 제공합니다.
 
 ---
 
-## ✨ 주요 기능
+## ✨ 핵심 시스템: 마스터 노트 (Master Note)
+사용자의 집중력을 빼앗는 '도구 전환(Tab Switching)'을 최소화하기 위해 크롬 인터페이스 기반의 올인원 환경을 구축했습니다.
 
-### 🎓 학생 학습 영역
+### 1. 코드 연동 및 AI 튜터링
+| 기능 | 상세 설명 | 관련 화면 |
+| :--- | :--- | :--- |
+| **코드 노트** (`Alt+1`) | 강사의 GitHub 레포지토리와 실시간 연동하여 수업 내용을 즉시 복습/예습합니다. | <img src="./assets/7. 챕터to코드노트.jpg" width="300px"> |
+| **Lucid Tutor** (`Alt+3`) | 코드 맥락을 이해하는 AI가 정답 대신 비유와 힌트로 사고를 유도합니다. | <img src="./assets/8.챕터to코드노트.jpg" width="300px"> |
+| **AI 생성 코드** (`Alt+2`) | 기존 코드를 **쉬움/보통/어려움** 난이도로 재구성하여 수준별 단계 학습을 지원합니다. | <img src="./assets/9. AI생성코드.jpg" width="300px"> |
 
-#### 1️⃣ **자유학습 (FreeStudyView)** — 핵심 엔진
-- **GitHub 통합**: 강사 코드 자동 불러오기 (기수 필터링)
-- **AI 튜터 채팅**: 코드 컨텍스트 기반 질문 응답
-- **✨ AI 코드생성** (신규)
-  - 코드노트의 코드를 분석 → 비슷한 패턴의 다른 코드 자동 생성
-  - 난이도 선택: 쉬움 / 보통 / 어려움
-  - 가이던스 팝업으로 사용성 개선
-- **AI 키워드 코드생성**: 핵심어만 입력하면 예시 코드 자동 작성
-- **AI 문제출제**: 자동 퀴즈 생성 및 풀이 제시
-- **코드노트**: 마크다운 기반 필기 (저장, PDF 내보내기 지원)
-- **메모장**: 충분히 강력한 마크다운 에디터
-- **타이핑 연습**: 한글 → 영문 자동 변환
-
-#### 2️⃣ **문제풀이 (LevelUpView)** — 실력 측정
-- 과목별 입장 (Java 기초, Python AI 등)
-- 배치고사 (초기 레벨 진단)
-- 일반 퀴즈 (XP, LP 획득)
-- **하트 시스템**: 듀오링고식 3개 기본, 오답 시 차감 (시각적 임팩트)
-- **주간 우수자 랭킹**: 실시간 경쟁 유도
-- **스트릭 시스템**: 연속 성공 추적
-
-#### 3️⃣ **용어 사전**
-- 더블클릭으로 용어 팝업
-- AI 기반 실시간 번역/설명
+### 2. 실전 연습 및 기록
+| 기능 | 상세 설명 | 관련 화면 |
+| :--- | :--- | :--- |
+| **문제 풀기** (`Alt+4`) | 학습 중인 코드에서 AI가 실시간 문제를 출제합니다. 오답 시 하트가 소모되며 힌트가 제공됩니다. | <img src="./assets/11 문제풀기2.jpg" width="300px"> |
+| **학습 메모** (`Alt+5`) | 노션 스타일 마크다운 필기 도구입니다. 작성된 내용은 PDF 및 MD 파일로 추출 가능합니다. | <img src="./assets/12 학습메모.jpg" width="300px"> |
+| **타자 연습** (`F4`) | 소스 코드를 활용한 영문 타자 연습을 통해 실전 코딩 감각을 익히고 전용 뱃지를 획득합니다. | (상세 구현 완료) |
 
 ---
 
-### 👨‍🏫 강사/관리자 영역
+## 🎮 게이미피케이션 & 보상 체계
+학습을 '지루한 노동'에서 '즐거운 채굴'로 프레이밍하여 강력한 동기부여를 제공합니다.
 
-#### 1️⃣ **학생관리**
-- 신규 학생 정보 일괄 등록
-- 기수별/그룹별 학생 조회 및 편집
-- 학생 정보 수정/삭제
+<p align="center">
+  <img src="./assets/3 메인화면.jpg" width="80%" alt="Lucid Main Dashboard">
+</p>
 
-#### 2️⃣ **학생 현황 대시보드**
-- 전체 학생 카드형 리스트
-- 실시간 레벨, 스트릭, 활동 상태 표시
-- 정렬 (이름순, 레벨순)
-- 학생 상세 조회
+### 🫘 원두 채굴 시스템 (Reward Logic)
+- **컨셉**: "공부하러 가자" 대신 **"원두 채굴하러 가자"**는 심리적 프레이밍 적용.
+- **드랍 룰**: 일일 퀘스트 전체 클리어 시 **23% 확률**로 원두 드랍 (기수 110일 기준 평균 25개 획득 설계).
+- **오프라인 연동**: 원두 5개를 모으면 멘토에게 커피로 교환. 자연스러운 면담과 격려의 기회 창출.
 
-#### 3️⃣ **자리배치 (AI 추천)**
-- 모의 테이블 레이아웃
-- AI 자동 배치 최적화 (레벨 분산)
-- 수동 조정 가능
-- 테이블별 편성 관리
-
-#### 4️⃣ **디버그 패널**
-- Firestore 실시간 필드 편집
-- 전체 학생 랜덤 테스트 데이터 생성
-- 학생별 출석 달력 조회
+### 🏆 실력 지표의 이원화 (XP vs LP)
+- **XP (성실성 보상)**: 모든 학습 활동에서 적립되며, 커피 교환 및 아이템 획득에 사용.
+- **LP (실력 지표)**: '문제지옥' 등 실력 측정 모드에서만 쌓이며 과목별 티어(브론즈~다이아) 결정.
 
 ---
 
-## 🤖 AI 활용 전략
-
-### 사용 모델
-- **`gemini-2.5-flash-lite`**: 튜터 채팅, 코드생성, 퀴즈생성 (속도 & 비용 최적)
-- **`gemini-2.0-flash`**: 타자 번역 (한→영)
-
-### AI 활용 포인트
-
-| 기능 | AI 역할 | 효과 |
-|------|--------|------|
-| **코드생성** | 분석형 생성 | 학생의 학습 패턴 이해 후 맞춤 문제 제시 |
-| **튜터 채팅** | 컨텍스트 이해 | 코드를 읽고 구체적인 질문 응답 |
-| **퀴즈생성** | 자동 출제 | 강사 부담 대폭 감소 |
-| **자리배치** | 최적화 | 학습 효율성 고려한 그룹 편성 |
-| **타자 번역** | 실시간 변환 | 영문 코드 학습 시 즉시 피드백 |
+## 👨‍🏫 강사 및 관리자 전용 기능 (Admin)
+- **시각적 자리배치도**: 학생의 실력을 뱃지(입문/경험/전공)로 표시하여 효율적인 학습 지도가 가능합니다.
+- **이탈 방지 알림**: 접속 데이터가 멀어지는 학생을 '적신호'로 감지하여 강사가 선제적으로 상담을 주도하도록 돕습니다.
 
 ---
 
-## 🏗️ 기술 스택
+## 🗓 구현 예정 사항 (Roadmap)
 
-### Frontend
-- **Framework**: React 18 + Vite
-- **Styling**: Tailwind CSS + Custom Animations
-- **Editor**: Monaco Editor (코드 열람)
-- **Markdown**: React-Markdown + remark/rehype
-- **State Management**: React Context API
-- **Auth**: Firebase Authentication
+### 1. 퀘스트 시스템 (Daily Quest)
+- 단순 루틴이 아닌, 30분 분량의 무게감 있는 **4단계 미션**으로 구성.
+- 미션 1(진입 마찰 최소화) → 미션 4(보상 극대화) 구조로 "하나만 더" 심리 유도.
 
-### Backend
-- **Database**: Firestore (실시간 데이터 동기화)
-- **Hosting**: Vercel (배포)
-- **AI API**: Google Gemini API
+### 2. 문제지옥 (Infinite Challenge) & 배치고사
+- **배치고사**: 최초 진입 시 10문항으로 사용자 티어를 결정하고 학습 난이도 커스터마이징.
+- **문제지옥**: Java, React 등 과목별 실력을 무한으로 검증하여 계급을 쌓는 랭킹 시스템.
 
-### Development
-- **Version Control**: Git + GitHub
-- **Package Manager**: npm
-- **Build**: Vite
-
-### DevOps
-- **Environment**: .env 기반 설정 관리
-- **Security**: Service Account 키 .gitignore 처리
+### 3. 시즌 시스템 (2-Month Season)
+- 2개월 단위 시즌 리셋을 통해 지속적인 긴장감과 "다시 쌓아가는 맛" 제공.
+- 시즌 종료 시 최종 티어는 프로필에 기록(박제)하여 명예욕 고취.
 
 ---
 
-## 🚀 설치 & 실행
-
-### 1. 저장소 클론
-```bash
-git clone https://github.com/HYEOKJUNCHOI/Lucid.git
-cd Lucid
-```
-
-### 2. 의존성 설치
-```bash
-npm install
-```
-
-### 3. 환경 설정
-`.env.local` 파일 생성:
-```env
-VITE_FIREBASE_API_KEY=your_firebase_key
-VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-VITE_GEMINI_API_KEY=your_gemini_api_key
-```
-
-### 4. 개발 서버 실행
-```bash
-npm run dev
-```
-- Local: `http://localhost:5173`
-
-### 5. 빌드 (배포용)
-```bash
-npm run build
-npm run preview
-```
+## 🛠 기술 스택 (Tech Stack)
+- **Frontend**: React + Vite + TailwindCSS
+- **Editor**: Monaco Editor
+- **AI Engine**: **Gemini 2.5 Flash-Lite**, **GPT-4o**
+- **Infrastructure**: Firebase (Auth, Firestore), Vercel
 
 ---
-
-## 📂 프로젝트 구조
-
-```
-Lucid/
-├── public/                  # 정적 자산
-├── src/
-│   ├── pages/              # 페이지 컴포넌트
-│   │   ├── Landing/        # 랜딩 페이지
-│   │   ├── Login/          # 로그인 페이지
-│   │   ├── Student/        # 학생 영역
-│   │   │   ├── StudentPage.jsx     # 대시보드
-│   │   │   ├── FreeStudyView.jsx   # 자유학습 (핵심)
-│   │   │   ├── LevelUpView.jsx     # 문제풀이
-│   │   │   └── ChatView.jsx        # AI 튜터
-│   │   └── Admin/          # 관리자 영역
-│   │       ├── AdminPage.jsx       # 통합 관리 화면
-│   │       ├── StudentManagement.jsx
-│   │       ├── StudentDashboard.jsx
-│   │       ├── SeatChart.jsx
-│   │       └── DebugPanel.jsx
-│   ├── components/         # 재사용 컴포넌트
-│   │   ├── study/          # 학습 관련
-│   │   │   ├── FreeStudyQuiz.jsx
-│   │   │   ├── MemoPanel.jsx
-│   │   │   ├── TypingPractice.jsx
-│   │   │   └── PlacementQuiz.jsx
-│   │   ├── memo/           # 메모 기능
-│   │   │   └── MemoInventory.jsx
-│   │   ├── chat/           # 채팅 기능
-│   │   │   └── ChatPanel.jsx
-│   │   ├── admin/          # 관리자 UI
-│   │   │   └── AttendanceCalendar.jsx
-│   │   └── common/         # 공통 컴포넌트
-│   │       └── DictionaryPopup.jsx
-│   ├── hooks/              # Custom Hooks
-│   │   └── useAuth.js      # Firebase 인증
-│   ├── services/           # 비즈니스 로직
-│   │   ├── learningService.js
-│   │   └── userStateService.js
-│   ├── lib/                # 설정 & 유틸
-│   │   ├── firebase.js
-│   │   ├── aiConfig.js     # Gemini 설정
-│   │   └── prompts.js      # AI 프롬프트 모음
-│   ├── App.jsx
-│   └── index.css           # 글로벌 스타일
-├── docs/                   # 기획 & 운영 문서
-│   ├── CORE_SYSTEM.md
-│   ├── 기능최종정리.md
-│   ├── Lucid_XP_SYSTEM.md
-│   └── ...
-├── config/                 # 개발 설정
-│   ├── CLAUDE.md           # AI 협업 지침
-│   └── ...
-├── firestore.rules         # Firestore 보안 규칙
-├── .env.example            # 환경 변수 템플릿
-├── .gitignore              # Git 제외 파일
-├── package.json
-└── README.md
-```
-
----
-
-## 🎮 사용 흐름
-
-### 학생 학습 흐름
-
-```
-로그인 → 메인 대시보드
-  └─ [자유학습] → 코드 학습 → AI 튜터 질문 → AI 코드생성 → 메모 정리
-  └─ [문제풀이] → 퀴즈 도전 → 점수 획득 → 레벨업
-  └─ [채팅] → AI와 직접 대화
-```
-
-### 강사 관리 흐름
-
-```
-로그인 (강사) → 관리자 페이지
-  └─ [학생관리] → 학생 등록/수정
-  └─ [대시보드] → 학생 현황 모니터링
-  └─ [자리배치] → AI 추천 배치 활용
-  └─ [디버그 패널] → 실시간 데이터 수정
-```
-
----
-
-## 🔐 보안 & 프라이버시
-
-- **Firestore Rules**: 사용자 인증 기반 접근 제어
-- **API Key 관리**: 환경 변수로 보안 관리 (.gitignore 처리)
-- **Firebase Authentication**: 안전한 로그인
-- **Service Account**: git 제외 (절대 커밋 금지)
-
----
-
-## 📊 데이터 구조 (Firestore)
-
-```
-users/{uid}/
-  ├── profile/            # 사용자 프로필
-  ├── stats/              # 학습 통계 (XP, 레벨, 스트릭)
-  ├── meta/
-  │   ├── memo            # 메모 저장
-  │   └── typing-log      # 타이핑 기록
-  └── achievements/       # 업적 (배치 완료, 스트릭 등)
-
-subjects/{subjectId}/
-  └── quizzes/{quizId}/   # 과목별 퀴즈
-
-classes/{classId}/
-  └── students/{uid}/     # 기수별 학생 정보
-```
-
----
-
-## 📈 주요 성과 & 특징
-
-| 항목 | 설명 |
-|------|------|
-| **AI 기능 다양성** | 코드생성 3종, 퀴즈생성, 튜터, 배치 최적화 |
-| **UX 개선** | 게임화 요소 (XP, 레벨, 하트) → 학습 동기 유도 |
-| **강사 효율화** | AI 자동 출제 → 채점 부담 대폭 감소 |
-| **데이터 기반 관리** | 실시간 대시보드 + 통계 분석 |
-| **확장성** | 모듈화된 컴포넌트 구조 (새 기능 추가 용이) |
-
----
-
-## 🤝 팀 & 협업
-
-### 개발 규칙
-- **Commit 메시지**: `[CC] feat: 설명` 또는 `[AG] fix: 설명`
-- **Branch**: `main` / `develop` / `feature/*`
-- **Code Review**: 기술 리뷰 + 비판 단계 (완전성 검증)
-
-### AI 협업 방식
-- Claude Code가 주요 개발 담당 (80%)
-- Gemini API 연동은 별도 담당자 (20%)
-- 모든 기획 문서를 git에 포함 (AI와의 협업 기록 투명화)
-
----
-
-## 📝 문서
-
-| 문서 | 목적 |
-|------|------|
-| [CORE_SYSTEM.md](./docs/CORE_SYSTEM.md) | 핵심 시스템 설계 |
-| [기능최종정리.md](./docs/기능최종정리.md) | 전체 기능 목록 |
-| [Lucid_XP_SYSTEM.md](./docs/Lucid_XP_SYSTEM.md) | XP/레벨/스트릭 시스템 |
-| [CLAUDE.md](./config/CLAUDE.md) | AI 협업 지침서 |
-
----
-
-## 🚀 배포
-
-- **평가**: Vercel
-- **실시간 DB**: Firestore
-- **CI/CD**: GitHub → Vercel 자동 배포
-
----
-
-## 📞 문의
-
-**공모전 제출**: KIT 바이브코딩 2026  
-**GitHub**: [https://github.com/HYEOKJUNCHOI/Lucid](https://github.com/HYEOKJUNCHOI/Lucid)
-
----
-
-## 📄 라이선스
-
-This project is submitted to the **KIT Vibe Coding Competition 2026**.  
-All rights reserved unless otherwise stated.
-
----
-
-**Made with ❤️ by Lucid Team**  
-*AI와 인간의 협업으로 교육을 재정의하다.*
+**Developer**: 최혁준
+**Project**: 제1회 K.I.T. 바이브코딩 공모전 출품작
