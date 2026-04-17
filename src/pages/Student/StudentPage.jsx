@@ -1215,22 +1215,27 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                         .map(s => parseInt(s.slice(8), 10))
                     );
 
-                    // attendedDates 전체 배열에서 오늘 기준 연속 출석일 계산
+                    // 출석 OR 얼음 = "연결" — 오늘 기준 거꾸로 걸어가며 체인 카운트
                     const calcLiveStreak = () => {
-                      const all = (userData?.attendedDates || []).slice().sort().reverse(); // 최신순
-                      if (all.length === 0) return 0;
-                      const todayMs = new Date(new Date().toISOString().slice(0,10)).getTime();
-                      const day0 = all[0];
-                      const day0Ms = new Date(day0).getTime();
-                      // 마지막 출석이 오늘 또는 어제여야 연속으로 인정
-                      const diff0 = (todayMs - day0Ms) / 86400000;
-                      if (diff0 > 1) return 0;
-                      let count = 1;
-                      for (let i = 1; i < all.length; i++) {
-                        const prev = new Date(all[i - 1]).getTime();
-                        const curr = new Date(all[i]).getTime();
-                        if ((prev - curr) / 86400000 === 1) count++;
-                        else break;
+                      const attendedSet = new Set(userData?.attendedDates || []);
+                      const frozenSet = new Set(userData?.frozenDates || []);
+                      if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
+                      const todayIso = new Date().toISOString().slice(0, 10);
+                      const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
+                      // 오늘 또는 어제가 커버되어 있어야 연속 인정
+                      const yday = new Date();
+                      yday.setDate(yday.getDate() - 1);
+                      const ydayIso = yday.toISOString().slice(0, 10);
+                      if (!isCovered(todayIso) && !isCovered(ydayIso)) return 0;
+                      let count = 0;
+                      const cursor = new Date(todayIso);
+                      // 오늘이 비었으면 어제부터 시작
+                      if (!isCovered(todayIso)) cursor.setDate(cursor.getDate() - 1);
+                      while (true) {
+                        const iso = cursor.toISOString().slice(0, 10);
+                        if (!isCovered(iso)) break;
+                        count++;
+                        cursor.setDate(cursor.getDate() - 1);
                       }
                       return count;
                     };
