@@ -32,11 +32,13 @@ const seedAllUsers = async (users) => {
       totalXP,
       level,
       streak,
+      bestStreak:      streak, // 시드 시 bestStreak 도 동기화 (이전 잔재 제거)
       beanCount,
       americanoCount:  rInt(0, 8),
       streakFreezes:   rInt(0, 3),
       difficultyLevel: rInt(0, 4),
       attendedDates:   attended,
+      frozenDates:     [], // 시드 시 얼음일 리셋 — 이전 수동 토글 잔재 제거
       lastRoutineDate: streak > 0 ? todayStr() : '',
       lastStudiedAt:   streak > 0 ? Date.now() - rInt(0, 86400000) : null,
       typingStats: {
