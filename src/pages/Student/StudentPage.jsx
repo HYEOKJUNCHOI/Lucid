@@ -1271,16 +1271,20 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                         <div className="flex items-center justify-between mb-2 px-0.5">
                           {/* 월 네비게이션 */}
                           <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => moveMon(-1)}
-                              className="text-[10px] px-1 text-gray-500 hover:text-white transition-colors leading-none"
-                            >‹</button>
                             <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{mon + 1}월 출석</span>
-                            <button
-                              onClick={() => moveMon(1)}
-                              disabled={isCurrentMonth}
-                              className="text-[10px] px-1 text-gray-500 hover:text-white transition-colors leading-none disabled:opacity-20"
-                            >›</button>
+                            <div className="flex flex-col" style={{ gap: '1px' }}>
+                              <button
+                                onClick={() => moveMon(1)}
+                                disabled={isCurrentMonth}
+                                className="flex items-center justify-center w-3 h-3 text-gray-500 hover:text-white transition-colors disabled:opacity-20"
+                                style={{ fontSize: '6px', lineHeight: 1 }}
+                              >▲</button>
+                              <button
+                                onClick={() => moveMon(-1)}
+                                className="flex items-center justify-center w-3 h-3 text-gray-500 hover:text-white transition-colors"
+                                style={{ fontSize: '6px', lineHeight: 1 }}
+                              >▼</button>
+                            </div>
                           </div>
                           <div
                             className="relative group cursor-default"
