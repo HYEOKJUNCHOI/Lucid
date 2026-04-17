@@ -356,11 +356,15 @@ export const claimLoginXPFS = async (uid, state) => {
   const today = todayStr();
   if (state?.loginXPClaimed?.[today]) return 0;
   const XP = 50;
+  // 접속 = 출석 → attendedDates 에 오늘 날짜 추가 (arrayUnion: 중복 무시)
   await updateUserState(uid, {
     [`loginXPClaimed.${today}`]: true,
     [`dailyXP.${today}.login`]: increment(XP),
     totalXP: increment(XP),
+    attendedDates: arrayUnion(today),
   });
+  // 출석 배열 변경 → streak/bestStreak 동기화
+  await syncStreakFromDates(uid);
   return XP;
 };
 
