@@ -25,7 +25,7 @@ import SidebarDrawer from '../../components/common/mobile/SidebarDrawer';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
 
-const StudentPage = ({ user, userData, onLogout }) => {
+const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const groupIDs = userData?.groupIDs || [];
@@ -58,6 +58,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [streakStatus, setStreakStatus] = useState('ok'); // 'ok'|'grace1'|'grace2'|'broken'|'repair'
   const [repairCount, setRepairCount] = useState(-1);
   const [mode, setMode] = useState(() => {
+    // forcedMode 가 App.jsx 에서 라우트별로 주입되면 우선 사용
+    if (forcedMode !== undefined) return forcedMode;
     const p = window.location.pathname;
     if (p === '/chapter' || p === '/home/chapter') return 'chapter';
     if (p === '/home/quest') return 'quest';
@@ -2521,4 +2523,15 @@ const StudentPage = ({ user, userData, onLogout }) => {
   );
 };
 
-export default StudentPage;
+/**
+ * 모바일 뷰포트에서는 MobileStudentRoot 가 렌더 담당 → 래퍼 레벨에서 조기 반환.
+ * StudentPage 내부 훅(useLearningStore, useState 등) 은 항상 일관된 순서로 호출되도록
+ * 래퍼를 분리해 Rules of Hooks 위반을 원천 차단한다.
+ */
+const StudentPageWithMobileGate = (props) => {
+  const isMobileGate = useIsMobile();
+  if (isMobileGate) return null;
+  return <StudentPage {...props} />;
+};
+
+export default StudentPageWithMobileGate;
