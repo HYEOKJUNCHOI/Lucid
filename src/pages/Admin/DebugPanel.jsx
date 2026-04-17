@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { debugSetUserFields, debugResetUser, getUserState, debugAddAttendedDate, debugRemoveAttendedDate } from '../../services/userStateService';
+import { debugSetUserFields, debugResetUser, getUserState, debugAddAttendedDate, debugRemoveAttendedDate, syncStreakFromDates } from '../../services/userStateService';
 
 // ── 전체 테스트 데이터 시드 (랜덤) ──────────────────────────────────
 const rInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -447,6 +447,27 @@ export default function DebugPanel() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* 유틸리티 액션 */}
+          <section className="rounded-xl bg-white/[0.02] border border-white/[0.08] overflow-hidden mb-3">
+            <div className="px-4 py-3 border-b border-white/[0.06]">
+              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">🔧 유틸리티</span>
+            </div>
+            <div className="px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={async () => {
+                  await syncStreakFromDates(selectedUid);
+                  const fresh = await getUserState(selectedUid);
+                  setUserState(fresh);
+                }}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-[#4ec9b0] border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/10 transition-colors"
+                title="attendedDates + frozenDates 배열을 기준으로 streak/bestStreak 필드를 다시 계산해서 반영합니다."
+              >
+                🔄 연속일 재계산
+              </button>
+              <span className="text-[10px] text-gray-500">출석/얼음 배열 기준으로 streak 필드 동기화</span>
             </div>
           </section>
 

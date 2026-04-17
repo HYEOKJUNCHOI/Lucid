@@ -421,14 +421,64 @@ export const debugSetUserFields = async (uid, fields) => {
   await updateUserState(uid, fields);
 };
 
-/** 출석 날짜 추가 (YYYY-MM-DD) */
-export const debugAddAttendedDate = async (uid, dateStr) => {
-  await updateDoc(doc(db, 'users', uid), { attendedDates: arrayUnion(dateStr) });
+/**
+ * attendedDates + frozenDates 배열에서 "오늘 기준 실제 연속일" 을 계산.
+ * 관리자 패널 수정 후 streak/bestStreak 자동 동기화용.
+ *
+ * 규칙:
+ *  - 출석 OR 얼음이면 체인 연결 (사용자 메모: "얼음쓰면 무조건연결")
+ *  - 오늘 또는 어제가 커버되어 있어야 체인 인정 (그 이상 공백이면 0)
+ *  - 오늘부터 거꾸로 걸으며 처음 비는 날까지 카운트
+ */
+export const computeStreakFromDates = (attendedDates = [], frozenDates = []) => {
+  const attendedSet = new Set(attendedDates || []);
+  const frozenSet = new Set(frozenDates || []);
+  if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
+  const today = todayStr();
+  const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
+  const y = new Date();
+  y.setDate(y.getDate() - 1);
+  const yday = y.toISOString().slice(0, 10);
+  if (!isCovered(today) && !isCovered(yday)) return 0;
+  let count = 0;
+  const cursor = new Date(today);
+  if (!isCovered(today)) cursor.setDate(cursor.getDate() - 1);
+  while (true) {
+    const iso = cursor.toISOString().slice(0, 10);
+    if (!isCovered(iso)) break;
+    count++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return count;
 };
 
-/** 출석 날짜 제거 (YYYY-MM-DD) */
+/**
+ * 관리자가 출석/얼음 배열을 수정한 뒤 streak/bestStreak 를 재계산해 반영.
+ * - streak 는 항상 최신 배열 기준으로 덮어씀
+ * - bestStreak 는 7일 이상이고 기존 최고보다 클 때만 상향 (하향 금지)
+ */
+export const syncStreakFromDates = async (uid) => {
+  const state = await getUserState(uid);
+  if (!state) return;
+  const newStreak = computeStreakFromDates(state.attendedDates, state.frozenDates);
+  const curBest = state.bestStreak || 0;
+  const updates = { streak: newStreak };
+  if (newStreak >= BADGE_THRESHOLD && newStreak > curBest) {
+    updates.bestStreak = newStreak;
+  }
+  await updateDoc(doc(db, 'users', uid), updates);
+};
+
+/** 출석 날짜 추가 (YYYY-MM-DD) — 후속 streak 자동 동기화 */
+export const debugAddAttendedDate = async (uid, dateStr) => {
+  await updateDoc(doc(db, 'users', uid), { attendedDates: arrayUnion(dateStr) });
+  await syncStreakFromDates(uid);
+};
+
+/** 출석 날짜 제거 (YYYY-MM-DD) — 후속 streak 자동 동기화 */
 export const debugRemoveAttendedDate = async (uid, dateStr) => {
   await updateDoc(doc(db, 'users', uid), { attendedDates: arrayRemove(dateStr) });
+  await syncStreakFromDates(uid);
 };
 
 /** 사용자 상태 초기화 (디버그용) */
