@@ -26,14 +26,14 @@ const AdminPage = ({ user, userData, onLogout }) => {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
       ),
     },
-    // 디버그 패널은 DEV 빌드에서만 노출 — 프로덕션에선 완전히 숨김
-    ...(import.meta.env.DEV ? [{
+    // 디버그 패널: AdminPage 진입 자체가 super-admin(email) 가드되어 있으므로 여기선 항상 노출
+    {
       tab: 'debug',
       label: '⚠️ 디버그 패널',
       icon: (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
       ),
-    }] : []),
+    },
   ];
 
   return (
@@ -235,7 +235,7 @@ const AdminPage = ({ user, userData, onLogout }) => {
           {activeTab === 'alerts' && <AlertsAndTop />}
           {activeTab === 'metaphors' && <MetaphorLibrary />}
           {activeTab === 'rewards' && <RewardPanel />}
-          {activeTab === 'debug' && import.meta.env.DEV && <DebugPanel />}
+          {activeTab === 'debug' && <DebugPanel />}
         </div>
       </main>
 
