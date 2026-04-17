@@ -1264,11 +1264,11 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                             onClick={isMobile ? (e) => { e.stopPropagation(); setShowWeekTip(v => !v); } : undefined}
                           >
                             <span
-  className="text-[9px] font-bold tracking-wide"
+  className="text-[8px] font-bold tracking-wide"
   style={
     liveStreak >= 7
-      ? { color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }
-      : { color: 'rgba(251,191,36,0.55)' }
+      ? { color: '#fbbf24', textShadow: '0 0 6px rgba(251,191,36,0.6)' }
+      : { color: 'rgba(107,114,128,1)' }
   }
 >{liveStreak > 0 ? `${liveStreak}일 연속 🔥` : '시작! 🌱'}</span>
                             {/* 7일 뱃지 안내 팝업 */}
