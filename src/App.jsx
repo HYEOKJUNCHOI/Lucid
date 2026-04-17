@@ -3,9 +3,40 @@ import { useAuth } from './hooks/useAuth';
 import Landing from './pages/Landing/Landing';
 import Login from './pages/Login/Login';
 import StudentPage from './pages/Student/StudentPage';
+import MobileStudentRoot from './pages/Student/MobileStudentRoot';
 import AdminPage from './pages/Admin/AdminPage';
 import DictionaryPopup from './components/common/DictionaryPopup';
 import { EditModeProvider } from './components/common/mobile/EditModeProvider';
+import { useIsMobile } from './hooks/useMediaQuery';
+
+/**
+ * StudentRoot — 뷰포트 기반 분기 래퍼.
+ * - 모바일(<768px): <MobileStudentRoot initialMode={...} />
+ * - 데스크탑      : <StudentPage forcedMode={...} /> (기존 로직 유지)
+ *
+ * URL 체계는 기존과 동일하게 유지(북마크/딥링크 호환). 내부 렌더만 분기.
+ */
+function StudentRoot({ mode, user, userData, onLogout }) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <MobileStudentRoot
+        initialMode={mode}
+        user={user}
+        userData={userData}
+        onLogout={onLogout}
+      />
+    );
+  }
+  return (
+    <StudentPage
+      user={user}
+      userData={userData}
+      onLogout={onLogout}
+      forcedMode={mode}
+    />
+  );
+}
 
 function App() {
   const { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, loginWithGithub, loginWithAdmin, loginOrSignupWithEmail, logout } = useAuth();
@@ -66,7 +97,9 @@ function App() {
 
   // 보호 라우트 헬퍼 — 로그인 없으면 /login으로 리다이렉트
   const requireAuth = (el) => (user ? el : <Navigate to="/login" replace />);
-  const studentPage = <StudentPage user={user} userData={userData} onLogout={logout} />;
+  const studentRoot = (mode) => (
+    <StudentRoot mode={mode} user={user} userData={userData} onLogout={logout} />
+  );
 
   return (
     <BrowserRouter>
@@ -94,15 +127,15 @@ function App() {
             : <Navigate to="/home" replace />
         } />
 
-        {/* 학생 보호 라우트 */}
-        <Route path="/home"         element={requireAuth(studentPage)} />
-        <Route path="/chapter"      element={requireAuth(studentPage)} />
-        <Route path="/home/quest"   element={requireAuth(studentPage)} />
-        <Route path="/home/levelup" element={requireAuth(studentPage)} />
-        <Route path="/study"        element={requireAuth(studentPage)} />
+        {/* 학생 보호 라우트 — 뷰포트 기반 분기(StudentRoot) */}
+        <Route path="/home"         element={requireAuth(studentRoot(null))} />
+        <Route path="/chapter"      element={requireAuth(studentRoot('chapter'))} />
+        <Route path="/home/quest"   element={requireAuth(studentRoot('quest'))} />
+        <Route path="/home/levelup" element={requireAuth(studentRoot('levelup'))} />
+        <Route path="/study"        element={requireAuth(studentRoot('freeStudy'))} />
         {/* 구 URL 하위호환 */}
-        <Route path="/home/chapter" element={requireAuth(studentPage)} />
-        <Route path="/freestudy"    element={requireAuth(studentPage)} />
+        <Route path="/home/chapter" element={requireAuth(studentRoot('chapter'))} />
+        <Route path="/freestudy"    element={requireAuth(studentRoot('freeStudy'))} />
 
         {/* 관리자 보호 라우트 */}
         <Route path="/admin" element={

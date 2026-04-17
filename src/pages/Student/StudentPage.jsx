@@ -25,9 +25,12 @@ import SidebarDrawer from '../../components/common/mobile/SidebarDrawer';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
 
-const StudentPage = ({ user, userData, onLogout }) => {
+const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  // 📱 모바일에서는 MobileStudentRoot 가 렌더를 담당하므로 조기 반환 (중복 렌더 방지)
+  const _isMobileGate = useIsMobile();
+  if (_isMobileGate) return null;
   const groupIDs = userData?.groupIDs || [];
   const {
     teacher, setTeacher,
@@ -58,6 +61,8 @@ const StudentPage = ({ user, userData, onLogout }) => {
   const [streakStatus, setStreakStatus] = useState('ok'); // 'ok'|'grace1'|'grace2'|'broken'|'repair'
   const [repairCount, setRepairCount] = useState(-1);
   const [mode, setMode] = useState(() => {
+    // forcedMode 가 App.jsx 에서 라우트별로 주입되면 우선 사용
+    if (forcedMode !== undefined) return forcedMode;
     const p = window.location.pathname;
     if (p === '/chapter' || p === '/home/chapter') return 'chapter';
     if (p === '/home/quest') return 'quest';
