@@ -188,6 +188,17 @@ export default function DebugPanel() {
   const [resetConfirm, setResetConfirm]   = useState(false);
   const [seeding, setSeeding]             = useState(false);
   const [seedDone, setSeedDone]           = useState(false);
+  // 멀티셀렉트
+  const [multiMode, setMultiMode]         = useState(false);
+  const [checkedUids, setCheckedUids]     = useState(new Set());
+
+  const toggleChecked = (uid) => {
+    setCheckedUids(prev => {
+      const next = new Set(prev);
+      next.has(uid) ? next.delete(uid) : next.add(uid);
+      return next;
+    });
+  };
 
   const handleSeedAll = async () => {
     if (!users.length) return;
@@ -196,6 +207,23 @@ export default function DebugPanel() {
       await seedAllUsers(users);
       setSeedDone(true);
       setTimeout(() => setSeedDone(false), 3000);
+    } catch (e) {
+      alert('시드 실패: ' + e.message);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const handleSeedSelected = async () => {
+    const targets = users.filter(u => checkedUids.has(u.uid));
+    if (!targets.length) return;
+    setSeeding(true);
+    try {
+      await seedAllUsers(targets);
+      setSeedDone(true);
+      setTimeout(() => setSeedDone(false), 3000);
+      setCheckedUids(new Set());
+      setMultiMode(false);
     } catch (e) {
       alert('시드 실패: ' + e.message);
     } finally {
@@ -316,13 +344,33 @@ export default function DebugPanel() {
 
       {/* 학생 카드 그리드 */}
       <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-        <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between gap-2">
           <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">학생 선택</span>
-          {selectedUser && (
-            <span className="text-[10px] text-[#4ec9b0] font-bold">
-              {selectedUser.displayName || selectedUser.email} 선택됨
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {multiMode && checkedUids.size > 0 && (
+              <button
+                onClick={handleSeedSelected}
+                disabled={seeding}
+                className="px-3 py-1 rounded-lg text-[11px] font-bold text-[#a78bfa] border border-[#a78bfa]/30 hover:bg-[#a78bfa]/10 transition-colors disabled:opacity-40"
+              >
+                {seeding ? '적용 중...' : `🎲 선택 ${checkedUids.size}명 랜덤`}
+              </button>
+            )}
+            {multiMode && (
+              <button
+                onClick={() => { setMultiMode(false); setCheckedUids(new Set()); }}
+                className="px-3 py-1 rounded-lg text-[11px] font-bold text-gray-400 border border-white/[0.08] hover:text-white transition-colors"
+              >취소</button>
+            )}
+            <button
+              onClick={() => { setMultiMode(m => !m); setCheckedUids(new Set()); setSelectedUid(''); }}
+              className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all border ${
+                multiMode
+                  ? 'bg-[#a78bfa]/15 border-[#a78bfa]/40 text-[#a78bfa]'
+                  : 'border-white/[0.08] text-gray-500 hover:text-white hover:border-white/20'
+              }`}
+            >{multiMode ? `☑ ${checkedUids.size}명 선택 중` : '☑ 다중선택'}</button>
+          </div>
         </div>
         <div className="p-3 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
           {sortedUsers.length === 0
@@ -331,167 +379,163 @@ export default function DebugPanel() {
               <MiniStudentCard
                 key={u.uid}
                 student={u}
-                selected={u.uid === selectedUid}
-                onClick={() => setSelectedUid(u.uid === selectedUid ? '' : u.uid)}
+                selected={multiMode ? checkedUids.has(u.uid) : u.uid === selectedUid}
+                onClick={() => {
+                  if (multiMode) {
+                    toggleChecked(u.uid);
+                  } else {
+                    setSelectedUid(u.uid);
+                  }
+                }}
               />
             ))
           }
         </div>
       </section>
 
-      {loading && <div className="text-[13px] text-gray-400">불러오는 중...</div>}
-
-      {!loading && selectedUid && userState && (
-        <>
-          {/* 숫자 필드 */}
-          <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">숫자 필드</span>
-            </div>
-            <div className="divide-y divide-white/[0.04]">
-              {NUMBER_FIELDS.map(({ key, label }) => (
-                <div key={key} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="text-[12px] text-gray-400 w-52 shrink-0">{label}</span>
-                  <input
-                    type="number"
-                    value={fieldValues[key] ?? ''}
-                    onChange={e => setFieldValues(v => ({ ...v, [key]: e.target.value }))}
-                    onKeyDown={e => e.key === 'Enter' && handleApply(key)}
-                    className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[13px] text-white w-28 focus:outline-none focus:border-[#4ec9b0]/50"
-                  />
-                  <button
-                    onClick={() => handleApply(key)}
-                    disabled={saving[key]}
-                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-50"
-                  >{saving[key] ? '...' : '적용'}</button>
-                  <span className="text-[11px] text-gray-600 ml-1">
-                    현재: <span className="text-gray-400 font-mono">{String(userState?.[key] ?? '—')}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* 날짜 필드 */}
-          <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">날짜 필드</span>
-            </div>
-            <div className="divide-y divide-white/[0.04]">
-              {STRING_FIELDS.map(({ key, label }) => (
-                <div key={key} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="text-[12px] text-gray-400 w-52 shrink-0">{label}</span>
-                  <input
-                    type="date"
-                    value={fieldValues[key] ?? ''}
-                    onChange={e => setFieldValues(v => ({ ...v, [key]: e.target.value }))}
-                    className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[13px] text-white focus:outline-none focus:border-[#4ec9b0]/50"
-                  />
-                  <button
-                    onClick={() => handleApply(key)}
-                    disabled={saving[key]}
-                    className="px-3 py-1 rounded-lg text-[11px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-50"
-                  >{saving[key] ? '...' : '적용'}</button>
-                  <span className="text-[11px] text-gray-600 ml-1">
-                    현재: <span className="text-gray-400 font-mono">{userState?.[key] || '—'}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* 출석 달력 */}
-          <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">출석 날짜 편집</span>
-              <span className="text-[10px] text-gray-600">({(userState?.attendedDates || []).length}일 누적)</span>
-            </div>
-            <div className="px-4 py-3">
-              <AttendanceCalendar
-                attendedDates={userState?.attendedDates || []}
-                onAdd={async (dateStr) => {
-                  await debugAddAttendedDate(selectedUid, dateStr);
-                  const fresh = await getUserState(selectedUid);
-                  setUserState(fresh);
-                }}
-                onRemove={async (dateStr) => {
-                  await debugRemoveAttendedDate(selectedUid, dateStr);
-                  const fresh = await getUserState(selectedUid);
-                  setUserState(fresh);
-                }}
-              />
-            </div>
-          </section>
-
-          {/* 타자 기록 편집 */}
-          <TypingStatsEditor
-            uid={selectedUid}
-            typingStats={userState?.typingStats}
-            onSaved={async () => {
-              const fresh = await getUserState(selectedUid);
-              setUserState(fresh);
-            }}
-          />
-
-          {/* 배열 미리보기 */}
-          <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">배열 필드 (미리보기)</span>
-            </div>
-            <div className="divide-y divide-white/[0.04]">
-              {[{ key: 'frozenDates', label: '얼린 날짜' }, { key: 'weakFiles', label: '취약 파일' }].map(({ key, label }) => (
-                <div key={key} className="px-4 py-2.5">
-                  <div className="text-[12px] text-gray-400 mb-1">{label}</div>
-                  <div className="text-[11px] font-mono text-gray-500 bg-white/[0.02] rounded px-2 py-1 max-h-16 overflow-y-auto">
-                    {(userState?.[key] || []).length === 0 ? '(비어있음)' : (userState?.[key] || []).join(', ')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* 유틸리티 액션 */}
-          <section className="rounded-xl bg-white/[0.02] border border-white/[0.08] overflow-hidden mb-3">
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <span className="text-[11px] font-black uppercase tracking-wider text-gray-400">🔧 유틸리티</span>
-            </div>
-            <div className="px-4 py-3 flex items-center gap-3">
+      {/* ── 학생 상세 모달 ───────────────────────────────────────────── */}
+      {selectedUid && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedUid(''); }}
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl flex flex-col"
+            style={{ background: '#0f1117', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}
+          >
+            {/* 모달 헤더 */}
+            <div className="sticky top-0 z-10 px-5 py-4 border-b border-white/[0.08] flex items-center justify-between" style={{ background: '#0f1117' }}>
+              <div>
+                <div className="text-base font-black text-white">{selectedUser?.displayName || selectedUser?.email || '학생'}</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">{selectedUid}</div>
+              </div>
               <button
-                onClick={async () => {
-                  await syncStreakFromDates(selectedUid);
-                  const fresh = await getUserState(selectedUid);
-                  setUserState(fresh);
-                }}
-                className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-[#4ec9b0] border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/10 transition-colors"
-                title="attendedDates + frozenDates 배열을 기준으로 streak/bestStreak 필드를 다시 계산해서 반영합니다."
-              >
-                🔄 연속일 재계산
-              </button>
-              <span className="text-[10px] text-gray-500">출석/얼음 배열 기준으로 streak 필드 동기화</span>
+                onClick={() => setSelectedUid('')}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors text-lg leading-none"
+              >×</button>
             </div>
-          </section>
 
-          {/* 위험 액션 */}
-          <section className="rounded-xl bg-[#ef4444]/[0.04] border border-[#ef4444]/20 overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#ef4444]/20">
-              <span className="text-[11px] font-black uppercase tracking-wider text-[#ef4444]/70">⚠️ 위험한 액션</span>
-            </div>
-            <div className="px-4 py-3 flex items-center gap-3">
-              {resetConfirm ? (
-                <>
-                  <span className="text-[12px] text-[#ef4444]">정말 초기화할까요? 되돌릴 수 없습니다.</span>
-                  <button onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[12px] font-black text-white bg-[#ef4444]/80 hover:bg-[#ef4444] transition-colors">확인, 초기화</button>
-                  <button onClick={() => setResetConfirm(false)} className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-gray-400 hover:text-white transition-colors">취소</button>
-                </>
-              ) : (
-                <button onClick={() => setResetConfirm(true)} className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-[#ef4444] border border-[#ef4444]/30 hover:bg-[#ef4444]/10 transition-colors">
-                  🧹 이 학생 상태 초기화
-                </button>
-              )}
-            </div>
-          </section>
-        </>
+            {loading ? (
+              <div className="p-8 text-center text-[13px] text-gray-400">불러오는 중...</div>
+            ) : userState ? (
+              <div className="p-5 flex flex-col gap-4">
+                {/* 숫자 필드 */}
+                <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-white/[0.06]">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">숫자 필드</span>
+                  </div>
+                  <div className="divide-y divide-white/[0.04]">
+                    {NUMBER_FIELDS.map(({ key, label }) => (
+                      <div key={key} className="flex items-center gap-2 px-4 py-2">
+                        <span className="text-[11px] text-gray-400 w-44 shrink-0">{label}</span>
+                        <input
+                          type="number"
+                          value={fieldValues[key] ?? ''}
+                          onChange={e => setFieldValues(v => ({ ...v, [key]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && handleApply(key)}
+                          className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[12px] text-white w-24 focus:outline-none focus:border-[#4ec9b0]/50"
+                        />
+                        <button onClick={() => handleApply(key)} disabled={saving[key]}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-50"
+                        >{saving[key] ? '...' : '적용'}</button>
+                        <span className="text-[10px] text-gray-600 ml-1 font-mono">{String(userState?.[key] ?? '—')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* 날짜 필드 */}
+                <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-white/[0.06]">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">날짜 필드</span>
+                  </div>
+                  <div className="divide-y divide-white/[0.04]">
+                    {STRING_FIELDS.map(({ key, label }) => (
+                      <div key={key} className="flex items-center gap-2 px-4 py-2">
+                        <span className="text-[11px] text-gray-400 w-44 shrink-0">{label}</span>
+                        <input type="date" value={fieldValues[key] ?? ''}
+                          onChange={e => setFieldValues(v => ({ ...v, [key]: e.target.value }))}
+                          className="bg-white/[0.04] border border-white/[0.08] rounded px-2 py-1 text-[12px] text-white focus:outline-none focus:border-[#4ec9b0]/50"
+                        />
+                        <button onClick={() => handleApply(key)} disabled={saving[key]}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-50"
+                        >{saving[key] ? '...' : '적용'}</button>
+                        <span className="text-[10px] text-gray-600 ml-1 font-mono">{userState?.[key] || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* 출석 달력 */}
+                <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">출석 날짜</span>
+                    <span className="text-[10px] text-gray-600">({(userState?.attendedDates || []).length}일 누적)</span>
+                  </div>
+                  <div className="px-4 py-3">
+                    <AttendanceCalendar
+                      attendedDates={userState?.attendedDates || []}
+                      onAdd={async (dateStr) => {
+                        await debugAddAttendedDate(selectedUid, dateStr);
+                        const fresh = await getUserState(selectedUid);
+                        setUserState(fresh);
+                      }}
+                      onRemove={async (dateStr) => {
+                        await debugRemoveAttendedDate(selectedUid, dateStr);
+                        const fresh = await getUserState(selectedUid);
+                        setUserState(fresh);
+                      }}
+                    />
+                  </div>
+                </section>
+
+                {/* 타자 기록 */}
+                <TypingStatsEditor uid={selectedUid} typingStats={userState?.typingStats}
+                  onSaved={async () => { const fresh = await getUserState(selectedUid); setUserState(fresh); }}
+                />
+
+                {/* 배열 미리보기 */}
+                <section className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-white/[0.06]">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">배열 미리보기</span>
+                  </div>
+                  <div className="divide-y divide-white/[0.04]">
+                    {[{ key: 'frozenDates', label: '얼린 날짜' }, { key: 'weakFiles', label: '취약 파일' }].map(({ key, label }) => (
+                      <div key={key} className="px-4 py-2.5">
+                        <div className="text-[11px] text-gray-400 mb-1">{label}</div>
+                        <div className="text-[10px] font-mono text-gray-500 bg-white/[0.02] rounded px-2 py-1 max-h-14 overflow-y-auto">
+                          {(userState?.[key] || []).length === 0 ? '(비어있음)' : (userState?.[key] || []).join(', ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* 유틸리티 + 위험 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={async () => { await syncStreakFromDates(selectedUid); const fresh = await getUserState(selectedUid); setUserState(fresh); }}
+                    className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-[#4ec9b0] border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/10 transition-colors"
+                  >🔄 연속일 재계산</button>
+                  {resetConfirm ? (
+                    <>
+                      <span className="text-[11px] text-[#ef4444]">정말 초기화?</span>
+                      <button onClick={handleReset} className="px-3 py-1.5 rounded-lg text-[12px] font-black text-white bg-[#ef4444]/80 hover:bg-[#ef4444] transition-colors">확인</button>
+                      <button onClick={() => setResetConfirm(false)} className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-gray-400 hover:text-white transition-colors">취소</button>
+                    </>
+                  ) : (
+                    <button onClick={() => setResetConfirm(true)} className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-[#ef4444] border border-[#ef4444]/30 hover:bg-[#ef4444]/10 transition-colors">
+                      🧹 초기화
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       )}
+
     </div>
   );
 }
