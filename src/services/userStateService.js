@@ -54,7 +54,11 @@ import { db } from '../lib/firebase';
  */
 export const BADGE_THRESHOLD = 7;
 
-export const todayStr = () => new Date().toISOString().slice(0, 10);
+/** 오늘 날짜를 로컬 시간 기준 YYYY-MM-DD 로 반환 (UTC 아님 — 한국 오전 9시 이전 오작동 방지) */
+export const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 /**
  * 최근 7일(baseDate 포함 & 6일 전까지) 달력 창이 모두 실제 출석인지 판정.
@@ -444,11 +448,11 @@ export const computeStreakFromDates = (attendedDates = [], frozenDates = []) => 
   const attendedSet = new Set(attendedDates || []);
   const frozenSet = new Set(frozenDates || []);
   if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
-  const today = todayStr();
+  const today = todayStr(); // 로컬 날짜 기준
   const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
   const y = new Date();
   y.setDate(y.getDate() - 1);
-  const yday = y.toISOString().slice(0, 10);
+  const yday = `${y.getFullYear()}-${String(y.getMonth()+1).padStart(2,'0')}-${String(y.getDate()).padStart(2,'0')}`;
   if (!isCovered(today) && !isCovered(yday)) return 0;
   let count = 0;
   const cursor = new Date(today);

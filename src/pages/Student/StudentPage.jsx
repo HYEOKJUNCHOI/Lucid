@@ -1231,12 +1231,14 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                       const attendedSet = new Set(userData?.attendedDates || []);
                       const frozenSet = new Set(userData?.frozenDates || []);
                       if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
-                      const todayIso = new Date().toISOString().slice(0, 10);
+                      // 로컬 날짜 기준 (UTC 아님 — 한국 오전 9시 이전 오작동 방지)
+                      const _d = new Date();
+                      const todayIso = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
                       const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
                       // 오늘 또는 어제가 커버되어 있어야 연속 인정
                       const yday = new Date();
                       yday.setDate(yday.getDate() - 1);
-                      const ydayIso = yday.toISOString().slice(0, 10);
+                      const ydayIso = `${yday.getFullYear()}-${String(yday.getMonth()+1).padStart(2,'0')}-${String(yday.getDate()).padStart(2,'0')}`;
                       if (!isCovered(todayIso) && !isCovered(ydayIso)) return 0;
                       let count = 0;
                       const cursor = new Date(todayIso);
