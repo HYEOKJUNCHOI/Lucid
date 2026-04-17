@@ -51,6 +51,9 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   // 📱 모바일 전용 배지 툴팁 탭 토글
   const [showStreakTip, setShowStreakTip] = useState(false);
   const [showWeekTip, setShowWeekTip] = useState(false);
+  // 출석 달력 뷰 월 (null = 현재 달)
+  const [calViewYear, setCalViewYear]   = useState(null);
+  const [calViewMon, setCalViewMon]     = useState(null);
   // 📱 모바일 반응형 상태
   const isMobile = useIsMobile();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -1200,11 +1203,19 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                   {/* 연속 출석 — 한달 달력 */}
                   {(() => {
                     const dayLabels = ['일','월','화','수','목','금','토'];
-                    const year = now.getFullYear();
-                    const mon = now.getMonth();
-                    const todayDate = now.getDate();
-                    const firstDow = new Date(year, mon, 1).getDay(); // 1일의 요일
+                    // 뷰 달 (state 없으면 현재 달)
+                    const year = calViewYear ?? now.getFullYear();
+                    const mon  = calViewMon  ?? now.getMonth();
+                    const isCurrentMonth = year === now.getFullYear() && mon === now.getMonth();
+                    const todayDate = isCurrentMonth ? now.getDate() : -1;
+                    const firstDow = new Date(year, mon, 1).getDay();
                     const daysInMonth = new Date(year, mon + 1, 0).getDate();
+
+                    const moveMon = (delta) => {
+                      const base = new Date(year, mon + delta, 1);
+                      setCalViewYear(base.getFullYear());
+                      setCalViewMon(base.getMonth());
+                    };
 
                     // Firestore userData의 실제 출석 날짜 사용
                     const yearStr = String(year);
@@ -1258,7 +1269,19 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                     return (
                       <div className="mb-2 p-2 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(245,158,11,0.04) 100%)', border: '1px solid rgba(251,191,36,0.22)' }}>
                         <div className="flex items-center justify-between mb-2 px-0.5">
-                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{month}월 출석</span>
+                          {/* 월 네비게이션 */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => moveMon(-1)}
+                              className="text-[10px] px-1 text-gray-500 hover:text-white transition-colors leading-none"
+                            >‹</button>
+                            <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{mon + 1}월 출석</span>
+                            <button
+                              onClick={() => moveMon(1)}
+                              disabled={isCurrentMonth}
+                              className="text-[10px] px-1 text-gray-500 hover:text-white transition-colors leading-none disabled:opacity-20"
+                            >›</button>
+                          </div>
                           <div
                             className="relative group cursor-default"
                             onClick={isMobile ? (e) => { e.stopPropagation(); setShowWeekTip(v => !v); } : undefined}
@@ -1308,9 +1331,9 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                             if (!d) return (
                               <div key={i} className="aspect-square rounded" style={{ border: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.01)' }} />
                             );
-                            const isToday = d === todayDate;
+                            const isToday = isCurrentMonth && d === todayDate;
                             const attended = attendedDates.has(d);
-                            const isFuture = d > todayDate;
+                            const isFuture = isCurrentMonth && d > todayDate;
                             const col = i % 7;
                             const isWeekend = col === 0 || col === 6; // 일=0, 토=6
                             const isFrozen = frozenDates.has(d) && !attended;
