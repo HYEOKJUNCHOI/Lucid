@@ -184,7 +184,12 @@ export default function QuestTab() {
       (f) => visitedFiles.includes(f.path) && !weakFiles.includes(f.path)
     );
     if (reviewCandidates.length > 0) {
-      const pick = reviewCandidates[Math.floor(Math.random() * reviewCandidates.length)];
+      // 날짜 기반 결정적 시드 (하루 동안 같은 복습 파일 유지 + StrictMode 이중 렌더 대응)
+      const today = new Date().toISOString().slice(0, 10);
+      let seed = 0;
+      for (let i = 0; i < today.length; i++) seed = (seed * 31 + today.charCodeAt(i)) | 0;
+      const idx = Math.abs(seed) % reviewCandidates.length;
+      const pick = reviewCandidates[idx];
       items.push({ id: `review_${pick.path}`, file: pick, type: 'review', chapterLabel: pick.chapterLabel, done: false, progress: 0, total: 0 });
     }
     return items;

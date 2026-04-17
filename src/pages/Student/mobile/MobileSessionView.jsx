@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/hooks/useAuth';
+import { StudentContext } from '@/pages/Student/MobileStudentRoot';
 import haptic from '@/lib/haptic';
 import Screen from '@/components/common/mobile/Screen';
 import MobileTopBar from '@/components/common/mobile/MobileTopBar';
@@ -20,7 +20,8 @@ import ActionSheet from '@/components/common/mobile/ActionSheet';
  * @param {() => void} [props.onExit]  뒤로가기 핸들러 (기본: history.back)
  */
 export default function MobileSessionView({ fileId, onExit }) {
-  const { user } = useAuth();
+  // App.jsx useAuth() 의 단일 구독을 StudentContext 로 재사용 (중복 구독 방지)
+  const { user } = useContext(StudentContext) ?? {};
 
   // ─── 탭 상태 ──────────────────────────────────────
   const [tab, setTab] = useState('code');
