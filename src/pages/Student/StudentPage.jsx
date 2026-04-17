@@ -1263,7 +1263,14 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                             className="relative group cursor-default"
                             onClick={isMobile ? (e) => { e.stopPropagation(); setShowWeekTip(v => !v); } : undefined}
                           >
-                            <span className="text-[11px] font-black" style={{ color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }}>{liveStreak > 0 ? `${liveStreak}일 연속 🔥` : '시작! 🌱'}</span>
+                            <span
+  className="text-[9px] font-bold tracking-wide"
+  style={
+    liveStreak >= 7
+      ? { color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }
+      : { color: 'rgba(251,191,36,0.55)' }
+  }
+>{liveStreak > 0 ? `${liveStreak}일 연속 🔥` : '시작! 🌱'}</span>
                             {/* 7일 뱃지 안내 팝업 */}
                             <div className={`absolute right-0 bottom-full mb-2 pointer-events-none transition-opacity duration-150 z-50 w-[190px] ${showWeekTip ? 'opacity-100' : 'opacity-0'} md:opacity-0 md:group-hover:opacity-100`}>
                               <div className="rounded-xl px-3.5 py-3 shadow-2xl" style={{ background: '#1a1f2e', border: '1px solid rgba(251,191,36,0.35)' }}>
