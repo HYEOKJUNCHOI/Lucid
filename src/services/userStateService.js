@@ -47,7 +47,31 @@ import { db } from '../lib/firebase';
 
 // ─── 유틸 ────────────────────────────────────────────────────────────────────
 
+/**
+ * 스트릭 뱃지 획득 임계값 — 주말 포함 7일 연속 실제 출석 시 첫 획득.
+ * "주말 포함" 은 달력상 7일 연속이면 토·일이 자동으로 포함되므로,
+ * **최근 7일 창 전부가 attendedDates 에 있어야** (얼리기로 때운 날 제외) 충족.
+ */
+export const BADGE_THRESHOLD = 7;
+
 export const todayStr = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * 최근 7일(baseDate 포함 & 6일 전까지) 달력 창이 모두 실제 출석인지 판정.
+ * 얼리기로 때운 날은 attendedDates에 안 들어가므로 자연스럽게 제외됨.
+ * 5평일 + 2주말 조건은 7일 연속이면 자동 충족.
+ */
+export const hasCleanWeekWindow = (attendedDates, baseDate = todayStr()) => {
+  const attended = new Set(attendedDates || []);
+  const base = new Date(baseDate);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() - i);
+    const ds = d.toISOString().slice(0, 10);
+    if (!attended.has(ds)) return false;
+  }
+  return true;
+};
 
 /** 두 날짜(YYYY-MM-DD) 사이 일수 차 (b - a) */
 export const daysBetween = (a, b) => {
@@ -145,11 +169,11 @@ export const calcStreakStatus = async (uid, state) => {
       const frozenStreak = saved + 1;
       const newFreezes = freezes - 1;
       const bestSaved = state?.bestStreak || 0;
+      // 얼리기로 때운 날은 attendedDates 에 안 들어감 → 뱃지 수여 조건
+      // (최근 7일 전부 실제 출석) 은 자연스럽게 미충족. 그래서 여기서는 bump 안 함.
       const updates = {
         streakFreezes: newFreezes,
         streak: frozenStreak,
-        // 얼리기로 이어도 최고 기록 갱신 대상
-        ...(frozenStreak > bestSaved ? { bestStreak: frozenStreak } : {}),
       };
       // 3일 배수 달성 시 얼리기 보상
       if (frozenStreak % 3 === 0) updates.streakFreezes = newFreezes + 1;
@@ -195,12 +219,14 @@ export const onQuestCompleteFS = async (uid, state) => {
   };
 
   const bestSaved = state?.bestStreak || 0;
+  // 오늘을 포함한 attendedDates 가상 확장 (arrayUnion 으로 today 추가 중)
+  const attendedWithToday = [...(state?.attendedDates || []), today];
 
-  // 복구 퀘스트 진행 중
+  // 복구 퀘스트 완료 경로는 이전 3일 내에 결석이 있었으므로 clean week 불가 → bump 안 함
   if (repairCount >= 0) {
     const next = repairCount + 1;
     if (next >= 3) {
-      // 복구 완료
+      // 복구 완료 (뱃지 갱신 없음 — 이후 실제 7일 달성 시 자연 갱신)
       const before = state?.streakBeforeBreak || 0;
       const restored = before + 1;
       await updateUserState(uid, {
@@ -208,8 +234,6 @@ export const onQuestCompleteFS = async (uid, state) => {
         streak: restored,
         repairCount: -1,
         streakBeforeBreak: 0,
-        // 뱃지 = 역대 최고치 — 복구값이 최고기록 넘으면 갱신
-        ...(restored > bestSaved ? { bestStreak: restored } : {}),
       });
       return { streak: restored, repairedStreak: restored, gotFreeze: false };
     }
@@ -221,15 +245,18 @@ export const onQuestCompleteFS = async (uid, state) => {
   const saved = state?.streak || 0;
   const newStreak = saved + 1;
   const got3DayFreeze = newStreak > 0 && newStreak % 3 === 0;
-  // 스트릭 뱃지 갱신: 현재 연속이 역대 최고를 넘어선 순간부터 같이 올라감
-  const beatsRecord = newStreak > bestSaved;
+  // 뱃지 수여 조건: (1) 7일+ 연속 (2) 최근 7일 창 전부 실제 출석 (3) 최고기록 초과
+  const qualifiesForBadge =
+    newStreak >= BADGE_THRESHOLD &&
+    hasCleanWeekWindow(attendedWithToday, today) &&
+    newStreak > bestSaved;
   await updateUserState(uid, {
     ...updates,
     streak: newStreak,
     ...(got3DayFreeze ? { streakFreezes: increment(1) } : {}),
-    ...(beatsRecord ? { bestStreak: newStreak } : {}),
+    ...(qualifiesForBadge ? { bestStreak: newStreak } : {}),
   });
-  return { streak: newStreak, repairedStreak: null, gotFreeze: got3DayFreeze, newBadge: beatsRecord };
+  return { streak: newStreak, repairedStreak: null, gotFreeze: got3DayFreeze, newBadge: qualifiesForBadge };
 };
 
 /**
@@ -247,12 +274,11 @@ export const useFreezeOnDateFS = async (uid, dateStr, state) => {
 
   const newStreak = (state?.streak || 0) + 1;
   const newFreezes = freezes - 1;
-  const bestSaved = state?.bestStreak || 0;
+  // 수동 얼리기는 그 날 실제 출석이 아님 → 뱃지 갱신 대상 아님
   await updateUserState(uid, {
     frozenDates: arrayUnion(dateStr),
     streakFreezes: newFreezes,
     streak: newStreak,
-    ...(newStreak > bestSaved ? { bestStreak: newStreak } : {}),
   });
   return { success: true, remaining: newFreezes, newStreak };
 };

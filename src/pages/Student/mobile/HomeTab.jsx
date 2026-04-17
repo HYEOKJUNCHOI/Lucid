@@ -163,19 +163,19 @@ export default function HomeTab() {
       actions={
         <div className="flex items-center gap-1">
           <StatBadge
-            icon={badgeValue > 0 ? "🔥" : "🌱"}
-            value={badgeValue > 0 ? badgeValue : "시작!"}
+            icon={streak > 0 ? "🔥" : "🌱"}
+            value={streak > 0 ? streak : "시작!"}
             label="스트릭"
             detail={
-              badgeValue === 0
+              bestStreak === 0
                 ? "오늘 첫 퀘스트를 끝내면 스트릭이 시작돼요."
                 : streak === 0
-                  ? `최고 기록 ${bestStreak}일 — 오늘 다시 시작해보세요.`
+                  ? `🏅 최고 기록 ${bestStreak}일 — 오늘부터 다시 시작!`
                   : isBeatingRecord
                     ? `🎉 최고 기록 갱신 중! ${streak}일 연속.`
-                    : `현재 ${streak}일 연속 / 최고 ${bestStreak}일.`
+                    : `현재 ${streak}일 연속 / 🏅 최고 ${bestStreak}일.`
             }
-            color={badgeValue > 0 ? "orange" : "green"}
+            color={streak > 0 ? "orange" : "green"}
             popoverSide="bottom"
           />
           <StatBadge
@@ -211,16 +211,20 @@ export default function HomeTab() {
           {/* ── 스탯 뱃지 가로 스크롤 ──────────────────────────── */}
           <section>
             <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-              <div className="bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
-                <span className="text-xl">{badgeValue > 0 ? "🔥" : "🌱"}</span>
-                {badgeValue > 0 ? (
-                  <span className="text-base font-black text-orange-400 leading-none">{badgeValue}</span>
+              <div className="relative bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
+                <span className="text-xl">{streak > 0 ? "🔥" : "🌱"}</span>
+                {streak > 0 ? (
+                  <span className="text-base font-black text-orange-400 leading-none">{streak}</span>
                 ) : (
                   <span className="text-[11px] font-bold text-emerald-400 leading-none">시작!</span>
                 )}
-                <span className="text-[10px] text-gray-500">
-                  {streak === 0 && bestStreak > 0 ? '최고' : '스트릭'}
-                </span>
+                <span className="text-[10px] text-gray-500">스트릭</span>
+                {/* 역대 최고 뱃지 (보조 — 기록 있을 때만) */}
+                {bestStreak > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 text-[9px] font-bold bg-amber-500/90 text-black rounded-pill px-1.5 py-0.5 shadow-e1 leading-none">
+                    🏅{bestStreak}
+                  </span>
+                )}
               </div>
               <div className="bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
                 <span className="text-xl">⚡</span>

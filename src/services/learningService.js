@@ -441,7 +441,7 @@ export const checkStreak = () => {
       // 얼리기 사용 날짜도 연속일에 포함 → streak +1
       const frozenStreak = saved + 1;
       localStorage.setItem(STREAK_KEY, String(frozenStreak));
-      bumpBestStreak(frozenStreak); // 최고 기록 갱신 체크
+      // ⚠️ 뱃지 수여 조건(최근 7일 모두 실제 출석) 불충족 → bump 안 함
       // 3일 배수 달성 시 얼리기 보상 체크
       if (frozenStreak % 3 === 0) addStreakFreeze();
       return { streak: frozenStreak, status: 'grace1', usedFreeze: true, repairCount: -1 };
@@ -491,7 +491,7 @@ export const onQuestComplete = () => {
       localStorage.setItem(STREAK_KEY, String(restored));
       localStorage.setItem(REPAIR_KEY, '-1');
       localStorage.removeItem(STREAK_BEFORE_BREAK_KEY);
-      bumpBestStreak(restored);
+      // 복구 경로는 직전에 결석이 있었으므로 뱃지 수여 조건 불충족 → bump 안 함
       const gotFreeze = checkWeekendBonus();
       return { streak: restored, repairedStreak: restored, gotFreeze };
     }
@@ -514,13 +514,39 @@ export const onQuestComplete = () => {
   return { streak: newStreak, repairedStreak: null, gotFreeze: gotWeekendFreeze || got3DayFreeze, got3DayFreeze, newBadge };
 };
 
-// ─── 스트릭 뱃지 (역대 최고 연속일 — 끊겨도 유지, 넘어서면 갱신) ───
-/** 역대 최고 연속일 조회 */
+// ─── 스트릭 뱃지 ───────────────────────────────────
+// 규칙:
+//   1) 현재 streak 가 7일 이상
+//   2) 오늘 포함 최근 7일 창이 모두 실제 출석 (얼리기/복구 경로는 불충족)
+//   3) 현재 streak 가 역대 최고 기록 초과
+// → 세 조건 모두 AND 일 때만 뱃지 갱신 (처음 획득 포함)
+// "주말 포함" 은 달력 7일 연속이면 자동으로 토·일 포함되어 충족.
+export const BADGE_THRESHOLD = 7;
+
 export const getBestStreak = () => {
   return parseInt(localStorage.getItem(BEST_STREAK_KEY) || '0');
 };
-/** 현재 스트릭이 최고 기록을 넘기면 갱신, 넘긴 경우 true 반환 */
+
+/** 최근 7일(오늘 포함) 달력 창이 모두 attendedDates 에 있는지 */
+export const hasCleanWeekWindow = (baseDate = todayStr()) => {
+  const attended = new Set(getAttendedDates());
+  const base = new Date(baseDate);
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() - i);
+    const ds = d.toISOString().slice(0, 10);
+    if (!attended.has(ds)) return false;
+  }
+  return true;
+};
+
+/**
+ * 뱃지 갱신 시도. 3조건 AND 일 때만 갱신.
+ * @returns {boolean} true = 뱃지 새로 받음/갱신됨
+ */
 export const bumpBestStreak = (currentStreak) => {
+  if (currentStreak < BADGE_THRESHOLD) return false;
+  if (!hasCleanWeekWindow()) return false;
   const best = getBestStreak();
   if (currentStreak > best) {
     localStorage.setItem(BEST_STREAK_KEY, String(currentStreak));
