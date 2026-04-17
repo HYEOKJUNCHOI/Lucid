@@ -23,7 +23,7 @@ function Section({ title, children }) {
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────
 export default function ProfileTab() {
-  const { user, userData, onLogout } = useContext(StudentContext);
+  const { user, userData, onLogout } = useContext(StudentContext) ?? {};
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // ── 사용자 정보 ──

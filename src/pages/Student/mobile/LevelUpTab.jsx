@@ -8,102 +8,16 @@
  */
 import { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GiAnvilImpact, GiSilverBullet, GiGoldBar, GiDiamondTrophy, GiLaurelCrown } from 'react-icons/gi';
 
 import Screen from '@/components/common/mobile/Screen';
 import MobileTopBar from '@/components/common/mobile/MobileTopBar';
 import HapticButton from '@/components/common/mobile/HapticButton';
 import { StudentContext } from '@/pages/Student/MobileStudentRoot';
 import haptic from '@/lib/haptic';
+import { TIERS_MOBILE as TIERS } from '@/constants/tiers';
 
-// ─── 티어 정의 (LevelUpView 와 동일) ──────────────
-const TIERS = [
-  {
-    id: 'bronze',
-    label: '브론즈',
-    icon: GiAnvilImpact,
-    emoji: '⚒️',
-    minXP: 0,
-    color: '#d97706',
-    ringColor: 'rgba(217,119,6,0.6)',
-    desc: '배우는 중',
-    glowClass: 'tier-glow-bronze',
-    ringAnim: 'animate-ring-breathe-1',  // 4s, 1박
-    challenges: [
-      { id: 'b1', label: '변수와 자료형 마스터', desc: '기초 개념 10문항', total: 10 },
-      { id: 'b2', label: '조건문·반복문 정복', desc: 'if/for/while 응용', total: 15 },
-      { id: 'b3', label: '배열 기초 챌린지', desc: '1차원 배열 문제', total: 8 },
-    ],
-  },
-  {
-    id: 'silver',
-    label: '실버',
-    icon: GiSilverBullet,
-    emoji: '🥈',
-    minXP: 500,
-    color: '#9ca3af',
-    ringColor: 'rgba(156,163,175,0.6)',
-    desc: '수업 따라가는 수준',
-    glowClass: 'tier-glow-silver',
-    ringAnim: 'animate-ring-breathe',   // 2.4s, 2박
-    challenges: [
-      { id: 's1', label: '클래스와 객체 설계', desc: 'OOP 기초 챌린지', total: 12 },
-      { id: 's2', label: '예외처리 마스터', desc: 'try/catch/finally', total: 10 },
-      { id: 's3', label: '컬렉션 프레임워크', desc: 'List/Map/Set 활용', total: 12 },
-    ],
-  },
-  {
-    id: 'gold',
-    label: '골드',
-    icon: GiGoldBar,
-    emoji: '🥇',
-    minXP: 1500,
-    color: '#eab308',
-    ringColor: 'rgba(234,179,8,0.6)',
-    desc: '혼자 짤 수 있는 수준',
-    glowClass: 'tier-glow-gold',
-    ringAnim: 'animate-ring-breathe',   // 2.4s, 2박
-    challenges: [
-      { id: 'g1', label: '상속·다형성 심화', desc: 'override/overload', total: 15 },
-      { id: 'g2', label: '람다·스트림 정복', desc: 'Java 8+ 함수형', total: 12 },
-      { id: 'g3', label: 'SQL 중급 챌린지', desc: 'JOIN/GROUP BY/서브쿼리', total: 10 },
-    ],
-  },
-  {
-    id: 'platinum',
-    label: '플래티넘',
-    icon: GiLaurelCrown,
-    emoji: '💎',
-    minXP: 3500,
-    color: '#06b6d4',
-    ringColor: 'rgba(6,182,212,0.6)',
-    desc: '취업 가능 수준',
-    glowClass: 'tier-glow-platinum',
-    ringAnim: 'animate-ring-breathe-3', // 2.5s, 3박
-    challenges: [
-      { id: 'p1', label: 'Spring Boot API 설계', desc: 'REST + JPA 챌린지', total: 15 },
-      { id: 'p2', label: '디자인 패턴 마스터', desc: 'Singleton/Factory/MVC', total: 10 },
-      { id: 'p3', label: 'React 심화 챌린지', desc: 'Hook·상태관리·최적화', total: 12 },
-    ],
-  },
-  {
-    id: 'diamond',
-    label: '다이아',
-    icon: GiDiamondTrophy,
-    emoji: '🔱',
-    minXP: 7000,
-    color: '#a855f7',
-    ringColor: 'rgba(168,85,247,0.6)',
-    desc: '가르칠 수 있는 수준',
-    glowClass: 'tier-glow-diamond',
-    ringAnim: 'animate-ring-breathe-3', // 2.5s, 3박
-    challenges: [
-      { id: 'd1', label: '아키텍처 설계 챌린지', desc: '복합 시스템 설계', total: 8 },
-      { id: 'd2', label: '코드 리뷰 마스터', desc: '버그 찾기·리팩토링', total: 10 },
-      { id: 'd3', label: '풀스택 프로젝트 챌린지', desc: '종합 미션', total: 5 },
-    ],
-  },
-];
+// 티어 정의: src/constants/tiers.js 의 TIERS_MOBILE 을 단일 소스로 사용.
+// 데스크탑 LevelUpView 와 drift 방지를 위해 기획 변경 시 해당 파일만 수정할 것.
 
 // 현재 티어 계산
 const getTier = (xp) => {

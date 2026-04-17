@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import haptic from '@/lib/haptic';
 import { cx, motion, variants } from '@/lib/motion';
 
@@ -24,13 +24,13 @@ export function useStack() {
  * @param {string}          [props.className]
  */
 export default function StackNavigator({ initialScreen, className = '' }) {
+  // stack 아이템에 exiting 플래그를 두어 연타 pop 에도 stale closure 없이 동작.
+  // { key, component, exiting?: true }
   const [stack, setStack] = useState([
     { key: '__initial__', component: initialScreen },
   ]);
   // 'push' | 'pop' | null — 현재 진행 중인 애니메이션 방향
   const [animDir, setAnimDir] = useState(null);
-  // pop 중에 제거될 화면의 key
-  const popTargetRef = useRef(null);
 
   const push = useCallback((component, key) => {
     setAnimDir('push');
@@ -39,56 +39,79 @@ export default function StackNavigator({ initialScreen, className = '' }) {
 
   const pop = useCallback(() => {
     setStack((prev) => {
-      if (prev.length <= 1) return prev; // 스택 깊이 1이면 pop 불가
+      // 이미 exiting 중이 아닌 최상위를 찾아 exiting 마킹
+      let marked = false;
+      const next = [...prev];
+      for (let i = next.length - 1; i >= 1; i--) {
+        if (!next[i].exiting) {
+          next[i] = { ...next[i], exiting: true };
+          marked = true;
+          break;
+        }
+      }
+      if (!marked) return prev; // 더 이상 pop 할 게 없음
       haptic.tap();
-      const topKey = prev[prev.length - 1].key;
-      popTargetRef.current = topKey;
       setAnimDir('pop');
-      return prev; // 실제 제거는 애니메이션 종료 후
+      return next;
     });
   }, []);
 
-  function handleAnimationEnd(key) {
-    if (animDir === 'pop' && key === popTargetRef.current) {
-      setStack((prev) => prev.slice(0, -1));
-      popTargetRef.current = null;
+  const handleAnimationEnd = useCallback((key) => {
+    setStack((prev) => {
+      const target = prev.find((s) => s.key === key);
+      if (target?.exiting) {
+        // 애니메이션 끝난 exiting 화면만 제거
+        const next = prev.filter((s) => s.key !== key);
+        // 남은 exiting 이 있으면 animDir 'pop' 유지, 없으면 idle
+        const stillAnimating = next.some((s) => s.exiting);
+        if (!stillAnimating) setAnimDir(null);
+        return next;
+      }
+      // push 완료 → animDir idle
       setAnimDir(null);
-    } else if (animDir === 'push' && key === stack[stack.length - 1]?.key) {
-      setAnimDir(null);
-    }
-  }
+      return prev;
+    });
+  }, []);
 
-  const stackDepth = stack.length;
+  // 화면 수 (exiting 포함). stackDepth 는 외부 API 로 exiting 제외값 노출.
+  const stackDepth = stack.filter((s) => !s.exiting).length;
+  // 살아있는(non-exiting) 최상단 인덱스 — pop-in 대상 판정용
+  const visibleTopIdx = (() => {
+    for (let i = stack.length - 1; i >= 0; i--) if (!stack[i].exiting) return i;
+    return -1;
+  })();
 
   return (
     <StackContext.Provider value={{ push, pop, stackDepth }}>
       <div className={cx('relative w-full h-full overflow-hidden', className)}>
         {stack.map((screen, i) => {
           const isTop = i === stack.length - 1;
-          const isSecondFromTop = i === stack.length - 2;
+          const isVisibleTop = i === visibleTopIdx;
+          const isSecondFromVisibleTop = i === visibleTopIdx - 1;
 
           let animClass = '';
-          if (animDir === 'push' && isTop) {
-            animClass = motion(variants.stackPushIn);
-          } else if (animDir === 'push' && isSecondFromTop) {
-            animClass = motion(variants.stackPushOut);
-          } else if (animDir === 'pop' && isTop) {
+          if (screen.exiting) {
+            // exiting 플래그가 있으면 무조건 pop-out
             animClass = motion(variants.stackPopOut);
-          } else if (animDir === 'pop' && isSecondFromTop) {
+          } else if (animDir === 'push' && isTop) {
+            animClass = motion(variants.stackPushIn);
+          } else if (animDir === 'push' && i === stack.length - 2) {
+            animClass = motion(variants.stackPushOut);
+          } else if (animDir === 'pop' && isVisibleTop) {
             animClass = motion(variants.stackPopIn);
           }
 
-          // pop 애니메이션 중 최상위 화면만 onAnimationEnd 리스닝
+          // exiting 화면 또는 push 진입 화면만 animationEnd 리스닝
           const needsEndListener =
-            (animDir === 'pop' && isTop) ||
-            (animDir === 'push' && isTop);
+            screen.exiting || (animDir === 'push' && isTop);
 
           return (
             <div
               key={screen.key}
               className={cx(
                 'absolute inset-0',
-                isTop ? 'z-10' : 'z-0',
+                // exiting 은 최상위로 올려 pop-out 을 보여줌
+                screen.exiting ? 'z-20' : isVisibleTop ? 'z-10' : 'z-0',
                 animClass,
               )}
               onAnimationEnd={needsEndListener ? () => handleAnimationEnd(screen.key) : undefined}
