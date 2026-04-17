@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import CodePeekButton from '../../components/common/mobile/CodePeekButton';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -1456,6 +1457,14 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
             </div>
           </div>
         </div>
+      )}
+
+      {/* ──── 모바일 전용: 홀드 투 피크 코드 미리보기 (퀴즈 탭에서만) ──── */}
+      {isMobile && mobileTab === 'quiz' && (
+        <CodePeekButton
+          code={code || ''}
+          language={lang || 'java'}
+        />
       )}
     </div>
   );

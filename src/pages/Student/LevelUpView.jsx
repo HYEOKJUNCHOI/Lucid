@@ -9,6 +9,7 @@ import { db } from '../../lib/firebase';
 import { addDailyXPCapped } from '../../services/userStateService';
 import { GiAnvilImpact, GiSilverBullet, GiGoldBar, GiDiamondTrophy, GiLaurelCrown } from 'react-icons/gi';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import CodePeekButton from '../../components/common/mobile/CodePeekButton';
 
 // ─── 과목 목록 ───────────────────────────────────
 const SUBJECTS = [
@@ -1754,6 +1755,14 @@ const LevelUpView = ({ userData, onBack }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ──── 모바일 전용: 홀드 투 피크 코드 미리보기 (퀴즈 탭에서만) ──── */}
+      {isMobile && mobileTab === 'quiz' && (
+        <CodePeekButton
+          code={currentQuiz?.code || ''}
+          language="java"
+        />
       )}
     </div>
   );

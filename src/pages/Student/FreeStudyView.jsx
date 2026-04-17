@@ -11,6 +11,7 @@ import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { recordTypingSession, getTypingStats, resetTypingStats, saveCheatBadge } from '../../services/learningService';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import CodePeekButton from '../../components/common/mobile/CodePeekButton';
 
 
 const TABS = [
@@ -897,6 +898,14 @@ ${mainCode.slice(0, 3000)}`;
                 isActive={true}
               />
             </div>
+          )}
+
+          {/* ──── 모바일 전용: 홀드 투 피크 코드 미리보기 (quiz 탭에서만) ──── */}
+          {activeTab === 'quiz' && (
+            <CodePeekButton
+              code={tabContents.main || tabContents.ai || ''}
+              language="java"
+            />
           )}
 
           {/* ──── memo 탭 ──── */}
