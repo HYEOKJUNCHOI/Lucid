@@ -6,7 +6,8 @@
  * Firestore 구조
  * ──────────────────────────────────────────────────
  * users/{uid}
- *   streak            number      연속 출석일
+ *   streak            number      현재 연속 출석일 (끊기면 0)
+ *   bestStreak        number      역대 최고 연속일 (끊겨도 유지 — 스트릭 뱃지 표시값)
  *   lastRoutineDate   string      마지막 퀘스트 완료 날짜 (YYYY-MM-DD)
  *   streakFreezes     number      보유 얼리기 개수
  *   repairCount       number      복구 퀘스트 진행도 (-1 = 비활성)
@@ -143,9 +144,12 @@ export const calcStreakStatus = async (uid, state) => {
     if (freezes > 0) {
       const frozenStreak = saved + 1;
       const newFreezes = freezes - 1;
+      const bestSaved = state?.bestStreak || 0;
       const updates = {
         streakFreezes: newFreezes,
         streak: frozenStreak,
+        // 얼리기로 이어도 최고 기록 갱신 대상
+        ...(frozenStreak > bestSaved ? { bestStreak: frozenStreak } : {}),
       };
       // 3일 배수 달성 시 얼리기 보상
       if (frozenStreak % 3 === 0) updates.streakFreezes = newFreezes + 1;
@@ -190,6 +194,8 @@ export const onQuestCompleteFS = async (uid, state) => {
     [`questDone.${today}`]: true,
   };
 
+  const bestSaved = state?.bestStreak || 0;
+
   // 복구 퀘스트 진행 중
   if (repairCount >= 0) {
     const next = repairCount + 1;
@@ -202,6 +208,8 @@ export const onQuestCompleteFS = async (uid, state) => {
         streak: restored,
         repairCount: -1,
         streakBeforeBreak: 0,
+        // 뱃지 = 역대 최고치 — 복구값이 최고기록 넘으면 갱신
+        ...(restored > bestSaved ? { bestStreak: restored } : {}),
       });
       return { streak: restored, repairedStreak: restored, gotFreeze: false };
     }
@@ -213,12 +221,15 @@ export const onQuestCompleteFS = async (uid, state) => {
   const saved = state?.streak || 0;
   const newStreak = saved + 1;
   const got3DayFreeze = newStreak > 0 && newStreak % 3 === 0;
+  // 스트릭 뱃지 갱신: 현재 연속이 역대 최고를 넘어선 순간부터 같이 올라감
+  const beatsRecord = newStreak > bestSaved;
   await updateUserState(uid, {
     ...updates,
     streak: newStreak,
     ...(got3DayFreeze ? { streakFreezes: increment(1) } : {}),
+    ...(beatsRecord ? { bestStreak: newStreak } : {}),
   });
-  return { streak: newStreak, repairedStreak: null, gotFreeze: got3DayFreeze };
+  return { streak: newStreak, repairedStreak: null, gotFreeze: got3DayFreeze, newBadge: beatsRecord };
 };
 
 /**
@@ -236,10 +247,12 @@ export const useFreezeOnDateFS = async (uid, dateStr, state) => {
 
   const newStreak = (state?.streak || 0) + 1;
   const newFreezes = freezes - 1;
+  const bestSaved = state?.bestStreak || 0;
   await updateUserState(uid, {
     frozenDates: arrayUnion(dateStr),
     streakFreezes: newFreezes,
     streak: newStreak,
+    ...(newStreak > bestSaved ? { bestStreak: newStreak } : {}),
   });
   return { success: true, remaining: newFreezes, newStreak };
 };
@@ -396,6 +409,7 @@ export const debugRemoveAttendedDate = async (uid, dateStr) => {
 export const debugResetUser = async (uid) => {
   await updateUserState(uid, {
     streak: 0,
+    bestStreak: 0,
     lastRoutineDate: null,
     streakFreezes: 0,
     repairCount: -1,

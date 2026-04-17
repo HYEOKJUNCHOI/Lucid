@@ -309,6 +309,7 @@ export const claimLoginXP = async (uid) => {
 // ──────────────────────────────────────────────────────
 
 const STREAK_KEY = 'lucid_streak';
+const BEST_STREAK_KEY = 'lucid_best_streak'; // 역대 최고 연속일 (뱃지 표시값)
 const LAST_QUEST_KEY = 'lucid_last_quest';
 const LAST_VISIT_KEY = 'lucid_last_visit';
 const FREEZE_KEY = 'lucid_streak_freeze';
@@ -440,6 +441,7 @@ export const checkStreak = () => {
       // 얼리기 사용 날짜도 연속일에 포함 → streak +1
       const frozenStreak = saved + 1;
       localStorage.setItem(STREAK_KEY, String(frozenStreak));
+      bumpBestStreak(frozenStreak); // 최고 기록 갱신 체크
       // 3일 배수 달성 시 얼리기 보상 체크
       if (frozenStreak % 3 === 0) addStreakFreeze();
       return { streak: frozenStreak, status: 'grace1', usedFreeze: true, repairCount: -1 };
@@ -489,6 +491,7 @@ export const onQuestComplete = () => {
       localStorage.setItem(STREAK_KEY, String(restored));
       localStorage.setItem(REPAIR_KEY, '-1');
       localStorage.removeItem(STREAK_BEFORE_BREAK_KEY);
+      bumpBestStreak(restored);
       const gotFreeze = checkWeekendBonus();
       return { streak: restored, repairedStreak: restored, gotFreeze };
     }
@@ -499,6 +502,7 @@ export const onQuestComplete = () => {
   const saved = parseInt(localStorage.getItem(STREAK_KEY) || '0');
   const newStreak = saved + 1;
   localStorage.setItem(STREAK_KEY, String(newStreak));
+  const newBadge = bumpBestStreak(newStreak); // 역대 최고 갱신
   // 오늘 퀘스트 완료 마킹 (대시보드 weeklyQuestClear 계산용)
   localStorage.setItem(`lucid_quest_done_${today}`, 'true');
   const gotWeekendFreeze = checkWeekendBonus();
@@ -507,7 +511,22 @@ export const onQuestComplete = () => {
   const got3DayFreeze = newStreak > 0 && newStreak % 3 === 0;
   if (got3DayFreeze) addStreakFreeze();
 
-  return { streak: newStreak, repairedStreak: null, gotFreeze: gotWeekendFreeze || got3DayFreeze, got3DayFreeze };
+  return { streak: newStreak, repairedStreak: null, gotFreeze: gotWeekendFreeze || got3DayFreeze, got3DayFreeze, newBadge };
+};
+
+// ─── 스트릭 뱃지 (역대 최고 연속일 — 끊겨도 유지, 넘어서면 갱신) ───
+/** 역대 최고 연속일 조회 */
+export const getBestStreak = () => {
+  return parseInt(localStorage.getItem(BEST_STREAK_KEY) || '0');
+};
+/** 현재 스트릭이 최고 기록을 넘기면 갱신, 넘긴 경우 true 반환 */
+export const bumpBestStreak = (currentStreak) => {
+  const best = getBestStreak();
+  if (currentStreak > best) {
+    localStorage.setItem(BEST_STREAK_KEY, String(currentStreak));
+    return true;
+  }
+  return false;
 };
 
 /** 주말 여부 체크 */
@@ -603,6 +622,9 @@ export const loadProgressFromFirestore = async (uid) => {
     // Firestore → localStorage 덮어쓰기 (streak 계열)
     if (typeof data.streak === 'number') {
       localStorage.setItem(STREAK_KEY, String(data.streak));
+    }
+    if (typeof data.bestStreak === 'number') {
+      localStorage.setItem(BEST_STREAK_KEY, String(data.bestStreak));
     }
     if (typeof data.lastRoutineDate === 'string' && data.lastRoutineDate) {
       localStorage.setItem(LAST_QUEST_KEY, data.lastRoutineDate);
@@ -726,6 +748,7 @@ export const syncStreakToFirestore = async (uid) => {
   try {
     await updateDoc(doc(db, 'users', uid), {
       streak:            parseInt(localStorage.getItem(STREAK_KEY) || '0'),
+      bestStreak:        parseInt(localStorage.getItem(BEST_STREAK_KEY) || '0'),
       lastRoutineDate:   localStorage.getItem(LAST_QUEST_KEY) || null,
       streakFreezes:     parseInt(localStorage.getItem(FREEZE_KEY) || '0'),
       repairCount:       parseInt(localStorage.getItem(REPAIR_KEY) || '-1'),
@@ -744,6 +767,7 @@ export const restoreStreakFromFirestore = async (uid) => {
     if (!snap.exists()) return;
     const d = snap.data();
     if (d.streak != null)            localStorage.setItem(STREAK_KEY, String(d.streak));
+    if (d.bestStreak != null)        localStorage.setItem(BEST_STREAK_KEY, String(d.bestStreak));
     if (d.lastRoutineDate)           localStorage.setItem(LAST_QUEST_KEY, d.lastRoutineDate);
     if (d.streakFreezes != null)     localStorage.setItem(FREEZE_KEY, String(d.streakFreezes));
     if (d.repairCount != null)       localStorage.setItem(REPAIR_KEY, String(d.repairCount));

@@ -127,6 +127,10 @@ export default function HomeTab() {
   // userData 필드 안전 추출
   const displayName = userData?.displayName ?? user?.displayName ?? '학생';
   const streak      = userData?.streak ?? 0;
+  const bestStreak  = userData?.bestStreak ?? 0;
+  // 스트릭 뱃지 = 역대 최고 기록. 현재 streak가 bestStreak를 넘어서면 같이 상승.
+  const badgeValue  = Math.max(streak, bestStreak);
+  const isBeatingRecord = streak > 0 && streak >= bestStreak && bestStreak > 0;
   const totalXP     = userData?.totalXP ?? 0;
   const beanCount   = userData?.beanCount ?? 0;
 
@@ -159,15 +163,19 @@ export default function HomeTab() {
       actions={
         <div className="flex items-center gap-1">
           <StatBadge
-            icon={streak > 0 ? "🔥" : "🌱"}
-            value={streak > 0 ? streak : "시작!"}
+            icon={badgeValue > 0 ? "🔥" : "🌱"}
+            value={badgeValue > 0 ? badgeValue : "시작!"}
             label="스트릭"
             detail={
-              streak > 0
-                ? `${streak}일 연속 출석 중이에요.`
-                : "오늘 첫 퀘스트를 끝내면 스트릭이 시작돼요."
+              badgeValue === 0
+                ? "오늘 첫 퀘스트를 끝내면 스트릭이 시작돼요."
+                : streak === 0
+                  ? `최고 기록 ${bestStreak}일 — 오늘 다시 시작해보세요.`
+                  : isBeatingRecord
+                    ? `🎉 최고 기록 갱신 중! ${streak}일 연속.`
+                    : `현재 ${streak}일 연속 / 최고 ${bestStreak}일.`
             }
-            color={streak > 0 ? "orange" : "green"}
+            color={badgeValue > 0 ? "orange" : "green"}
             popoverSide="bottom"
           />
           <StatBadge
@@ -204,13 +212,15 @@ export default function HomeTab() {
           <section>
             <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
               <div className="bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
-                <span className="text-xl">{streak > 0 ? "🔥" : "🌱"}</span>
-                {streak > 0 ? (
-                  <span className="text-base font-black text-orange-400 leading-none">{streak}</span>
+                <span className="text-xl">{badgeValue > 0 ? "🔥" : "🌱"}</span>
+                {badgeValue > 0 ? (
+                  <span className="text-base font-black text-orange-400 leading-none">{badgeValue}</span>
                 ) : (
                   <span className="text-[11px] font-bold text-emerald-400 leading-none">시작!</span>
                 )}
-                <span className="text-[10px] text-gray-500">스트릭</span>
+                <span className="text-[10px] text-gray-500">
+                  {streak === 0 && bestStreak > 0 ? '최고' : '스트릭'}
+                </span>
               </div>
               <div className="bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
                 <span className="text-xl">⚡</span>
@@ -278,10 +288,14 @@ export default function HomeTab() {
             <div className="bg-theme-card border border-theme-border rounded-card p-4 shadow-e2">
               <StreakDots streak={streak} />
               <p className="text-xs text-gray-500 mt-3">
-                {streak > 0 ? (
-                  <>현재 <span className="text-orange-400 font-bold">{streak}일</span> 연속 출석 중이에요!</>
-                ) : (
+                {streak === 0 && bestStreak === 0 ? (
                   <>오늘 퀘스트를 끝내면 <span className="text-emerald-400 font-bold">첫 스트릭</span>이 시작돼요 🌱</>
+                ) : streak === 0 ? (
+                  <>🏅 최고 기록 <span className="text-orange-400 font-bold">{bestStreak}일</span> — 오늘 다시 시작!</>
+                ) : isBeatingRecord ? (
+                  <>🎉 최고 기록 갱신 중 — <span className="text-orange-400 font-bold">{streak}일</span> 연속!</>
+                ) : (
+                  <>현재 <span className="text-orange-400 font-bold">{streak}일</span> 연속 / 최고 {bestStreak}일</>
                 )}
               </p>
             </div>
