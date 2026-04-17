@@ -51,12 +51,14 @@ export default function AttendanceCalendar({ attendedDates = [], onAdd, onRemove
     <div className="rounded-xl p-3" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.05) 0%, rgba(245,158,11,0.03) 100%)', border: '1px solid rgba(251,191,36,0.18)' }}>
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-2.5 px-0.5">
-        <button onClick={prevMonth} className="text-gray-500 hover:text-white text-sm px-1 transition-colors">‹</button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-black text-white">{year}년 {month + 1}월</span>
+          <div className="flex flex-col" style={{ gap: '1px' }}>
+            <button onClick={nextMonth} className="flex items-center justify-center w-3.5 h-3.5 text-gray-500 hover:text-white transition-colors" style={{ fontSize: '7px', lineHeight: 1 }}>▲</button>
+            <button onClick={prevMonth} className="flex items-center justify-center w-3.5 h-3.5 text-gray-500 hover:text-white transition-colors" style={{ fontSize: '7px', lineHeight: 1 }}>▼</button>
+          </div>
           <span className="text-[9px] text-[#fbbf24]/70 font-bold">{monthAttendCount}일 출석</span>
         </div>
-        <button onClick={nextMonth} className="text-gray-500 hover:text-white text-sm px-1 transition-colors">›</button>
       </div>
 
       {/* 요일 헤더 */}
