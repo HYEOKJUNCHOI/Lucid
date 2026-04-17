@@ -20,7 +20,48 @@ export default {
         'safe-left': 'env(safe-area-inset-left)',
         'safe-right': 'env(safe-area-inset-right)',
         'tab-h': '56px',      // 모바일 하단 탭 높이
-        'topbar-h': '48px',   // 모바일 상단바 높이
+        'topbar-h': '48px',   // 모바일 상단바 높이 (compact)
+        'appbar-h': '56px',   // 모바일 AppBar 기본 높이
+        'appbar-large-h': '96px', // 모바일 AppBar largeTitle 모드 (scrollAware 축소 전)
+      },
+      // ─── 네이티브 앱 리디자인 토큰 (2026-04) ───
+      borderRadius: {
+        // 디자인 시스템 — 기존 Tailwind 기본 rounded-* 는 그대로 두고, semantic 토큰만 추가
+        'card':  '12px',
+        'sheet': '20px',
+        'pill':  '999px',
+      },
+      boxShadow: {
+        // elevation 0 (flat) / 1 (subtle) / 2 (card) / 3 (sheet)
+        'e0': 'none',
+        'e1': '0 1px 2px rgba(0,0,0,0.25)',
+        'e2': '0 4px 12px rgba(0,0,0,0.32)',
+        'e3': '0 12px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)',
+      },
+      transitionTimingFunction: {
+        // Material 3 motion tokens
+        'standard':     'cubic-bezier(0.2, 0, 0, 1)',
+        'emphasized':   'cubic-bezier(0.3, 0, 0, 1)',
+        'decelerate':   'cubic-bezier(0, 0, 0, 1)',
+        'accelerate':   'cubic-bezier(0.3, 0, 1, 1)',
+        'spring':       'cubic-bezier(0.2, 0.8, 0.3, 1)',
+      },
+      transitionDuration: {
+        'instant': '0ms',
+        'fast':    '150ms',
+        'base':    '250ms',
+        'slow':    '400ms',
+        'page':    '350ms', // stack push/pop
+        'sheet':   '320ms', // bottom sheet / action sheet
+      },
+      zIndex: {
+        // 모바일 레이어 순서
+        'tab':     '40',
+        'appbar':  '45',
+        'drawer':  '50',
+        'sheet':   '60',
+        'overlay': '70',
+        'toast':   '80',
       },
       colors: {
         theme: {
@@ -122,6 +163,53 @@ export default {
           '0%':   { transform: 'scale(1)' },
           '100%': { transform: 'scale(0.95)' },
         },
+        // 스택 네비게이션 푸시/팝
+        'stack-push-in': {
+          '0%':   { transform: 'translateX(100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)',     opacity: '1' },
+        },
+        'stack-push-out': {
+          '0%':   { transform: 'translateX(0)',      opacity: '1' },
+          '100%': { transform: 'translateX(-30%)',   opacity: '0.6' },
+        },
+        'stack-pop-in': {
+          '0%':   { transform: 'translateX(-30%)',   opacity: '0.6' },
+          '100%': { transform: 'translateX(0)',      opacity: '1' },
+        },
+        'stack-pop-out': {
+          '0%':   { transform: 'translateX(0)',      opacity: '1' },
+          '100%': { transform: 'translateX(100%)',   opacity: '0' },
+        },
+        // 바텀 시트
+        'sheet-in': {
+          '0%':   { transform: 'translateY(100%)' },
+          '100%': { transform: 'translateY(0)' },
+        },
+        'sheet-out': {
+          '0%':   { transform: 'translateY(0)' },
+          '100%': { transform: 'translateY(100%)' },
+        },
+        // 백드롭 페이드
+        'backdrop-in': {
+          '0%':   { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'backdrop-out': {
+          '0%':   { opacity: '1' },
+          '100%': { opacity: '0' },
+        },
+        // 탭 전환 (매우 빠른 크로스페이드)
+        'tab-fade': {
+          '0%':   { opacity: '0', transform: 'translateY(2px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        // 탭바 아이콘 활성 스프링
+        'tab-spring': {
+          '0%':   { transform: 'scale(1)' },
+          '40%':  { transform: 'scale(1.18)' },
+          '70%':  { transform: 'scale(0.96)' },
+          '100%': { transform: 'scale(1)' },
+        },
       },
       animation: {
         'confetti-fall':    'confetti-fall 2.8s ease-out forwards',
@@ -138,6 +226,16 @@ export default {
         'ios-jiggle':       'ios-jiggle 0.3s ease-in-out infinite',
         'ios-jiggle-alt':   'ios-jiggle-alt 0.31s ease-in-out infinite', // 0.31로 약간 엇박
         'ios-press-in':     'ios-press-in 0.2s ease-out forwards',
+        'stack-push-in':    'stack-push-in 350ms cubic-bezier(0.2, 0, 0, 1) forwards',
+        'stack-push-out':   'stack-push-out 350ms cubic-bezier(0.2, 0, 0, 1) forwards',
+        'stack-pop-in':     'stack-pop-in 350ms cubic-bezier(0.2, 0, 0, 1) forwards',
+        'stack-pop-out':    'stack-pop-out 350ms cubic-bezier(0.2, 0, 0, 1) forwards',
+        'sheet-in':         'sheet-in 320ms cubic-bezier(0.3, 0, 0, 1) forwards',
+        'sheet-out':        'sheet-out 250ms cubic-bezier(0.3, 0, 1, 1) forwards',
+        'backdrop-in':      'backdrop-in 250ms ease-out forwards',
+        'backdrop-out':     'backdrop-out 200ms ease-in forwards',
+        'tab-fade':         'tab-fade 150ms ease-out forwards',
+        'tab-spring':       'tab-spring 320ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards',
       },
     },
   },

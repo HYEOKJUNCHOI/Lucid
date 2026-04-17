@@ -3,8 +3,19 @@ import { useEffect, useState } from 'react';
 // 전역 toast 이벤트 시스템
 const listeners = new Set();
 
-export const showToast = (msg, type = 'success') => {
-  listeners.forEach(fn => fn({ msg, type }));
+/**
+ * showToast(msg, options)
+ *
+ * @param {string} msg
+ * @param {'default'|'success'|'error'|'warning'|'info'} [variant]
+ * @param {{ label: string, onPress: function }} [action]
+ *
+ * 하위 호환: 두 번째 인자로 문자열 type 도 허용 (기존 showToast(msg, 'success'))
+ */
+export const showToast = (msg, variantOrLegacyType = 'default', action = undefined) => {
+  // 레거시 호환: 두 번째 인자가 문자열이면 variant 로 처리
+  const variant = typeof variantOrLegacyType === 'string' ? variantOrLegacyType : 'default';
+  listeners.forEach(fn => fn({ msg, variant, action }));
 };
 
 export const useToast = () => {
@@ -22,54 +33,56 @@ export const useToast = () => {
   return toast;
 };
 
-const ICONS = {
-  success: (
-    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  ),
-  warn: (
-    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-    </svg>
-  ),
-  error: (
-    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  ),
-};
-
-const STYLES = {
-  success: {
-    bg: 'rgba(17,34,28,0.92)',
-    border: 'rgba(78,201,176,0.35)',
-    color: '#4ec9b0',
-  },
-  warn: {
-    bg: 'rgba(34,26,10,0.92)',
-    border: 'rgba(251,191,36,0.35)',
-    color: '#fbbf24',
-  },
-  error: {
-    bg: 'rgba(34,10,10,0.92)',
-    border: 'rgba(239,68,68,0.35)',
-    color: '#f87171',
-  },
+// variant → 이모지 아이콘
+const ICON_MAP = {
+  success: '✅',
+  error:   '❌',
+  warning: '⚠️',
+  info:    'ℹ️',
+  // 레거시 type 키 매핑
+  warn:    '⚠️',
 };
 
 const Toast = () => {
   const toast = useToast();
   if (!toast) return null;
-  const s = STYLES[toast.type] || STYLES.success;
+
+  const icon = ICON_MAP[toast.variant] ?? null;
+
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] animate-fade-in pointer-events-none">
+    <div
+      className={[
+        'fixed left-4 right-4 z-[var(--z-toast,9999)]',
+        'bottom-[calc(var(--tab-h,56px)+env(safe-area-inset-bottom,0px)+12px)]',
+        'animate-sheet-in pointer-events-auto',
+      ].join(' ')}
+    >
       <div
-        className="flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border text-sm font-semibold"
-        style={{ background: s.bg, borderColor: s.border, color: s.color }}
+        className={[
+          'flex items-center px-4 py-3',
+          'bg-theme-card border border-theme-border rounded-card shadow-e3',
+        ].join(' ')}
       >
-        {ICONS[toast.type]}
-        {toast.msg}
+        {/* 아이콘 */}
+        {icon && (
+          <span className="shrink-0 mr-2 text-base leading-none">{icon}</span>
+        )}
+
+        {/* 메시지 */}
+        <span className="flex-1 text-sm text-white">{toast.msg}</span>
+
+        {/* action 버튼 */}
+        {toast.action && (
+          <button
+            type="button"
+            className="text-theme-primary text-sm font-semibold ml-3 shrink-0"
+            onClick={() => {
+              toast.action.onPress?.();
+            }}
+          >
+            {toast.action.label}
+          </button>
+        )}
       </div>
     </div>
   );
