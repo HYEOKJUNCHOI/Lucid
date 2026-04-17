@@ -160,7 +160,7 @@ export default function HomeTab() {
         <div className="flex items-center gap-1">
           <StatBadge
             icon={streak > 0 ? "🔥" : "🌱"}
-            value={streak > 0 ? streak : "시작"}
+            value={streak > 0 ? streak : "시작!"}
             label="스트릭"
             detail={
               streak > 0
@@ -208,7 +208,7 @@ export default function HomeTab() {
                 {streak > 0 ? (
                   <span className="text-base font-black text-orange-400 leading-none">{streak}</span>
                 ) : (
-                  <span className="text-[11px] font-bold text-emerald-400 leading-none">오늘 시작!</span>
+                  <span className="text-[11px] font-bold text-emerald-400 leading-none">시작!</span>
                 )}
                 <span className="text-[10px] text-gray-500">스트릭</span>
               </div>
