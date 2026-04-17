@@ -7,6 +7,7 @@ import CustomSelect from '../../components/common/CustomSelect';
 import FifaCard, { getActivityTier } from '../../components/admin/FifaCard';
 import Toast, { showToast } from '../../components/common/Toast';
 import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
+import { useIsMobile, useIsTablet } from '../../hooks/useMediaQuery';
 
 const ROWS = 5;
 const TABLES_PER_ROW = 2;
@@ -121,7 +122,8 @@ const SeatChart = () => {
   const [aiLoading, setAiLoading]     = useState(false);
   const [seatMode, setSeatMode]       = useState(false);
   const [seatScale, setSeatScale]     = useState(1);
-  const [winW, setWinW]               = useState(window.innerWidth);
+  const isMobile                      = useIsMobile();
+  const isTablet                      = useIsTablet();
   const frameRef                      = useRef();
   // 드래그 상태를 ref로도 동기 추적 (stale closure 방지)
   const draggingSeatRef  = useRef(null);
@@ -151,12 +153,6 @@ const SeatChart = () => {
   }, []);
 
   useEffect(() => {
-    const onResize = () => setWinW(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') setSeatMode(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -175,7 +171,7 @@ const SeatChart = () => {
       setSeatScale(scale);
     }, 60);
     return () => clearTimeout(id);
-  }, [seatMode, winW]);
+  }, [seatMode, isMobile, isTablet]);
 
   // ── 그룹별 좌석 로드 ─────────────────────────────────────────
   useEffect(() => {

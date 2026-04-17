@@ -2,6 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── 모바일 안전영역 / 반응형 유틸 ─── */
+@layer utilities {
+  /* iOS 노치/홈 인디케이터 대응 */
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pl-safe { padding-left: env(safe-area-inset-left); }
+  .pr-safe { padding-right: env(safe-area-inset-right); }
+
+  /* 모바일 뷰포트 풀하이트 (주소창 가변 대응) */
+  .h-dvh-safe  { height: calc(100dvh - env(safe-area-inset-bottom)); }
+  .min-h-dvh   { min-height: 100dvh; }
+  .min-h-svh   { min-height: 100svh; }
+
+  /* 모바일 가로 오버플로우 가드 */
+  .clamp-mobile-w { max-width: 100vw; }
+
+  /* 터치 타겟 최소 44x44 (Apple HIG / Google Material) */
+  .touch-target { min-width: 44px; min-height: 44px; }
+
+  /* 스크롤 스냅 탭 (모바일 스와이프) */
+  .snap-x-tabs {
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .snap-x-tabs > * { scroll-snap-align: start; }
+}
+
+/* ─── 모바일 터치: 아이폰 네이티브 느낌 ─── */
+@media (hover: none) and (pointer: coarse) {
+  /* 모든 터치 UI 회색 하이라이트 제거 */
+  button, a, [role="button"], [role="tab"], [role="menuitem"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 터치 기기에서 hover 효과 억제 → :active로 자연 전환 */
+  /* (Tailwind hover: 클래스는 이 미디어쿼리에서 자동 무효화되지 않으므로 CSS 변수로 제어하려면 hover:를 제거하고 active: 쓸 것) */
+
+  /* 모바일 버튼 기본 피드백: 살짝 눌림
+     :where()로 감싸 specificity를 0으로 낮춤 → 개별 컴포넌트의
+     active:scale-*, scale-110 등 Tailwind 유틸이 우선 적용된다.
+     (specificity 동률일 때 뒤에 오는 전역 규칙이 이기는 문제 해결) */
+  :where(button, a, [role="button"]):active {
+    transform: scale(0.97);
+    transition: transform 0.1s ease-out;
+  }
+
+  /* opt-out 유틸: 이 클래스를 붙이면 press 피드백 자체를 받지 않음
+     (팝업 애니메이션, 드래그 핸들 등 transform을 독점해야 하는 경우) */
+  .no-press:active {
+    transform: none !important;
+  }
+
+  /* 텍스트 선택 방지 (긴 꾹눌러서 선택 UI 뜨는 것 차단) — 편집 모드용 UI에 한함 */
+  .ios-no-select, .ios-no-select * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none; /* iOS 링크 미리보기 팝업 차단 */
+  }
+
+  /* iOS 스크롤 관성 자연스럽게 */
+  .ios-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}
+
+/* 마우스 호버 가능한 디바이스에서는 active scale 비활성 (더블 피드백 방지)
+   :where()로 specificity 0 → 개별 컴포넌트 transform이 우선. */
+@media (hover: hover) and (pointer: fine) {
+  :where(button, a, [role="button"]):active {
+    transform: none;
+  }
+}
+
+/* ─── 모바일 전역 가로 스크롤 방지 ─── */
+@media (max-width: 767px) {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+}
+
+/* ─── 접근성: 애니메이션 감소 선호 ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ─── range input 슬라이더 thumb 스타일 ─── */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -320,12 +412,6 @@ body.ctrl-held .code-token-clickable {
 .chat-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.18);
 }
-
-/* 채팅 패널 스크롤바 — VS Code 스타일 슬림 다크 */
-.chat-scrollbar::-webkit-scrollbar { width: 6px; }
-.chat-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.chat-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
-.chat-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
 
 /* 블랙박스: 오래된 메시지 위로 사라지는 애니메이션 */
 @keyframes messageLeave {

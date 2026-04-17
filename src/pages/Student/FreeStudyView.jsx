@@ -10,6 +10,7 @@ import { SAMPLE_JAVA_CODE } from '../../lib/sampleCode';
 import { MODELS, GEMINI_CHAT_URL } from '../../lib/aiConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { recordTypingSession, getTypingStats, resetTypingStats, saveCheatBadge } from '../../services/learningService';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 
 const TABS = [
@@ -66,6 +67,9 @@ const FreeStudyView = ({ onBack, showLanding = false, teacher = null, enrolledRe
   const [focusedPanel, setFocusedPanel] = useState(null); // 'left' | 'right'
   const chatScrollRef = useRef(null);
   const { user } = useAuth();
+  const isMobile = useIsMobile();
+  // 모바일 탭바 우측 "⋯" 드롭다운 오픈 여부
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // ─── 랜딩 패널 상태 ────────────────────────────────────
   const [landingVisible, setLandingVisible] = useState(showLanding);
@@ -648,6 +652,297 @@ ${mainCode.slice(0, 3000)}`;
   };
 
 
+  // ════════════════════════════════════════════════
+  // 모바일 레이아웃 — 단일 탭바 통합 (6개 풀스크린 탭)
+  // ════════════════════════════════════════════════
+  if (isMobile) {
+    // 5개 탭: main / ai / tutor / quiz / memo
+    const MOBILE_TABS = [
+      { id: 'main',  label: '💻 코드노트' },
+      { id: 'ai',    label: '🤖 AI 생성코드' },
+      { id: 'tutor', label: '💬 Lucid Tutor' },
+      { id: 'quiz',  label: '🎯 문제풀기' },
+      { id: 'memo',  label: '📝 학습메모' },
+    ];
+
+    const handleMobileTabChange = (nextId) => {
+      setActiveTab(nextId);
+    };
+
+    // Monaco 마운트 여부: main/ai 탭에서만 사용하지만 state 보존 위해 항상 mount
+    const monacoTab = activeTab === 'ai' ? 'ai' : 'main';
+    const monacoVisible = (activeTab === 'main' || activeTab === 'ai') && !landingVisible
+      && !(activeTab === 'ai' && !tabContents.ai);
+
+    return (
+      <div className="relative flex flex-col flex-1 overflow-hidden bg-[var(--free-editor-bg)]">
+
+        {/* ── 모바일: GitHub 모달 (기존 동일) ── */}
+        {landingSection === 'github' && (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => { setLandingSection(null); setLandingRepos(null); }}>
+            <div className="w-full max-w-md mx-4 rounded-2xl shadow-2xl overflow-hidden"
+              style={{ background: '#0d1117', border: '1px solid rgba(78,201,176,0.25)' }}
+              onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+                <p className="text-white font-black text-[15px]">📂 GitHub 불러오기</p>
+                <button onClick={() => { setLandingSection(null); setLandingRepos(null); }} className="text-gray-500 hover:text-white text-lg leading-none">✕</button>
+              </div>
+              <div className="flex gap-2 px-4 py-3">
+                <input
+                  value={landingGithubId}
+                  onChange={e => { setLandingGithubId(e.target.value); localStorage.setItem('lucid_github_id', e.target.value); setLandingRepos(null); }}
+                  onKeyDown={e => e.key === 'Enter' && fetchLandingRepos()}
+                  placeholder="GitHub ID 입력 후 Enter"
+                  autoFocus
+                  className="flex-1 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }}
+                />
+                <button onClick={() => fetchLandingRepos()} disabled={landingReposLoading || !landingGithubId.trim()}
+                  className="px-4 py-2 rounded-xl font-bold text-sm disabled:opacity-40"
+                  style={{ background: 'rgba(78,201,176,0.15)', border: '1px solid rgba(78,201,176,0.35)', color: '#4ec9b0' }}>
+                  {landingReposLoading ? '...' : '검색'}
+                </button>
+              </div>
+              {landingRepos && (
+                <div className="px-4 py-3 flex flex-col gap-2 max-h-60 overflow-y-auto">
+                  {landingRepos.map(r => (
+                    <button key={r.name}
+                      onClick={() => { setLandingSection(null); setLandingRepos(null); onGoToChapter && onGoToChapter({ githubUsername: landingGithubId.trim(), repo: { name: r.name, label: r.name } }); }}
+                      className="text-left px-4 py-3 rounded-xl"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <p className="text-[14px] font-bold text-white">{r.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── 모바일: 통합 탭바 (가로 스크롤) + ⋯ 메뉴 ── */}
+        <div className="relative shrink-0 flex items-stretch border-b border-white/[0.06] bg-[var(--free-editor-bg)]">
+          <div
+            className="flex-1 flex items-stretch overflow-x-auto scrollbar-thin snap-x"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            {MOBILE_TABS.map(tab => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleMobileTabChange(tab.id)}
+                  className="shrink-0 snap-start flex items-center justify-center px-3 text-[12px] font-bold transition-colors"
+                  style={{
+                    minWidth: 80,
+                    minHeight: 44,
+                    color: active ? '#4ec9b0' : '#9ca3af',
+                    background: active ? 'rgba(78,201,176,0.08)' : 'transparent',
+                    borderBottom: active ? '2px solid #4ec9b0' : '2px solid transparent',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* ⋯ 더보기 버튼 */}
+          <button
+            onClick={() => setMobileMenuOpen(v => !v)}
+            className="shrink-0 flex items-center justify-center text-gray-400 text-lg"
+            style={{ minWidth: 44, minHeight: 44, borderLeft: '1px solid rgba(255,255,255,0.06)' }}
+            aria-label="더보기"
+          >
+            ⋯
+          </button>
+
+          {/* 드롭다운 */}
+          {mobileMenuOpen && (
+            <>
+              {/* 바깥 클릭으로 닫기 */}
+              <div
+                className="fixed inset-0 z-[9]"
+                onClick={() => setMobileMenuOpen(false)}
+              />
+              <div
+                className="absolute right-2 top-full mt-1 z-10 rounded-xl overflow-hidden shadow-2xl"
+                style={{
+                  background: '#0d1117',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  minWidth: 200,
+                }}
+              >
+                <div className="px-4 py-2.5 text-[11px] text-amber-400 font-semibold border-b border-white/[0.06]">
+                  🔒 모바일은 읽기 전용
+                </div>
+                <button
+                  onClick={() => { setMobileMenuOpen(false); setShowExitConfirm(true); }}
+                  className="w-full px-4 py-3 text-left text-[13px] font-bold text-red-300 hover:bg-white/[0.04]"
+                >
+                  ✕ 학습 종료
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── 모바일: 탭별 풀스크린 컨텐츠 ── */}
+        <div className="relative flex-1 min-h-0 overflow-hidden">
+
+          {/* ──── main 탭: 랜딩 상태 ──── */}
+          {activeTab === 'main' && landingVisible && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 p-6 bg-[#0d1117]">
+              <span className="text-4xl">💻</span>
+              <p className="text-gray-400 text-sm text-center leading-relaxed">
+                코드를 불러온 뒤 학습을 시작하세요.
+              </p>
+              <div className="flex flex-col gap-2 w-full max-w-xs">
+                <button
+                  onClick={() => setLandingSection('github')}
+                  className="w-full py-3 rounded-xl font-bold text-sm"
+                  style={{ background: 'rgba(78,201,176,0.15)', border: '1px solid rgba(78,201,176,0.35)', color: '#4ec9b0' }}
+                >
+                  📂 GitHub에서 불러오기
+                </button>
+                <button
+                  onClick={() => { setLandingVisible(false); setFreeCodeMode(true); }}
+                  className="w-full py-3 rounded-xl font-bold text-sm"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#d1d5db' }}
+                >
+                  직접 시작
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ──── ai 탭: 빈 상태 ──── */}
+          {activeTab === 'ai' && !tabContents.ai && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 bg-[#0d1117]">
+              <span className="text-4xl">🤖</span>
+              <p className="text-gray-400 text-sm text-center leading-relaxed">
+                AI 생성코드는 데스크탑에서<br />생성·확인할 수 있습니다.
+              </p>
+            </div>
+          )}
+
+          {/* ──── Monaco 에디터 (main/ai 공용, state 보존 위해 항상 마운트) ──── */}
+          <div
+            className="absolute inset-0"
+            style={{ display: monacoVisible ? 'block' : 'none' }}
+          >
+            <Editor
+              height="100%"
+              defaultLanguage="java"
+              path={monacoTab}
+              value={tabContents[monacoTab]}
+              onMount={handleEditorMount}
+              options={{
+                fontSize: editorFontSize,
+                lineHeight: 1.7,
+                fontFamily: '"Cascadia Code", "Cascadia Mono", Consolas, monospace',
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                lineNumbers: 'on',
+                folding: false,
+                wordWrap: 'on',
+                padding: { top: 12, bottom: 12 },
+                renderLineHighlight: 'none',
+                scrollbar: { verticalScrollbarSize: 4, horizontalScrollbarSize: 4 },
+                stickyScroll: { enabled: false },
+                smoothScrolling: true,
+                'semanticHighlighting.enabled': false,
+                readOnly: true,
+                readOnlyMessage: { value: '모바일에서는 읽기 전용입니다. 편집은 데스크탑에서 하세요.' },
+                contextmenu: false,
+              }}
+            />
+          </div>
+
+          {/* ──── tutor 탭: ChatPanel (state 보존 위해 display 토글) ──── */}
+          <div
+            className="absolute inset-0 flex flex-col"
+            style={{ display: activeTab === 'tutor' ? 'flex' : 'none' }}
+          >
+            <ChatPanel
+              key={chatKey}
+              getCodeContext={() => {
+                if (landingVisible) return null;
+                const code = tabContents[monacoTab];
+                return code?.trim() ? code : null;
+              }}
+              notice={landingVisible || !tabContents[monacoTab]?.trim() ? true : null}
+              chatScrollRef={chatScrollRef}
+              placeholder="Lucid에게 물어보기"
+              greeting={chatGreeting}
+              systemPrompt={chatSystemPrompt || undefined}
+              model={MODELS.FREESTUDY_TUTOR}
+              splitRatio={1}
+              onHighlightToken={highlightCodeToken}
+              quickQuestions={[
+                '이 코드 뭐하는 코드야?',
+                '게임 배경을 바탕으로 비유로 설명해줘',
+              ]}
+            />
+          </div>
+
+          {/* ──── quiz 탭: 마운트/언마운트 (state 리셋 허용) ──── */}
+          {activeTab === 'quiz' && (
+            <div className="absolute inset-0 overflow-y-auto">
+              <FreeStudyQuiz
+                getCodeContext={() => tabContents[monacoTab]}
+                onSendToTutor={(payload) => { handleSendToTutor(payload); setActiveTab('tutor'); }}
+                onHighlightToken={highlightCodeToken}
+                activeTab={monacoTab}
+                defaultCount={3}
+                isActive={true}
+              />
+            </div>
+          )}
+
+          {/* ──── memo 탭 ──── */}
+          {activeTab === 'memo' && (
+            <div className="absolute inset-0 overflow-y-auto">
+              <MemoPanel />
+            </div>
+          )}
+
+        </div>
+
+        {/* safe-area 여백 */}
+        <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
+
+        {/* 학습 종료 확인 모달 */}
+        {showExitConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4 w-[300px] mx-4"
+              style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 20, padding: '28px 28px 24px' }}>
+              <span className="text-xl">⚠️</span>
+              <div className="text-center">
+                <p className="text-white font-black text-[15px]">학습을 종료할까요?</p>
+                <p className="text-gray-400 text-[12px] mt-1">작성한 내용은 저장되지 않습니다.</p>
+              </div>
+              <div className="flex gap-2.5 w-full">
+                <button onClick={() => setShowExitConfirm(false)}
+                  className="flex-1 py-2.5 text-[13px] font-bold text-gray-400"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12 }}>
+                  취소
+                </button>
+                <button onClick={onBack}
+                  className="flex-1 py-2.5 text-[13px] font-bold"
+                  style={{ background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, color: '#f87171' }}>
+                  종료
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════
+  // 데스크탑 레이아웃 (기존 코드 유지)
+  // ════════════════════════════════════════════════
   return (
     <div ref={splitContainerRef} className="relative flex-1 flex overflow-hidden">
 

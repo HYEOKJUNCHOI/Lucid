@@ -4,6 +4,9 @@
  * 호버 시 "이게 뭐야?" 설명 카드 표시 → 동기부여 유도
  */
 
+import { useState } from 'react';
+import { useIsMobile } from '../../hooks/useMediaQuery';
+
 function getTierRgb(cpm) {
   if (cpm >= 700) return '220,38,38';
   if (cpm >= 600) return '217,70,239';
@@ -28,13 +31,19 @@ function getTierName(cpm) {
 
 export default function TypingBadge({ typingStats }) {
   const cpm = typingStats?.bestCpm || 0;
+  // 📱 모바일 전용 탭 토글
+  const isMobile = useIsMobile();
+  const [showTip, setShowTip] = useState(false);
 
   if (!cpm) return null;
 
   const rgb = getTierRgb(cpm);
 
   return (
-    <div className="group relative">
+    <div
+      className="group relative"
+      onClick={isMobile ? (e) => { e.stopPropagation(); setShowTip(v => !v); } : undefined}
+    >
       {/* 배지 본체 */}
       <div
         className="flex items-center gap-0.5 px-1 h-[22px] rounded cursor-default select-none"
@@ -52,7 +61,7 @@ export default function TypingBadge({ typingStats }) {
       </div>
 
       {/* 호버 설명 카드 */}
-      <div className="pointer-events-none absolute top-full right-0 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50">
+      <div className={`pointer-events-none absolute top-full right-0 mt-1.5 transition-opacity duration-150 z-50 ${showTip ? 'opacity-100' : 'opacity-0'} md:opacity-0 md:group-hover:opacity-100`}>
         <div className="bg-[#1a1f2e] rounded-xl px-4 py-3 shadow-2xl shadow-black/40 w-[210px]" style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: `rgba(${rgb},0.35)` }}>
           {/* 헤더 */}
           <div className="text-[12px] font-black mb-2" style={{ color: `rgba(${rgb},1)` }}>⌨️ 타자 배지</div>

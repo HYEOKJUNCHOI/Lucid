@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { getApiKey } from '../../lib/apiKey';
 import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
+import { useIsMobile } from '../../hooks/useMediaQuery';
+import BottomSheet from '../common/mobile/BottomSheet';
 
 
 /**
@@ -188,6 +190,9 @@ const getTypingTier = (cpm) => {
 const translationCache = new Map();
 
 export default function TypingPractice({ code, onClose, onComplete, onResetBest, onRestart, isNewRecord = false, previousBest = null }) {
+
+  const isMobile = useIsMobile();
+  const [showStatsSheet, setShowStatsSheet] = useState(false);
 
   // ── 한글 → 영문 번역 (gpt-4.1-nano) ──────────────────────────────────────
   const [resolvedCode, setResolvedCode] = useState(code);
@@ -496,35 +501,74 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
         <div className="flex items-center gap-1.5">
           <button
             onClick={restart}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-amber-400/40 bg-amber-500/10 text-amber-200 text-[11px] font-bold hover:bg-amber-500/20 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] md:min-h-0 rounded-md border border-amber-400/40 bg-amber-500/10 text-amber-200 text-[11px] font-bold hover:bg-amber-500/20 transition-all"
             title="F2"
           >
             <span>↻</span>
             <span>다시하기</span>
-            <span className="text-[9px] font-black opacity-70 bg-amber-400/20 px-1 py-0.5 rounded">
+            <span className="hidden md:inline text-[9px] font-black opacity-70 bg-amber-400/20 px-1 py-0.5 rounded">
               F2
             </span>
           </button>
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-300 text-[11px] font-bold hover:bg-white/10 hover:text-white transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] md:min-h-0 rounded-md border border-white/10 bg-white/5 text-gray-300 text-[11px] font-bold hover:bg-white/10 hover:text-white transition-all"
             title="Esc"
           >
             <span>×</span>
             <span>닫기</span>
-            <span className="text-[9px] font-black opacity-70 bg-white/10 px-1 py-0.5 rounded">
+            <span className="hidden md:inline text-[9px] font-black opacity-70 bg-white/10 px-1 py-0.5 rounded">
               Esc
             </span>
           </button>
         </div>
       </div>
 
+      {/* 모바일 전용 — 상단 요약 바 */}
+      {isMobile && (
+        <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-white/10 bg-[#0a0f14] shrink-0">
+          {/* 타수 */}
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-emerald-300 text-[22px] font-black tabular-nums leading-none">{stats.cpm}</span>
+            <span className="text-emerald-300/60 text-[11px] font-bold">타</span>
+          </div>
+          {/* 오타율 */}
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-fuchsia-300 text-[18px] font-black tabular-nums leading-none">{Math.max(0, 100 - stats.accuracy)}%</span>
+            <span className="text-fuchsia-300/50 text-[10px] font-bold">오타</span>
+          </div>
+          {/* 경과 시간 */}
+          <div className="text-amber-200 text-[18px] font-black tabular-nums leading-none">
+            {formatClock(stats.seconds)}
+          </div>
+          {/* 진행 게이지 */}
+          <div className="flex-1 flex items-center gap-1.5 min-w-0">
+            <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-200 ease-out"
+                style={{ width: `${Math.min(100, progress * 100)}%` }}
+              />
+            </div>
+            <span className="text-gray-400 text-[10px] font-bold tabular-nums shrink-0">
+              {Math.round(progress * 100)}%
+            </span>
+          </div>
+          {/* 통계 보기 버튼 */}
+          <button
+            onClick={() => setShowStatsSheet(true)}
+            className="flex items-center gap-1 px-2.5 py-1.5 min-h-[44px] rounded-md border border-white/10 bg-white/5 text-gray-300 text-[10px] font-bold hover:bg-white/10 transition-all shrink-0"
+          >
+            <span>📊</span>
+          </button>
+        </div>
+      )}
+
       {/* Caps Lock 경고 — 레이아웃 밀림 없이 절대 오버레이 */}
       {/* 본문 flex-row — 좌측 타이핑 + 우측 사이드 기록 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 타이핑 메인 영역 */}
         <div
-          className="relative flex-1 min-w-0 overflow-auto px-6 py-5 font-mono text-[13px] leading-[1.65] cursor-text"
+          className="relative flex-1 min-w-0 overflow-auto px-3 md:px-6 py-5 font-mono text-[12px] md:text-[13px] leading-[1.65] cursor-text"
           onClick={() => inputRef.current?.focus()}
         >
           {/* 코드창 중앙 — Caps Lock 경고 + F2 힌트 묶음 */}
@@ -589,8 +633,8 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
           </pre>
         </div>
 
-        {/* 우측 사이드 기록 패널 (한컴타자 느낌) */}
-        <aside className="w-[240px] shrink-0 border-l border-white/10 bg-[#0a0f14] px-5 py-6 flex flex-col gap-6 overflow-y-auto">
+        {/* 우측 사이드 기록 패널 (한컴타자 느낌) — 모바일에서 숨김 */}
+        <aside className="hidden md:flex w-[240px] shrink-0 border-l border-white/10 bg-[#0a0f14] px-5 py-6 flex-col gap-6 overflow-y-auto">
           {/* BEST — 이전 최고기록 (REAL-TIME 과 대조되는 골드/앰버 톤) */}
           <div className="-mx-5 -mt-6 px-5 pt-6 pb-5 bg-gradient-to-b from-amber-500/[0.08] to-transparent border-b border-amber-400/10">
             <div className="flex items-center justify-between mb-4">
@@ -724,8 +768,11 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
         }}
         className="absolute w-0 h-0 opacity-0 pointer-events-none"
         spellCheck={false}
-        autoCapitalize="off"
+        autoCapitalize="none"
         autoCorrect="off"
+        autoComplete="off"
+        inputMode="text"
+        data-gramm="false"
       />
 
       {/* 진입 화면 — 코드 블러 배경 + 중앙 카드 */}
@@ -737,13 +784,13 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
           {/* 뒤로가기 — 우상단 고정 */}
           <button
             onClick={onClose}
-            className="absolute top-6 right-8 flex items-center gap-2 text-gray-400 hover:text-white text-[18px] font-bold transition-colors"
+            className="absolute top-4 right-4 md:top-6 md:right-8 flex items-center gap-2 text-gray-400 hover:text-white text-[18px] font-bold transition-colors min-h-[44px] px-2"
             title="Esc"
           >
             ↩ 뒤로
           </button>
 
-          <div className="flex flex-col gap-5 px-10 pt-8 pb-5 rounded-2xl border border-white/10 bg-[#0d1117]/80 shadow-2xl w-[400px]">
+          <div className="flex flex-col gap-5 px-5 md:px-10 pt-8 pb-5 rounded-2xl border border-white/10 bg-[#0d1117]/80 shadow-2xl w-full max-w-[400px] mx-4">
             {translateError ? (
               <div className="flex flex-col items-center gap-4 py-4">
                 <div className="flex items-center gap-2 text-red-400 text-[13px] font-bold">
@@ -873,7 +920,7 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
             style={{ background: `radial-gradient(ellipse 80% 60% at 50% 40%, rgba(${typingTier.rgb},0.18) 0%, transparent 80%)` }}
           />
           <div
-            className="relative flex flex-col items-center gap-4 px-5 pt-7 pb-6 rounded-2xl border shadow-2xl"
+            className="relative flex flex-col items-center gap-4 px-5 pt-7 pb-6 rounded-2xl border shadow-2xl w-full max-w-[400px] mx-4"
             style={{
               background: `radial-gradient(ellipse at 50% 10%, rgba(${typingTier.rgb},0.15) 0%, rgba(${typingTier.rgb},0.04) 55%, #111520 100%)`,
               borderColor: `rgba(${typingTier.rgb}, 0.75)`,
@@ -1001,7 +1048,7 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
             <div className="flex gap-2 mt-1">
               <button
                 onClick={restart}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-bold transition-all"
+                className="flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-md text-xs font-bold transition-all"
                 style={isNewRecord ? {
                   background: `rgba(${typingTier.rgb},0.08)`,
                   border: `1px solid rgba(${typingTier.rgb},0.5)`,
@@ -1022,7 +1069,7 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
               </button>
               <button
                 onClick={onClose}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-bold transition-all"
+                className="flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-md text-xs font-bold transition-all"
                 style={isNewRecord ? {
                   background: `rgba(${typingTier.rgb},0.08)`,
                   border: `1px solid rgba(${typingTier.rgb},0.5)`,
@@ -1048,13 +1095,13 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
       {/* 기록초기화 확인 모달 — window.confirm 금지 약속에 따라 커스텀 모달 사용 */}
       {showResetConfirm && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#1e2030] border border-white/10 rounded-2xl px-8 py-6 flex flex-col items-center gap-4 shadow-2xl w-[320px]">
+          <div className="bg-[#1e2030] border border-white/10 rounded-2xl px-6 md:px-8 py-6 flex flex-col items-center gap-4 shadow-2xl w-full max-w-[320px] mx-4">
             <p className="text-white font-bold text-base">최고기록을 초기화할까요?</p>
             <p className="text-gray-400 text-sm text-center">저장된 기록이 전부 사라져요.<br/><span className="text-amber-300">획득한 뱃지도 함께 초기화</span>되며<br/>되돌릴 수 없습니다.</p>
             <div className="flex gap-3 w-full mt-1">
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm font-bold hover:bg-white/10 transition-all"
+                className="flex-1 py-2 min-h-[44px] rounded-lg bg-white/5 border border-white/10 text-gray-400 text-sm font-bold hover:bg-white/10 transition-all"
               >
                 취소
               </button>
@@ -1063,7 +1110,7 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
                   setShowResetConfirm(false);
                   onResetBest?.();
                 }}
-                className="flex-1 py-2 rounded-lg bg-rose-500/80 text-white text-sm font-bold hover:bg-rose-500 transition-all"
+                className="flex-1 py-2 min-h-[44px] rounded-lg bg-rose-500/80 text-white text-sm font-bold hover:bg-rose-500 transition-all"
               >
                 초기화
               </button>
@@ -1071,6 +1118,72 @@ setCapsLockSuspect(false); capsLockSuspectRef.current = false;
           </div>
         </div>
       )}
+
+      {/* 모바일 통계 BottomSheet */}
+      <BottomSheet
+        open={showStatsSheet}
+        onClose={() => setShowStatsSheet(false)}
+        title="📊 실시간 통계"
+        size="auto"
+      >
+        <div className="flex flex-col gap-5 py-2">
+          {/* BEST */}
+          {previousBest && (previousBest.bestCpm > 0 || previousBest.bestAccuracy > 0) && (
+            <div className="rounded-xl p-4 bg-amber-500/[0.08] border border-amber-400/10">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[11px]">🏆</span>
+                <span className="text-[11px] font-black tracking-[0.15em] text-amber-300/80">최고기록</span>
+              </div>
+              <div className="flex items-end gap-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-amber-200 text-[40px] font-black leading-none tabular-nums">{previousBest.bestCpm || 0}</span>
+                  <span className="text-[#bc9e3d] text-base font-bold">타</span>
+                </div>
+                <div>
+                  <div className="text-fuchsia-300 text-xl font-black tabular-nums">{Math.max(0, 100 - (previousBest.bestAccuracy || 0))}%</div>
+                  <div className="text-fuchsia-300/50 text-[10px] font-bold tracking-[0.1em] mt-1">오타율</div>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* 실시간 */}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px] font-black tracking-[0.15em] text-gray-400">실시간</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl p-4 bg-white/5 border border-white/10">
+              <div className="text-emerald-300 text-[44px] font-black leading-none tabular-nums">{stats.cpm}</div>
+              <div className="text-gray-400 text-[10px] font-bold tracking-[0.1em] mt-2">타수 (CPM)</div>
+            </div>
+            <div className="rounded-xl p-4 bg-white/5 border border-white/10">
+              <div className="text-fuchsia-300 text-[44px] font-black leading-none tabular-nums">{Math.max(0, 100 - stats.accuracy)}%</div>
+              <div className="text-gray-400 text-[10px] font-bold tracking-[0.1em] mt-2">오타율</div>
+            </div>
+            <div className="rounded-xl p-4 bg-white/5 border border-white/10">
+              <div className="text-amber-200 text-[32px] font-black leading-none tabular-nums">{formatClock(stats.seconds)}</div>
+              <div className="text-gray-400 text-[10px] font-bold tracking-[0.1em] mt-2">경과 시간</div>
+            </div>
+            <div className="rounded-xl p-4 bg-white/5 border border-white/10">
+              <div className="text-rose-300 text-[44px] font-black leading-none tabular-nums">{wrongCount}</div>
+              <div className="text-gray-400 text-[10px] font-bold tracking-[0.1em] mt-2">오타 개수</div>
+            </div>
+          </div>
+          {/* 진행 게이지 */}
+          <div className="rounded-xl p-4 bg-white/5 border border-white/10">
+            <div className="flex items-end justify-between mb-2">
+              <span className="text-gray-400 text-[10px] font-bold tracking-[0.1em]">진행률</span>
+              <span className="text-gray-300 text-[11px] font-black tabular-nums">{input.length} / {target.length}</span>
+            </div>
+            <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-200 ease-out"
+                style={{ width: `${Math.min(100, progress * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }

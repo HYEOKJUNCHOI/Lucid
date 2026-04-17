@@ -224,7 +224,7 @@ const AdminPage = ({ user, userData, onLogout }) => {
       </div>
 
       {/* 메인 컨텐츠 영역 */}
-      <main className="flex-1 p-6 md:px-[15px] md:pb-[15px] md:pt-[15px] overflow-y-auto">
+      <main className="flex-1 p-3 md:px-[15px] md:pb-[15px] md:pt-[15px] overflow-y-auto overflow-x-auto">
         <div className={activeTab === 'seats' ? 'w-full' : 'max-w-5xl mx-auto'}>
           {activeTab === 'dashboard' && <StudentDashboard />}
           {activeTab === 'seats' && <SeatChart />}

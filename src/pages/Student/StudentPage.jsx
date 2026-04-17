@@ -19,6 +19,10 @@ import { getApiKey } from '../../lib/apiKey';
 import Toast, { showToast } from '../../components/common/Toast';
 import TypingBadge from '../../components/common/TypingBadge';
 import MemoInventory from '../../components/memo/MemoInventory';
+import MobileTopBar from '../../components/common/mobile/MobileTopBar';
+import MobileBottomTab from '../../components/common/mobile/MobileBottomTab';
+import SidebarDrawer from '../../components/common/mobile/SidebarDrawer';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 
 const StudentPage = ({ user, userData, onLogout }) => {
@@ -44,6 +48,12 @@ const StudentPage = ({ user, userData, onLogout }) => {
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  // 📱 모바일 전용 배지 툴팁 탭 토글
+  const [showStreakTip, setShowStreakTip] = useState(false);
+  const [showWeekTip, setShowWeekTip] = useState(false);
+  // 📱 모바일 반응형 상태
+  const isMobile = useIsMobile();
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [streak, setStreak] = useState(0);
   const [streakStatus, setStreakStatus] = useState('ok'); // 'ok'|'grace1'|'grace2'|'broken'|'repair'
   const [repairCount, setRepairCount] = useState(-1);
@@ -603,7 +613,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
   };
 
   return (
-    <div className="flex h-svh bg-theme-bg text-white overflow-hidden">
+    <div className="flex h-svh md:h-svh min-h-dvh bg-theme-bg text-white overflow-hidden">
 
       {/* 챕터 호버 미리보기 (fixed) */}
       {chapterHover && chapterHover.files.length > 0 && (
@@ -1079,8 +1089,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
                             <div
                               className="absolute right-2 scale-[0.77] origin-top-right"
                               style={{ top: cheatTopPx }}
-                              onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setCheatHover({ top: r.top, left: r.right }); }}
-                              onMouseLeave={() => setCheatHover(null)}
+                              onMouseEnter={e => { if (isMobile) return; const r = e.currentTarget.getBoundingClientRect(); setCheatHover({ top: r.top, left: r.right }); }}
+                              onMouseLeave={() => { if (isMobile) return; setCheatHover(null); }}
+                              onClick={isMobile ? e => { if (cheatHover) { setCheatHover(null); } else { const r = e.currentTarget.getBoundingClientRect(); setCheatHover({ top: r.top, left: r.right }); } } : undefined}
                             >
                               <div
                                 className="flex items-center gap-0.5 px-1 h-[22px] rounded cursor-default select-none"
@@ -1101,7 +1112,11 @@ const StudentPage = ({ user, userData, onLogout }) => {
                           </div>
                           {/* 🔥 성실 배지 */}
                           {hasStreak && (
-                            <div className="absolute right-2 scale-[0.77] origin-top-right group" style={{ top: streakTopPx }}>
+                            <div
+                              className="absolute right-2 scale-[0.77] origin-top-right group"
+                              style={{ top: streakTopPx }}
+                              onClick={isMobile ? (e) => { e.stopPropagation(); setShowStreakTip(v => !v); } : undefined}
+                            >
                               <div
                                 className="flex items-center gap-0.5 px-1.5 h-[22px] rounded cursor-default select-none"
                                 style={{
@@ -1116,7 +1131,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                                   <span className="text-[9px] font-black" style={{ color: `rgba(251,191,36,0.85)` }}>일</span>
                                 </div>
                               </div>
-                              <div className="pointer-events-none absolute top-full right-0 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-50">
+                              <div className={`pointer-events-none absolute top-full right-0 mt-1.5 transition-opacity duration-150 z-50 ${showStreakTip ? 'opacity-100' : 'opacity-0'} md:opacity-0 md:group-hover:opacity-100`}>
                                 <div className="bg-[#1a1f2e] rounded-xl px-4 py-3 shadow-2xl shadow-black/40 w-[210px]" style={{ border: '1px solid rgba(251,191,36,0.35)' }}>
                                   <div className="text-[12px] font-black mb-2" style={{ color: `rgba(251,191,36,1)` }}>🔥 연속 출석 배지</div>
                                   <div className="flex items-baseline gap-1.5 mb-3">
@@ -1166,10 +1181,12 @@ const StudentPage = ({ user, userData, onLogout }) => {
                     <div
                       className="cursor-default"
                       onMouseEnter={e => {
+                        if (isMobile) return;
                         const r = e.currentTarget.getBoundingClientRect();
                         setFreezeHover({ top: r.top, left: r.right, streak });
                       }}
-                      onMouseLeave={() => setFreezeHover(null)}
+                      onMouseLeave={() => { if (isMobile) return; setFreezeHover(null); }}
+                      onClick={isMobile ? e => { if (freezeHover) { setFreezeHover(null); } else { const r = e.currentTarget.getBoundingClientRect(); setFreezeHover({ top: r.top, left: r.right, streak }); } } : undefined}
                     >
                       <div className="text-center p-2 rounded-xl h-full flex flex-col items-center justify-center transition-colors" style={{ background: 'rgba(147,197,253,0.08)', border: '1px solid rgba(147,197,253,0.35)' }}>
                         <div className="text-lg font-black" style={{ color: '#93c5fd' }}>{freezeCount}</div>
@@ -1235,10 +1252,13 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       <div className="mb-2 p-2 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(245,158,11,0.04) 100%)', border: '1px solid rgba(251,191,36,0.22)' }}>
                         <div className="flex items-center justify-between mb-2 px-0.5">
                           <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{month}월 출석</span>
-                          <div className="relative group cursor-default">
+                          <div
+                            className="relative group cursor-default"
+                            onClick={isMobile ? (e) => { e.stopPropagation(); setShowWeekTip(v => !v); } : undefined}
+                          >
                             <span className="text-[11px] font-black" style={{ color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }}>{liveStreak}일 연속 🔥</span>
                             {/* 7일 뱃지 안내 팝업 */}
-                            <div className="absolute right-0 bottom-full mb-2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50 w-[190px]">
+                            <div className={`absolute right-0 bottom-full mb-2 pointer-events-none transition-opacity duration-150 z-50 w-[190px] ${showWeekTip ? 'opacity-100' : 'opacity-0'} md:opacity-0 md:group-hover:opacity-100`}>
                               <div className="rounded-xl px-3.5 py-3 shadow-2xl" style={{ background: '#1a1f2e', border: '1px solid rgba(251,191,36,0.35)' }}>
                                 <div className="text-[11px] font-black mb-1.5" style={{ color: '#fbbf24' }}>🔥 연속 출석 배지</div>
                                 <p className="text-[9.5px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.85)' }}>
@@ -1379,8 +1399,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
                           {/* 아메리카노 (왼쪽) */}
                           <div
                             className="flex-1 flex flex-col items-center gap-0.5 py-1 cursor-default"
-                            onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setAmericanoHover({ top: r.top, left: r.left }); }}
-                            onMouseLeave={() => setAmericanoHover(null)}
+                            onMouseEnter={e => { if (isMobile) return; const r = e.currentTarget.getBoundingClientRect(); setAmericanoHover({ top: r.top, left: r.left }); }}
+                            onMouseLeave={() => { if (isMobile) return; setAmericanoHover(null); }}
+                            onClick={isMobile ? e => { if (americanoHover) { setAmericanoHover(null); } else { const r = e.currentTarget.getBoundingClientRect(); setAmericanoHover({ top: r.top, left: r.left }); } } : undefined}
                           >
                             <span className="text-base leading-none">☕</span>
                             <span className="text-sm font-black leading-none" style={{ color: '#d97706' }}>{americanoCount}</span>
@@ -1409,8 +1430,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
                           {/* 원두 (오른쪽) */}
                           <div
                             className="flex-1 flex flex-col items-center gap-0.5 py-1 cursor-default rounded-lg transition-all"
-                            onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setBeanHover({ top: r.top, left: r.right + 8 }); }}
-                            onMouseLeave={() => setBeanHover(null)}
+                            onMouseEnter={e => { if (isMobile) return; const r = e.currentTarget.getBoundingClientRect(); setBeanHover({ top: r.top, left: r.right + 8 }); }}
+                            onMouseLeave={() => { if (isMobile) return; setBeanHover(null); }}
+                            onClick={isMobile ? e => { if (beanHover) { setBeanHover(null); } else { const r = e.currentTarget.getBoundingClientRect(); setBeanHover({ top: r.top, left: r.right + 8 }); } } : undefined}
                             style={{}}
                           >
                             <span className="text-base leading-none" style={canExchange ? { filter: 'drop-shadow(0 0 8px rgba(245,158,11,0.9)) drop-shadow(0 0 16px rgba(245,158,11,0.5))' } : {}}>🫘</span>
@@ -1519,39 +1541,155 @@ const StudentPage = ({ user, userData, onLogout }) => {
         </div>
       </aside>
 
-      {/* 모바일 상단 바 */}
-      <header className="flex md:hidden items-center justify-between px-4 py-3 bg-theme-sidebar border-b border-theme-border absolute top-0 w-full z-10">
-        <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-          <div className="p-1.5 bg-gradient-to-br from-theme-primary/20 to-theme-icon/20 rounded-lg backdrop-blur-md border border-white/10 ring-1 ring-theme-primary/30 shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="url(#mob-grad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <defs>
-                <linearGradient id="mob-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#4ec9b0" />
-                  <stop offset="100%" stopColor="#569cd6" />
-                </linearGradient>
-              </defs>
-              <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
-            </svg>
-          </div>
-          Lucid
-        </h1>
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/admin')} className="text-theme-secondary hover:text-white transition p-2">
-            <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+      {/* 📱 모바일 상단바 — 햄버거 + 타이틀 + 관리자/로그아웃 */}
+      <MobileTopBar
+        leading="menu"
+        onLeadingClick={() => setMobileDrawerOpen(true)}
+        title={
+          <span className="inline-flex items-center gap-2">
+            <span className="p-1 bg-gradient-to-br from-theme-primary/20 to-theme-icon/20 rounded-md border border-white/10 ring-1 ring-theme-primary/30">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="url(#mob-grad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <defs>
+                  <linearGradient id="mob-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#4ec9b0" />
+                    <stop offset="100%" stopColor="#569cd6" />
+                  </linearGradient>
+                </defs>
+                <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
+              </svg>
+            </span>
+            Lucid
+          </span>
+        }
+        right={
+          <button
+            onClick={onLogout}
+            className="touch-target px-2 text-theme-secondary text-xs font-semibold active:text-white"
+          >
+            로그아웃
           </button>
-          <button onClick={onLogout} className="text-theme-secondary text-sm">로그아웃</button>
-        </div>
-      </header>
+        }
+      />
 
-      {/* 메인 콘텐츠 */}
-      <main className="flex-1 overflow-hidden p-2 pt-16 md:pt-2 md:p-2 flex justify-center bg-theme-bg">
-        <div className="w-full max-w-[95%] xl:max-w-[1400px] h-full flex flex-col justify-center pb-2">
+      {/* 📱 모바일 좌측 드로어 — 간단 메뉴 (프로필/모드/관리자/로그아웃) */}
+      <SidebarDrawer
+        open={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        header={
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.3), rgba(139,92,246,0.2))', border: '1px solid rgba(167,139,250,0.5)' }}>
+              <span className="text-[11px] font-black" style={{ color: '#d8b4fe' }}>Lv{calcLevel(userData?.totalXP || 0)}</span>
+            </div>
+            <span className="truncate">{userData?.displayName || user?.displayName || '학생'}</span>
+          </div>
+        }
+      >
+        <nav className="flex flex-col p-3 gap-1.5">
+          {[
+            { label: '🏠 홈', onClick: () => { setMode(null); navigate('/home'); } },
+            { label: '📚 챕터별 학습', onClick: () => { setMode('chapter'); navigate('/chapter'); } },
+            { label: '⚔️ 오늘의 퀘스트', onClick: () => { setMode('quest'); navigate('/home/quest'); } },
+            { label: '🎯 레벨업', onClick: () => { setMode('levelup'); navigate('/home/levelup'); } },
+            { label: '📓 마스터노트', onClick: () => { setMode('freeStudy'); navigate('/study'); } },
+            { label: '🗒️ 학습메모', onClick: () => { setMemoInventoryOpen(true); } },
+          ].map((it) => (
+            <button
+              key={it.label}
+              onClick={() => { setMobileDrawerOpen(false); it.onClick(); }}
+              className="touch-target text-left px-4 py-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] active:bg-white/[0.1] border border-white/[0.06] text-[14px] font-semibold text-white/90 transition-colors"
+            >
+              {it.label}
+            </button>
+          ))}
+          {/* 스테이터스 요약 */}
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="p-2 rounded-lg bg-[#f59e0b]/[0.08] border border-[#f59e0b]/25 text-center">
+              <div className="text-[11px] font-black text-[#f59e0b]">{dailyXP.total}</div>
+              <div className="text-[9px] text-gray-500 font-bold mt-0.5">오늘 XP</div>
+            </div>
+            <div className="p-2 rounded-lg bg-[#c586c0]/[0.08] border border-[#c586c0]/25 text-center">
+              <div className="text-[11px] font-black text-[#c586c0]">{streak}</div>
+              <div className="text-[9px] text-gray-500 font-bold mt-0.5">연속</div>
+            </div>
+            <div className="p-2 rounded-lg bg-[#569cd6]/[0.08] border border-[#569cd6]/25 text-center">
+              <div className="text-[11px] font-black text-[#569cd6]">{freezeCount}</div>
+              <div className="text-[9px] text-gray-500 font-bold mt-0.5">얼리기🧊</div>
+            </div>
+          </div>
+          <button
+            onClick={() => { setMobileDrawerOpen(false); navigate('/admin'); }}
+            className="touch-target mt-3 text-left px-4 py-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] active:bg-white/[0.1] border border-white/[0.06] text-[13px] font-semibold text-white/70"
+          >
+            ⚙️ 설정
+          </button>
+          <button
+            onClick={onLogout}
+            className="touch-target text-left px-4 py-3 rounded-xl bg-red-500/[0.08] hover:bg-red-500/[0.15] active:bg-red-500/[0.2] border border-red-500/20 text-[13px] font-semibold text-red-300"
+          >
+            🚪 로그아웃
+          </button>
+        </nav>
+      </SidebarDrawer>
+
+      {/* 📱 모바일 하단 탭 — 홈/챕터/복습/프로필 */}
+      <MobileBottomTab
+        items={[
+          {
+            key: 'home',
+            label: '홈',
+            active: !mode,
+            onClick: () => { setMode(null); navigate('/home'); },
+            icon: (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            ),
+          },
+          {
+            key: 'chapter',
+            label: '챕터',
+            active: mode === 'chapter',
+            onClick: () => { setMode('chapter'); navigate('/chapter'); },
+            icon: (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            ),
+          },
+          {
+            key: 'quest',
+            label: '퀘스트',
+            active: mode === 'quest',
+            onClick: () => { setMode('quest'); navigate('/home/quest'); },
+            icon: (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 17.5 4.5 15"/><path d="m12 12 4 10 1-6 6-1z"/><path d="M9 12c2 0 3-2 3-3s-1-3-3-3-3 2-3 3 1 3 3 3Z"/></svg>
+            ),
+          },
+          {
+            key: 'study',
+            label: '마스터노트',
+            active: mode === 'freeStudy',
+            onClick: () => { setMode('freeStudy'); navigate('/study'); },
+            icon: (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            ),
+          },
+          {
+            key: 'menu',
+            label: '메뉴',
+            active: false,
+            onClick: () => setMobileDrawerOpen(true),
+            icon: (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+            ),
+          },
+        ]}
+      />
+
+      {/* 메인 콘텐츠 — 모바일: 상단바(48)+하단탭(56) 여백 확보, 데스크탑: 기존 유지 */}
+      <main
+        className="flex-1 overflow-y-auto md:overflow-hidden flex justify-center bg-theme-bg pt-[calc(env(safe-area-inset-top)+48px)] pb-[calc(env(safe-area-inset-bottom)+56px)] px-3 md:px-2 md:pt-2 md:pb-2"
+      >
+        <div className="w-full max-w-[100%] md:max-w-[95%] xl:max-w-[1400px] h-full flex flex-col md:justify-center pb-2">
 
           {!userData ? null : groupIDs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-6 text-center animate-fade-in-up mt-20 md:mt-0">
+            <div className="flex flex-col items-center justify-center p-6 text-center animate-fade-in-up mt-8 md:mt-0">
               <div className="bg-theme-card/90 border border-theme-border rounded-[2rem] p-10 max-w-md w-full shadow-2xl backdrop-blur-xl">
                 <div className="w-16 h-16 mx-auto mb-6 bg-theme-primary/10 rounded-full flex items-center justify-center">
                   <svg className="w-8 h-8 text-theme-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1677,9 +1815,9 @@ const StudentPage = ({ user, userData, onLogout }) => {
               />
             ) : (
               // ─── 챕터 사이드바 + 메인 (옛날 디자인 복원) ────────
-              <div className="w-full h-full flex overflow-hidden animate-fade-in-up">
-                {/* 왼쪽 사이드바 */}
-                <aside className="w-60 shrink-0 border-r border-white/[0.06] flex flex-col" style={{ background: '#0d1117' }}>
+              <div className="w-full h-full flex flex-col md:flex-row overflow-hidden animate-fade-in-up">
+                {/* 왼쪽 사이드바 — 모바일에선 상단 풀폭, 데스크탑에선 좌측 고정 */}
+                <aside className="w-full md:w-60 shrink-0 border-b md:border-b-0 md:border-r border-white/[0.06] flex flex-col max-h-[50vh] md:max-h-none" style={{ background: '#0d1117' }}>
                   {/* 상단 헤더 */}
                   <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] shrink-0">
                     <button onClick={() => { setMode(null); reset(); }}
@@ -1962,7 +2100,7 @@ const StudentPage = ({ user, userData, onLogout }) => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-bold mb-2" style={{ color: '#38bdf8' }}>복습 &amp; 예습</h3>
+                  <h3 className="text-lg font-bold mb-2" style={{ color: '#38bdf8' }}>마스터노트</h3>
                   <p className="text-sm text-gray-400 leading-snug">
                     <span className="text-[11px] text-gray-500 leading-tight">코드노트, AI코드생성, 용어번역, 메모,<br/>AI문제출제, GitHub코드불러오기</span><br/>
                     각종툴로 편하게 공부에만 집중하세요.
@@ -2066,23 +2204,23 @@ const StudentPage = ({ user, userData, onLogout }) => {
       {/* 챕터 모달 — FreeStudy에서 GitHub 레포 클릭 시 오버레이 */}
       {chapterModal && (
         <div className="fixed inset-0 z-[9999] flex pointer-events-none">
-          {/* 왼쪽 사이드바 영역: 투명·클릭 통과 */}
+          {/* 왼쪽 사이드바 영역: 투명·클릭 통과 (데스크탑만) */}
           <div className={`${sidebarMini ? 'w-[68px]' : 'w-64'} shrink-0 hidden md:block`} />
 
           {/* 메인 콘텐츠 영역: 블러 오버레이 */}
           <div
-            className="flex-1 pointer-events-auto flex items-center justify-center px-4 py-4"
+            className="flex-1 pointer-events-auto flex items-center justify-center px-2 py-2 md:px-4 md:py-4"
             style={{ background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(7px)' }}
             onClick={() => { setChapterModal(false); setChapterSelectedFile(null); }}
           >
-            {/* 패널 */}
+            {/* 패널 — 모바일은 세로 스택, 데스크탑은 기존 2패널 */}
             <div
-              className="relative z-10 flex w-full max-w-7xl rounded-2xl overflow-hidden shadow-2xl animate-fade-in-up"
-              style={{ border: '1px solid rgba(255,255,255,0.32)', height: 'calc(100vh - 48px)', maxHeight: '960px', boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 40px rgba(255,255,255,0.1), 0 0 80px rgba(255,255,255,0.04)' }}
+              className="relative z-10 flex flex-col md:flex-row w-full max-w-7xl rounded-2xl overflow-hidden shadow-2xl animate-fade-in-up"
+              style={{ border: '1px solid rgba(255,255,255,0.32)', height: 'calc(100dvh - 120px)', maxHeight: '960px', boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 40px rgba(255,255,255,0.1), 0 0 80px rgba(255,255,255,0.04)' }}
               onClick={e => e.stopPropagation()}
             >
-              {/* 왼쪽: 챕터 트리 */}
-              <aside className="w-72 shrink-0 border-r border-white/[0.06] flex flex-col" style={{ background: '#0d1117' }}>
+              {/* 왼쪽: 챕터 트리 — 모바일은 상단 고정높이 */}
+              <aside className="w-full md:w-72 shrink-0 border-b md:border-b-0 md:border-r border-white/[0.06] flex flex-col max-h-[45%] md:max-h-none" style={{ background: '#0d1117' }}>
                 <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.06] shrink-0">
                   <span className="text-sm font-bold text-gray-200">📂 챕터 선택</span>
                   <button

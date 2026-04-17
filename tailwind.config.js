@@ -8,6 +8,20 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        // mobile:  <768 (prefix 없음 - 기본)
+        // tablet:  768~1023 (md:)
+        // desktop: >=1024 (lg:)
+        'xs': '375px', // iPhone SE 가드
+      },
+      spacing: {
+        'safe-top': 'env(safe-area-inset-top)',
+        'safe-bottom': 'env(safe-area-inset-bottom)',
+        'safe-left': 'env(safe-area-inset-left)',
+        'safe-right': 'env(safe-area-inset-right)',
+        'tab-h': '56px',      // 모바일 하단 탭 높이
+        'topbar-h': '48px',   // 모바일 상단바 높이
+      },
       colors: {
         theme: {
           bg: '#0e1512',       // Dark Forest
@@ -91,6 +105,23 @@ export default {
           '67%':      { opacity: '0.65' },
           '83%':      { opacity: '1.0' },
         },
+        // iOS 홈화면 편집모드 jiggle (±1deg 미세 회전)
+        'ios-jiggle': {
+          '0%':   { transform: 'rotate(-1deg) translate(-0.5px, -0.5px)' },
+          '50%':  { transform: 'rotate(1deg) translate(0.5px, 0.5px)' },
+          '100%': { transform: 'rotate(-1deg) translate(-0.5px, -0.5px)' },
+        },
+        // iOS jiggle 변형 (살짝 다른 위상으로 자연스러움 증가)
+        'ios-jiggle-alt': {
+          '0%':   { transform: 'rotate(1deg) translate(0.5px, -0.5px)' },
+          '50%':  { transform: 'rotate(-1deg) translate(-0.5px, 0.5px)' },
+          '100%': { transform: 'rotate(1deg) translate(0.5px, -0.5px)' },
+        },
+        // iOS 길게누름 시 살짝 커지는 피드백
+        'ios-press-in': {
+          '0%':   { transform: 'scale(1)' },
+          '100%': { transform: 'scale(0.95)' },
+        },
       },
       animation: {
         'confetti-fall':    'confetti-fall 2.8s ease-out forwards',
@@ -104,6 +135,9 @@ export default {
         'ring-breathe-1':   'ring-breathe-1 4s ease-in-out infinite',
         'ring-breathe':     'ring-breathe 2.4s ease-in-out infinite',
         'ring-breathe-3':   'ring-breathe-3 2.5s ease-in-out infinite',
+        'ios-jiggle':       'ios-jiggle 0.3s ease-in-out infinite',
+        'ios-jiggle-alt':   'ios-jiggle-alt 0.31s ease-in-out infinite', // 0.31로 약간 엇박
+        'ios-press-in':     'ios-press-in 0.2s ease-out forwards',
       },
     },
   },

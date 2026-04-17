@@ -266,13 +266,13 @@ ${code}
         <div className="flex gap-3">
           <button
             onClick={onBack}
-            className="flex-1 py-3 rounded-xl border border-white/[0.08] text-gray-400 text-sm font-bold hover:text-white hover:border-white/20 transition-all"
+            className="flex-1 py-3 min-h-[44px] rounded-xl border border-white/[0.08] text-gray-400 text-sm font-bold hover:text-white hover:border-white/20 transition-all"
           >
             돌아가기
           </button>
           <button
             onClick={startDiagnosis}
-            className="flex-1 py-3 rounded-xl bg-[#569cd6] hover:bg-[#4a87be] text-white text-sm font-black transition-all shadow-[0_0_20px_rgba(86,156,214,0.25)]"
+            className="flex-1 py-3 min-h-[44px] rounded-xl bg-[#569cd6] hover:bg-[#4a87be] text-white text-sm font-black transition-all shadow-[0_0_20px_rgba(86,156,214,0.25)]"
           >
             진단 시작
           </button>
@@ -335,7 +335,7 @@ ${code}
               {renderQuestionD(q.question)}
             </div>
 
-            <div className="p-4 grid grid-cols-1 gap-2">
+            <div className="p-3 md:p-4 grid grid-cols-1 gap-2">
               {q.options.map((opt, i) => {
                 let style = 'border-white/[0.08] bg-white/[0.02] text-gray-300 hover:border-[#569cd6]/40 hover:bg-[#569cd6]/[0.05]';
                 if (selectedAnswer) {
@@ -348,7 +348,7 @@ ${code}
                     key={i}
                     onClick={() => handleAnswer(opt)}
                     disabled={!!selectedAnswer}
-                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm font-medium transition-all ${style}`}
+                    className={`w-full text-left px-4 py-3 min-h-[44px] rounded-xl border text-sm font-medium transition-all ${style}`}
                   >
                     {opt}
                   </button>
@@ -396,7 +396,7 @@ ${code}
               style={{ background: `${evaluation.color}18`, border: `2px solid ${evaluation.color}40`, boxShadow: `0 0 20px ${evaluation.color}25` }}>
               {evaluation.icon}
             </div>
-            <div className="text-4xl font-black mb-1" style={{ color: evaluation.color }}>
+            <div className="text-3xl md:text-4xl font-black mb-1" style={{ color: evaluation.color }}>
               {Math.round(overallRatio * 100)}%
             </div>
             <p className="text-sm font-bold" style={{ color: evaluation.color }}>{evaluation.label}</p>
@@ -405,7 +405,7 @@ ${code}
 
           {/* 강점 / 약점 */}
           {chapterStats.length >= 2 && (
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
               <div className="rounded-xl border border-[#4ec9b0]/20 bg-[#4ec9b0]/[0.05] p-4">
                 <p className="text-[10px] font-bold text-[#4ec9b0] mb-1">💪 가장 강한 챕터</p>
                 <p className="text-white font-black">{strongest.ch.replace('ch', 'ch.')}</p>
@@ -453,13 +453,13 @@ ${code}
                 setAnswers([]);
                 setQIdx(0);
               }}
-              className="flex-1 py-3 rounded-xl border border-white/[0.08] text-gray-400 text-sm font-bold hover:text-white hover:border-white/20 transition-all"
+              className="flex-1 py-3 min-h-[44px] rounded-xl border border-white/[0.08] text-gray-400 text-sm font-bold hover:text-white hover:border-white/20 transition-all"
             >
               다시 진단
             </button>
             <button
               onClick={onBack}
-              className="flex-1 py-3 rounded-xl bg-[#569cd6] hover:bg-[#4a87be] text-white text-sm font-black transition-all"
+              className="flex-1 py-3 min-h-[44px] rounded-xl bg-[#569cd6] hover:bg-[#4a87be] text-white text-sm font-black transition-all"
             >
               학습 시작
             </button>

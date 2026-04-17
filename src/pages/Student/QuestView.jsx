@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -169,7 +170,9 @@ const TabButton = ({ active, shortcut, label, onClick }) => (
         : 'chrome-tab-inactive text-gray-500 border border-transparent hover:text-gray-300'
     }`}
   >
-    <span className={`text-[9px] px-1 py-0.5 rounded font-mono border ${active ? 'bg-white/[0.08] border-white/[0.14] text-gray-300' : 'bg-white/[0.03] border-white/[0.07] text-gray-600'}`}>{shortcut}</span>
+    {shortcut && (
+      <span className={`text-[9px] px-1 py-0.5 rounded font-mono border ${active ? 'bg-white/[0.08] border-white/[0.14] text-gray-300' : 'bg-white/[0.03] border-white/[0.07] text-gray-600'}`}>{shortcut}</span>
+    )}
     {label}
   </button>
 );
@@ -191,6 +194,10 @@ const CHAT_SYSTEM = `당신은 친절한 코딩 멘토입니다. 학생이 코�
 
 // ═══════════════════════════════════════════════
 const QuestView = ({ teacher, repo, chapters, chapterFilesMap, chaptersLoading, visitedFiles, userData, onBack }) => {
+  // ─── 반응형 ───────────────────────────────────
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState('code'); // 'code' | 'quiz'
+
   // ─── 상태 ─────────────────────────────────────
   const [routineItems, setRoutineItems] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(() => {
@@ -939,14 +946,45 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
         <span className="text-xs font-bold" style={{ color: '#dcdcaa' }}>{item.file.name}</span>
       </div>
 
+      {/* 모바일 탭 바 — md 이상에서는 숨김 */}
+      <div className="md:hidden shrink-0 flex border-b border-white/[0.08] bg-[#080c08]" style={{ height: '44px' }}>
+        <button
+          onClick={() => setMobileTab('code')}
+          className={`flex-1 h-full flex items-center justify-center text-[13px] font-bold transition-all ${
+            mobileTab === 'code'
+              ? 'text-white border-b-2 border-[#4ec9b0]'
+              : 'text-gray-500'
+          }`}
+        >
+          📝 코드
+        </button>
+        <button
+          onClick={() => { setMobileTab('quiz'); if (rightTab !== 3 && rightTab !== 4) setRightTab(3); }}
+          className={`flex-1 h-full flex items-center justify-center text-[13px] font-bold transition-all ${
+            mobileTab === 'quiz'
+              ? 'text-white border-b-2 border-[#4ec9b0]'
+              : 'text-gray-500'
+          }`}
+        >
+          🎯 문제풀기
+        </button>
+      </div>
+
       {/* 좌=코드 / 우=패널 */}
       <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
         {/* 좌: Monaco + 탭 */}
-        <div style={{ width: `${splitRatio * 100}%` }} className="shrink-0 flex flex-col border-r border-white/[0.06]">
+        <div
+          style={{ width: isMobile ? undefined : `${splitRatio * 100}%` }}
+          className={`shrink-0 flex flex-col border-r border-white/[0.06] ${
+            isMobile
+              ? mobileTab === 'code' ? 'flex w-full' : 'hidden'
+              : ''
+          }`}
+        >
           {/* 탭 헤더 */}
           <div className="shrink-0 flex items-end gap-0.5 px-2 pt-1.5 border-b border-white/[0.10] bg-[#080c08]">
-            <TabButton active={leftTab === 1} shortcut="⇧1" label="수업코드" onClick={() => setLeftTab(1)} />
-            <TabButton active={leftTab === 2} shortcut="⇧2" label="AI코드" onClick={() => setLeftTab(2)} />
+            <TabButton active={leftTab === 1} shortcut={isMobile ? null : "⇧1"} label="수업코드" onClick={() => setLeftTab(1)} />
+            <TabButton active={leftTab === 2} shortcut={isMobile ? null : "⇧2"} label="AI코드" onClick={() => setLeftTab(2)} />
             <div className="ml-auto flex items-center gap-1.5 pb-1.5 pr-1">
               <button
                 onClick={() => {
@@ -1029,22 +1067,22 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
           )}
         </div>
 
-        {/* 스플리터 */}
+        {/* 스플리터 — 모바일에서 숨김 */}
         <div onMouseDown={handleSplitMouseDown}
-          className="w-1.5 cursor-col-resize flex items-center justify-center group hover:bg-[#f59e0b]/20 transition-colors rounded-full mx-0.5 shrink-0">
+          className="hidden md:flex w-1.5 cursor-col-resize items-center justify-center group hover:bg-[#f59e0b]/20 transition-colors rounded-full mx-0.5 shrink-0">
           <div className="w-0.5 h-8 bg-gray-600 group-hover:bg-[#f59e0b] rounded-full transition-colors" />
         </div>
 
         {/* 우: 탭 패널 */}
-        <div ref={rightPanelRef} style={{ fontSize: `${panelFontSize}px` }} className="flex-1 min-w-0 flex flex-col relative">
+        <div ref={rightPanelRef} style={{ fontSize: `${panelFontSize}px` }} className={`flex-1 min-w-0 flex flex-col relative ${isMobile ? (mobileTab === 'quiz' ? 'flex' : 'hidden') : ''}`}>
           {/* 오답 플래시 */}
           {screenFlash && <div className="absolute inset-0 bg-red-500/30 pointer-events-none z-30 screen-flash-red" />}
 
           {/* 탭 헤더 */}
           <div className="shrink-0 flex items-end gap-0.5 px-2 pt-1.5 border-b border-white/[0.10] bg-[#080c08]">
-            <TabButton active={rightTab === 3} shortcut="⇧3" label="해석+채팅" onClick={() => setRightTab(3)} />
-            <TabButton active={rightTab === 4} shortcut="⇧4" label="퀴즈" onClick={() => { setRightTab(4); if (!quizVisible && code) requestQuiz(); }} />
-            {rightTab === 3 && analysisResult && (
+            <TabButton active={rightTab === 3} shortcut={isMobile ? null : "⇧3"} label="해석+채팅" onClick={() => setRightTab(3)} />
+            <TabButton active={rightTab === 4} shortcut={isMobile ? null : "⇧4"} label="퀴즈" onClick={() => { setRightTab(4); if (!quizVisible && code) requestQuiz(); }} />
+            {!isMobile && rightTab === 3 && analysisResult && (
               <span className="ml-auto pr-3 mb-1.5 text-[9px] text-gray-600 flex items-center gap-1 self-center">
                 <span className="font-mono bg-white/[0.04] px-1 py-0.5 rounded border border-white/[0.08]">F2</span>순서대로 펼치기
               </span>
@@ -1202,7 +1240,7 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                     <p className="text-xs text-gray-500 text-center">설명을 듣고 이해했어요 버튼을<br/>누르거나, 바로 문제를 풀어보세요.</p>
                     <button
                       onClick={() => requestQuiz(false)}
-                      className="w-full py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 hover:bg-[#a855f7]/20 transition-all"
+                      className="w-full min-h-[44px] py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 hover:bg-[#a855f7]/20 transition-all"
                     >
                       바로 문제 풀기
                     </button>
@@ -1231,7 +1269,7 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                       </div>
                     </div>
                     <button onClick={() => { removeWeakFile(routineItems[currentIdx]?.file?.path); goNextItem(); }}
-                      className="w-full py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 transition-all">
+                      className="w-full min-h-[44px] py-3 rounded-xl font-bold text-sm bg-[#a855f7]/15 text-[#a855f7] border border-[#a855f7]/30 hover:-translate-y-0.5 transition-all">
                       다음 코드로 →
                     </button>
                   </div>
@@ -1378,7 +1416,7 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
                         )}
                         <p className="text-xs text-gray-400">{quizFeedback.explanation}</p>
                         <button onClick={goNextQuestion}
-                          className="mt-2 w-full py-2 rounded-lg font-bold text-sm bg-[#f59e0b]/15 text-[#f59e0b] border border-[#f59e0b]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
+                          className="mt-2 w-full min-h-[44px] py-2 rounded-lg font-bold text-sm bg-[#f59e0b]/15 text-[#f59e0b] border border-[#f59e0b]/30 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2">
                           {quizHearts <= 0 || quizIdx + 1 >= quizQuestions.length ? '결과 보기' : '다음 문제'}
                           <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#f59e0b]/15 border border-[#f59e0b]/25 text-[#f59e0b]/60">Enter</span>
                         </button>
@@ -1395,7 +1433,7 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
 
       {exitConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setExitConfirm(false)}>
-          <div className="bg-[#1a1a1a] border border-white/[0.08] rounded-2xl p-6 w-[340px] shadow-[0_16px_64px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#1a1a1a] border border-white/[0.08] rounded-2xl p-6 w-full max-w-[340px] mx-4 shadow-[0_16px_64px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
                 <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -1408,11 +1446,11 @@ ${curQ.options ? '선택지: ' + curQ.options.join(' / ') : ''}
             <p className="text-sm text-gray-300 mb-6">퀘스트를 정말 종료하시겠습니까?</p>
             <div className="flex gap-2">
               <button onClick={() => setExitConfirm(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-gray-400 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all">
+                className="flex-1 min-h-[44px] py-2.5 rounded-xl text-sm font-bold text-gray-400 bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] transition-all">
                 취소
               </button>
               <button onClick={() => { setExitConfirm(false); onBack(); }}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all">
+                className="flex-1 min-h-[44px] py-2.5 rounded-xl text-sm font-bold text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all">
                 종료
               </button>
             </div>

@@ -8,6 +8,7 @@ import { doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { addDailyXPCapped } from '../../services/userStateService';
 import { GiAnvilImpact, GiSilverBullet, GiGoldBar, GiDiamondTrophy, GiLaurelCrown } from 'react-icons/gi';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 // ─── 과목 목록 ───────────────────────────────────
 const SUBJECTS = [
@@ -274,6 +275,7 @@ const clearPlacementState = (uid, subjectId) => {
 
 // ─── 컴포넌트 ────────────────────────────────────
 const LevelUpView = ({ userData, onBack }) => {
+  const isMobile = useIsMobile();
   const [phase, setPhase] = useState('select'); // select | quiz | testout | result
   const [selectedSubject, setSelectedSubject] = useState(null);
   const [currentQuiz, setCurrentQuiz] = useState(null);
@@ -291,6 +293,7 @@ const LevelUpView = ({ userData, onBack }) => {
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [showCodeHint, setShowCodeHint] = useState(false);
   const [sessionXP, setSessionXP] = useState(0); // 이번 세션 획득 XP
+  const [mobileTab, setMobileTab] = useState('code'); // 모바일 전용: 'code' | 'quiz'
   const [testoutTarget, setTestoutTarget] = useState(null); // 테스트아웃 목표 레벨
   const [testoutCorrect, setTestoutCorrect] = useState(0); // 테스트아웃 맞춘 수
   const [testoutTotal, setTestoutTotal] = useState(0); // 테스트아웃 총 문제
@@ -465,6 +468,11 @@ const LevelUpView = ({ userData, onBack }) => {
       generatePlacementQuiz([]);
     }
   }, [phase, placementStarted, selectedSubject, placementDone]);
+
+  // 새 퀴즈가 로드될 때마다 모바일 탭을 'code'로 리셋 (코드 먼저 보여주기)
+  useEffect(() => {
+    if (currentQuiz) setMobileTab('code');
+  }, [currentQuiz]);
 
   // 배치고사 제출
   const handlePlacementSubmit = async () => {
@@ -966,11 +974,36 @@ const LevelUpView = ({ userData, onBack }) => {
             const cp = detectQuizCodePanel(currentQuiz);
             const OPT_LABELS = ['①', '②', '③', '④', '⑤'];
             return (
-              <div key={currentQuiz.question} className={`flex gap-5 ${cp.show ? 'w-full max-w-5xl flex-row items-start' : 'w-full max-w-lg flex-col'}`}>
-                {/* 코드 패널 (왼쪽) */}
+              <div key={currentQuiz.question} className={`flex ${isMobile && cp.show ? 'gap-0' : 'gap-5'} ${cp.show ? `w-full max-w-5xl ${isMobile ? 'flex-col' : 'flex-row items-start'}` : 'w-full max-w-lg flex-col'}`}>
+                {/* 모바일 전용 탭바 — cp.show 일 때만 */}
+                {isMobile && cp.show && (
+                  <div className="md:hidden shrink-0 flex border-b border-white/[0.08] bg-[#080c08] w-full mb-3" style={{ height: '44px' }}>
+                    <button
+                      onClick={() => setMobileTab('code')}
+                      className={`flex-1 h-full flex items-center justify-center text-[13px] font-bold transition-all ${
+                        mobileTab === 'code'
+                          ? 'text-white border-b-2 border-[#4ec9b0]'
+                          : 'text-gray-500'
+                      }`}
+                    >
+                      💻 코드
+                    </button>
+                    <button
+                      onClick={() => setMobileTab('quiz')}
+                      className={`flex-1 h-full flex items-center justify-center text-[13px] font-bold transition-all ${
+                        mobileTab === 'quiz'
+                          ? 'text-white border-b-2 border-[#4ec9b0]'
+                          : 'text-gray-500'
+                      }`}
+                    >
+                      🎯 퀴즈
+                    </button>
+                  </div>
+                )}
+                {/* 코드 패널 (왼쪽 / 모바일에서는 위) */}
                 {cp.show && (
-                  <div className="flex-1 min-w-0 quiz-code-panel-enter">
-                    <div className="rounded-2xl overflow-hidden border border-white/[0.08]" style={{ background: '#1a1a1a' }}>
+                  <div className={`quiz-code-panel-enter ${isMobile ? `w-full ${mobileTab === 'code' ? '' : 'hidden'}` : 'flex-1 min-w-0'}`}>
+                    <div className={`rounded-2xl overflow-hidden border border-white/[0.08] ${isMobile ? 'max-h-[70vh] overflow-y-auto' : ''}`} style={{ background: '#1a1a1a' }}>
                       <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center gap-3">
                         <div className="flex gap-1.5">
                           <div className="w-3 h-3 rounded-full" style={{ background: '#ff5f5680' }} />
@@ -1015,7 +1048,7 @@ const LevelUpView = ({ userData, onBack }) => {
                 )}
 
                 {/* 퀴즈 패널 (오른쪽 or 전체) */}
-                <div className={`flex flex-col gap-4 ${cp.show ? 'w-72 shrink-0 quiz-panel-slide-right' : 'w-full'}`}>
+                <div className={`flex flex-col gap-4 ${cp.show ? `${isMobile ? `w-full ${mobileTab === 'quiz' ? '' : 'hidden'}` : 'w-72 shrink-0'} quiz-panel-slide-right` : 'w-full'}`}>
                   <div className="rounded-2xl p-6" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }}>
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-xs font-bold px-3 py-1 rounded-full" style={{ color: placementTier.color, background: `${placementTier.color}18`, border: `1px solid ${placementTier.color}30` }}>
@@ -1157,7 +1190,7 @@ const LevelUpView = ({ userData, onBack }) => {
 
           {/* 보너스 과목 */}
           <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest mb-3 px-1">보너스</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 xs:grid-cols-3 gap-3">
             {BONUS_SUBJECTS.map((s) => {
               const saved = userData?.subjectTiers?.[s.id];
               const xp = saved?.xp || 0;
@@ -1401,12 +1434,37 @@ const LevelUpView = ({ userData, onBack }) => {
           return (
             <div
               key={currentQuiz.question}
-              className={`flex gap-5 ${cp.show ? 'w-full max-w-5xl flex-row items-start' : 'w-full max-w-lg flex-col'}`}
+              className={`flex ${isMobile && cp.show ? 'gap-0' : 'gap-5'} ${cp.show ? `w-full max-w-5xl ${isMobile ? 'flex-col' : 'flex-row items-start'}` : 'w-full max-w-lg flex-col'}`}
             >
-              {/* ─── 코드 패널 (왼쪽) ─── */}
+              {/* 모바일 전용 탭바 — cp.show 일 때만 */}
+              {isMobile && cp.show && (
+                <div className="md:hidden shrink-0 flex border-b border-white/[0.08] bg-[#080c08] w-full mb-3" style={{ height: '44px' }}>
+                  <button
+                    onClick={() => setMobileTab('code')}
+                    className={`flex-1 h-full flex items-center justify-center text-[13px] font-bold transition-all ${
+                      mobileTab === 'code'
+                        ? 'text-white border-b-2 border-[#4ec9b0]'
+                        : 'text-gray-500'
+                    }`}
+                  >
+                    💻 코드
+                  </button>
+                  <button
+                    onClick={() => setMobileTab('quiz')}
+                    className={`flex-1 h-full flex items-center justify-center text-[13px] font-bold transition-all ${
+                      mobileTab === 'quiz'
+                        ? 'text-white border-b-2 border-[#4ec9b0]'
+                        : 'text-gray-500'
+                    }`}
+                  >
+                    🎯 퀴즈
+                  </button>
+                </div>
+              )}
+              {/* ─── 코드 패널 (왼쪽 / 모바일에서는 위) ─── */}
               {cp.show && (
-                <div className="flex-1 min-w-0 quiz-code-panel-enter">
-                  <div className="rounded-2xl overflow-hidden border border-white/[0.08]" style={{ background: '#1a1a1a' }}>
+                <div className={`quiz-code-panel-enter ${isMobile ? `w-full ${mobileTab === 'code' ? '' : 'hidden'}` : 'flex-1 min-w-0'}`}>
+                  <div className={`rounded-2xl overflow-hidden border border-white/[0.08] ${isMobile ? 'max-h-[70vh] overflow-y-auto' : ''}`} style={{ background: '#1a1a1a' }}>
                     {/* 맥OS 상단바 */}
                     <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center gap-3">
                       <div className="flex gap-1.5">
@@ -1465,7 +1523,7 @@ const LevelUpView = ({ userData, onBack }) => {
 
               {/* ─── 퀴즈 패널 (오른쪽 or 전체) ─── */}
               <div
-                className={`flex flex-col gap-4 ${cp.show ? 'w-72 shrink-0 quiz-panel-slide-right' : 'w-full'}`}
+                className={`flex flex-col gap-4 ${cp.show ? `${isMobile ? `w-full ${mobileTab === 'quiz' ? '' : 'hidden'}` : 'w-72 shrink-0'} quiz-panel-slide-right` : 'w-full'}`}
               >
                 {/* 문제 카드 */}
                 <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6">
@@ -1656,7 +1714,7 @@ const LevelUpView = ({ userData, onBack }) => {
       {/* 테스트아웃 레벨 입력 모달 */}
       {testoutModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setTestoutModal(false)}>
-          <div className="bg-[#1a1a1a] border border-white/[0.08] rounded-2xl p-6 w-[340px] shadow-[0_16px_64px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#1a1a1a] border border-white/[0.08] rounded-2xl p-6 w-full max-w-[340px] shadow-[0_16px_64px_rgba(0,0,0,0.5)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-xl bg-[#eab308]/10 flex items-center justify-center">
                 <span className="text-lg">⚡</span>

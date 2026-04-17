@@ -68,11 +68,11 @@ const ResultView = ({ result, onReset, userData }) => {
   }, [show]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 bg-transparent overflow-hidden">
+    <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 md:p-6 bg-transparent overflow-hidden">
 
       {/* 배경 아우라 */}
       <div
-        className={`absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full blur-[100px] mix-blend-screen transition-opacity duration-1000 ${show ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[500px] sm:h-[500px] rounded-full blur-[100px] mix-blend-screen transition-opacity duration-1000 ${show ? 'opacity-100' : 'opacity-0'}`}
         style={{ background: tier.glow }}
       />
 
@@ -80,14 +80,14 @@ const ResultView = ({ result, onReset, userData }) => {
       <div className={`relative flex flex-col items-center z-10 transition-all duration-1000 transform ${show ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-10 scale-90 opacity-0'}`}>
 
         {/* 타이틀 */}
-        <h2 className="text-4xl font-black mb-8 tracking-tight text-center bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent">
+        <h2 className="text-2xl md:text-4xl font-black mb-6 md:mb-8 tracking-tight text-center bg-gradient-to-b from-white to-gray-400 bg-clip-text text-transparent">
           학습 달성!
         </h2>
 
         {/* XP 획득 카운터 애니메이션 */}
-        <div className="flex flex-col items-center mb-10">
+        <div className="flex flex-col items-center mb-8 md:mb-10">
           <div
-            className="text-7xl sm:text-8xl font-black tabular-nums"
+            className="text-6xl sm:text-7xl md:text-8xl font-black tabular-nums"
             style={{
               color: '#FBBF24',
               textShadow: `0 0 40px rgba(251,191,36,0.5), 0 0 80px rgba(251,191,36,0.2)`,
@@ -111,7 +111,7 @@ const ResultView = ({ result, onReset, userData }) => {
         </div>
 
         {/* XP 프로그레스바 (애니메이션) */}
-        <div className="w-full max-w-sm mb-10">
+        <div className="w-full max-w-sm mb-8 md:mb-10">
           <div className="flex justify-between text-[10px] text-gray-500 mb-1 px-1">
             <span>Lv.{level}</span>
             <span>{xpInLevel}/{xpForNext} XP</span>
@@ -133,7 +133,7 @@ const ResultView = ({ result, onReset, userData }) => {
         {/* 하단 버튼 */}
         <button
           onClick={onReset}
-          className="relative overflow-hidden group px-10 py-4 rounded-2xl font-bold text-black shadow-lg hover:-translate-y-1 transition-all duration-300"
+          className="relative overflow-hidden group px-10 py-4 min-h-[44px] rounded-2xl font-bold text-black shadow-lg hover:-translate-y-1 transition-all duration-300"
           style={{
             background: `linear-gradient(135deg, ${tier.textColor}, ${tier.textColor}CC)`,
             boxShadow: `0 10px 30px ${tier.glow}`,

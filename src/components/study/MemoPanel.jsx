@@ -438,7 +438,7 @@ ${el.innerHTML}
           value={content}
           onChange={handleChange}
           placeholder={`배운 내용을 자유롭게 정리해보세요.`}
-          className="flex-1 min-h-0 resize-none bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-[13px] text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-white/20 leading-relaxed font-[Pretendard,sans-serif]"
+          className="flex-1 min-h-0 resize-none bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-base md:text-[13px] text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-white/20 leading-relaxed font-[Pretendard,sans-serif]"
           spellCheck={false}
         />
       ) : (

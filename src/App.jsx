@@ -5,6 +5,7 @@ import Login from './pages/Login/Login';
 import StudentPage from './pages/Student/StudentPage';
 import AdminPage from './pages/Admin/AdminPage';
 import DictionaryPopup from './components/common/DictionaryPopup';
+import { EditModeProvider } from './components/common/mobile/EditModeProvider';
 
 function App() {
   const { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, loginWithGithub, loginWithAdmin, loginOrSignupWithEmail, logout } = useAuth();
@@ -69,6 +70,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <EditModeProvider>
       <DictionaryPopup />
       <Routes>
         {/* 로그인 페이지: 이미 로그인된 유저는 홈으로 */}
@@ -114,6 +116,7 @@ function App() {
         {/* 그 외 모든 경로 → 루트로 (루트가 다시 로그인 상태별로 분기) */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </EditModeProvider>
     </BrowserRouter>
   );
 }

@@ -217,7 +217,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
   }, [isDuplicateLogin]);
 
   return (
-    <div className="relative flex items-center justify-center min-h-svh bg-theme-bg overflow-hidden text-gray-200">
+    <div className="relative flex items-center justify-center min-h-dvh bg-theme-bg overflow-hidden text-gray-200 pt-safe pb-safe">
       <Toast />
       
       {/* 백그라운드 디자인 - GPT 계열 다크그린/그레이 베이스 (채도를 확 낮춤) */}
@@ -236,10 +236,10 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
       </div>
 
       {/* 메인 로그인 카드 */}
-      <div className="relative z-10 flex flex-col items-center w-[90%] max-w-sm px-8 py-12 rounded-[2rem] bg-theme-card/90 backdrop-blur-xl border border-theme-border shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+      <div className="relative z-10 flex flex-col items-center w-[90%] max-w-sm px-4 py-8 md:px-8 md:py-12 rounded-[2rem] bg-theme-card/90 backdrop-blur-xl border border-theme-border shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
         
-        <div className="flex flex-col items-center gap-3 mb-10">
-          <div className="p-4 bg-[#1a1a1a] rounded-3xl mb-2 border border-[#2a2a2a] shadow-[0_0_30px_rgba(78,201,176,0.15)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 mb-6 md:mb-10">
+          <div className="p-3 md:p-4 bg-[#1a1a1a] rounded-3xl mb-2 border border-[#2a2a2a] shadow-[0_0_30px_rgba(78,201,176,0.15)] flex items-center justify-center">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#4ec9b0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m18 16 4-4-4-4"/>
               <path d="m6 8-4 4 4 4"/>
@@ -247,7 +247,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
             </svg>
           </div>
           
-          <h1 className="text-5xl font-black tracking-tight text-white mb-2 pb-1">
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white mb-2 pb-1">
             Lucid
           </h1>
           <p className="text-base font-medium text-center">
@@ -259,7 +259,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
           <button
             onClick={onLogin}
             disabled={loginLoading !== null}
-            className="group relative overflow-hidden w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3.5 px-4 rounded-xl shadow-lg hover:-translate-y-0.5 hover:shadow-xl hover:shadow-white/10 transition-all duration-300 disabled:cursor-wait disabled:transform-none"
+            className="group relative overflow-hidden w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3.5 px-4 rounded-xl shadow-lg hover:-translate-y-0.5 hover:shadow-xl hover:shadow-white/10 transition-all duration-300 disabled:cursor-wait disabled:transform-none min-h-[44px]"
           >
             <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/40 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
             <GoogleIcon />
@@ -270,7 +270,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
           <button
             onClick={() => { setShowEmailForm(v => !v); setShowAdminForm(false); }}
             disabled={loginLoading !== null}
-            className="w-full flex items-center justify-center gap-3 bg-white/[0.07] text-white font-semibold py-3.5 px-4 rounded-xl border border-white/[0.12] hover:bg-white/[0.12] hover:-translate-y-0.5 transition-all duration-300 disabled:cursor-wait disabled:transform-none"
+            className="w-full flex items-center justify-center gap-3 bg-white/[0.07] text-white font-semibold py-3.5 px-4 rounded-xl border border-white/[0.12] hover:bg-white/[0.12] hover:-translate-y-0.5 transition-all duration-300 disabled:cursor-wait disabled:transform-none min-h-[44px]"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
@@ -285,7 +285,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
                 value={emailVal}
                 onChange={e => setEmailVal(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && onEmailLogin?.(emailVal, emailPw)}
-                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-base md:text-[15px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
               />
               <input
                 type="password"
@@ -293,12 +293,12 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
                 value={emailPw}
                 onChange={e => setEmailPw(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && onEmailLogin?.(emailVal, emailPw)}
-                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+                className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-base md:text-[15px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
               />
               <button
                 onClick={() => onEmailLogin?.(emailVal, emailPw)}
                 disabled={loginLoading !== null || !emailVal || !emailPw}
-                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
               >
                 {loginLoading === 'email' ? '처리 중...' : '로그인 / 가입'}
               </button>
@@ -308,7 +308,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
 
           <button
             onClick={() => showToast('카카오 로그인은 v2 업데이트 예정입니다.', 'warn')}
-            className="relative w-full flex items-center justify-center gap-3 bg-[#FEE500]/90 text-[#191919] font-semibold py-3.5 px-4 rounded-xl hover:bg-[#FEE500] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300"
+            className="relative w-full flex items-center justify-center gap-3 bg-[#FEE500]/90 text-[#191919] font-semibold py-3.5 px-4 rounded-xl hover:bg-[#FEE500] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300 min-h-[44px]"
           >
             <KakaoIcon />
             카카오로 시작하기
@@ -316,7 +316,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
 
           <button
             onClick={() => showToast('GitHub 로그인은 v2 업데이트 예정입니다.', 'warn')}
-            className="relative w-full flex items-center justify-center gap-3 bg-black/50 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 backdrop-blur-md hover:bg-black/80 hover:-translate-y-0.5 hover:border-gray-500 hover:shadow-lg transition-all duration-300"
+            className="relative w-full flex items-center justify-center gap-3 bg-black/50 text-white font-semibold py-3.5 px-4 rounded-xl border border-gray-700 backdrop-blur-md hover:bg-black/80 hover:-translate-y-0.5 hover:border-gray-500 hover:shadow-lg transition-all duration-300 min-h-[44px]"
           >
             <GithubIcon />
             GitHub로 시작하기
@@ -335,7 +335,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
         {/* 관리자 로그인 토글 */}
         <button
           onClick={() => setShowAdminForm(v => !v)}
-          className="mt-6 text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+          className="mt-4 md:mt-6 text-[11px] text-gray-600 hover:text-gray-400 transition-colors min-h-[44px] flex items-center"
         >
           {showAdminForm ? '▲ 관리자 로그인 접기' : '관리자'}
         </button>
@@ -348,7 +348,7 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
               value={adminId}
               onChange={e => setAdminId(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && onAdminLogin?.(adminId, adminPw)}
-              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-base md:text-[15px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
             />
             <input
               type="password"
@@ -356,12 +356,12 @@ const Login = ({ loginLoading, loginError, onLogin, onGithubLogin, onAdminLogin,
               value={adminPw}
               onChange={e => setAdminPw(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && onAdminLogin?.(adminId, adminPw)}
-              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
+              className="w-full bg-white/[0.05] border border-white/[0.1] rounded-xl px-4 py-2.5 text-base md:text-[15px] text-white placeholder-gray-600 focus:outline-none focus:border-[#4ec9b0]/50"
             />
             <button
               onClick={() => onAdminLogin?.(adminId, adminPw)}
               disabled={loginLoading !== null || !adminId || !adminPw}
-              className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 hover:bg-[#4ec9b0]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px]"
             >
               {loginLoading === 'admin' ? '로그인 중...' : '로그인'}
             </button>

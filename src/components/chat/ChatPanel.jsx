@@ -255,12 +255,12 @@ export default function ChatPanel({
                     onChange={e => setFavoriteGame(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && favoriteGame.trim() && sendMessage(fullQ)}
                     placeholder="좋아하는 게임 입력"
-                    className="text-[10px] px-2.5 py-1 bg-transparent border-r border-amber-500/20 text-white placeholder-white/40 outline-none w-[7.5rem] shrink-0"
+                    className="text-[10px] px-2.5 py-1 min-h-[44px] bg-transparent border-r border-amber-500/20 text-white placeholder-white/40 outline-none w-[7.5rem] shrink-0"
                   />
                 )}
                 <button
                   onClick={() => sendMessage(fullQ)}
-                  className="flex-1 text-[10px] px-2.5 py-1 text-amber-400 hover:bg-amber-500/20 hover:text-amber-200 transition-all text-left"
+                  className="flex-1 text-[10px] px-2.5 py-1 min-h-[44px] text-amber-400 hover:bg-amber-500/20 hover:text-amber-200 transition-all text-left"
                 >
                   💬 {isGameBtn ? `${favoriteGame ? favoriteGame + ' ' : ''}배경과 세계관을 바탕으로 비유로 설명해줘` : rawQ}
                 </button>
@@ -286,7 +286,7 @@ export default function ChatPanel({
         </div>
         <div
           ref={el => { chatAreaRef.current = el; if (chatScrollRef) chatScrollRef.current = el; }}
-          className="h-full overflow-y-auto px-4 py-4 flex flex-col gap-3 chat-readable"
+          className="h-full overflow-y-auto overscroll-contain px-4 py-4 flex flex-col gap-3 chat-readable"
           style={{ fontSize: `${chatFontSize}px` }}
         >
           {messages.map((msg, i) => (
@@ -339,7 +339,7 @@ export default function ChatPanel({
                 <div className="flex justify-start pl-1 mt-1">
                   <button
                     onClick={onGoToQuiz}
-                    className="text-[10px] px-2.5 py-1 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:text-violet-100 transition-all"
+                    className="text-[10px] px-2.5 py-1.5 min-h-[44px] rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 hover:text-violet-100 transition-all"
                   >🎯 문제풀기로 가기</button>
                 </div>
               )}
@@ -357,7 +357,7 @@ export default function ChatPanel({
       </div>
 
       {/* 입력창 (공용 ChatInput) */}
-      <div className="px-1.5 pb-1.5 pt-1 shrink-0">
+      <div className="px-1.5 pb-1.5 pt-1 pb-safe shrink-0">
         <ChatInput
           value={input}
           onChange={setInput}

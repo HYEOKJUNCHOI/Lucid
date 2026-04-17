@@ -358,52 +358,52 @@ const StudentManagement = () => {
           <h2 className="text-2xl font-bold text-white">학생 정보 및 그룹 반 배정</h2>
           <p className="text-gray-400 text-sm mt-1">이메일을 통해 학생 정보를 사전 등록하거나, 일괄적으로 반을 배정합니다.</p>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {checkedIds.length > 0 && (
             <div className="flex items-center gap-2">
               <button
                 onClick={openBatchAssign}
-                className="px-6 py-2.5 bg-[#4ec9b0] text-black font-bold text-sm rounded-lg hover:bg-[#3db79e] transition-all whitespace-nowrap shadow-[0_0_20px_rgba(78,201,176,0.2)] flex items-center gap-2"
+                className="px-4 py-2 bg-[#4ec9b0] text-black font-bold text-sm rounded-lg hover:bg-[#3db79e] transition-all whitespace-nowrap shadow-[0_0_20px_rgba(78,201,176,0.2)] flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                일괄 그룹 배정
+                일괄 배정
               </button>
               <button
                 onClick={() => handleDeleteStudents(checkedIds)}
-                className="px-5 py-2.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white font-bold text-sm border border-red-500/20 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
+                className="px-4 py-2 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white font-bold text-sm border border-red-500/20 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
-                선택 삭제
+                삭제
               </button>
             </div>
           )}
           <button
             onClick={() => setShowExcelModal(true)}
-            className="px-6 py-2.5 bg-white/[0.03] hover:bg-white/[0.08] text-white font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
+            className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.08] text-white font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
           >
             <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            엑셀 일괄 등록
+            엑셀 등록
           </button>
           <button
             onClick={openInviteAssign}
-            className="px-6 py-2.5 bg-white/[0.03] hover:bg-white/[0.08] text-white font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
+            className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.08] text-white font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
           >
             <svg className="w-4 h-4 text-[#4ec9b0]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
-            신규 학생 등록
+            신규 등록
           </button>
           <button
             onClick={() => navigate('/admin?tab=dashboard')}
-            className="px-4 py-2.5 bg-white/[0.06] hover:bg-white/[0.12] text-white/70 font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5"
+            className="px-4 py-2 bg-white/[0.06] hover:bg-white/[0.12] text-white/70 font-bold text-sm border border-white/10 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5"
           >
-            ↩ 뒤로가기
+            ↩ 뒤로
           </button>
         </div>
       </div>
@@ -542,7 +542,7 @@ const StudentManagement = () => {
       {/* 할당/등록 모달 */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col scale-100 animate-fade-in-up">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-[90vw] md:max-w-md overflow-hidden shadow-2xl flex flex-col scale-100 animate-fade-in-up">
             <div className="px-6 py-5 border-b border-[#2a2a2a] flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-bold text-white">
@@ -562,7 +562,7 @@ const StudentManagement = () => {
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto max-h-[60vh] flex flex-col gap-4">
+            <div className="p-6 overflow-y-auto max-h-[85dvh] md:max-h-[60vh] flex flex-col gap-4">
               
               {/* 상단 인적사항 폼 (초대 또는 개별 수정 시) */}
               {(assignMode === 'invite' || assignMode === 'single') && (

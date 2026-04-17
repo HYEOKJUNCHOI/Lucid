@@ -133,7 +133,7 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-2xl bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-[90vw] md:max-w-2xl bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl flex flex-col max-h-[85dvh]">
         {/* 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
           <div>
@@ -203,8 +203,8 @@ const ExcelUploadModal = ({ onClose, onComplete }) => {
                 미리보기 — 총 <span className="text-white font-bold">{rows.length}명</span>
                 {hasGroup && <span className="ml-2 text-emerald-400">· 기수 자동 배정 포함</span>}
               </p>
-              <div className="border border-white/[0.06] rounded-xl overflow-hidden max-h-64 overflow-y-auto">
-                <table className="w-full text-xs">
+              <div className="border border-white/[0.06] rounded-xl overflow-hidden max-h-64 overflow-y-auto overflow-x-auto">
+                <table className="w-full min-w-[480px] text-xs">
                   <thead className="bg-white/[0.03] border-b border-white/[0.06] sticky top-0">
                     <tr>
                       {['#', '이름', '이메일', '전화번호', '기수', '유형'].map(h => (

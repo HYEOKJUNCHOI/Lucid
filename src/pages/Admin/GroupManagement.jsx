@@ -156,10 +156,10 @@ const GroupManagement = () => {
           <h2 className="text-2xl font-bold text-white">수업 등록</h2>
           <p className="text-gray-400 text-sm mt-1">학생들이 소속될 그룹을 생성하고 담당 강사를 매핑합니다.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowTeacherModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500 border border-purple-500/30 text-purple-400 hover:text-white font-bold text-sm transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500 border border-purple-500/30 text-purple-400 hover:text-white font-bold text-sm transition-all whitespace-nowrap"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -168,9 +168,9 @@ const GroupManagement = () => {
           </button>
           <button
             onClick={() => navigate('/admin?tab=dashboard')}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-white/70 font-bold text-sm transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-white/70 font-bold text-sm transition-all whitespace-nowrap"
           >
-            ↩ 뒤로가기
+            ↩ 뒤로
           </button>
         </div>
       </div>
@@ -322,7 +322,7 @@ const GroupManagement = () => {
       {/* 강사 등록 모달 */}
       {showTeacherModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-md shadow-2xl animate-fade-in-up">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-full max-w-[90vw] md:max-w-md shadow-2xl animate-fade-in-up max-h-[85dvh] overflow-y-auto">
             <div className="px-6 py-5 border-b border-[#2a2a2a] flex justify-between items-center">
               <h3 className="text-lg font-bold text-white">강사 등록</h3>
               <button onClick={() => setShowTeacherModal(false)} className="text-gray-500 hover:text-white transition">

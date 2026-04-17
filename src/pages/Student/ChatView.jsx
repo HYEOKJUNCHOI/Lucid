@@ -11,6 +11,7 @@ import { getApiKey } from '../../lib/apiKey';
 import ChatBubble from '../../components/chat/ChatBubble';
 import ChatInput from '../../components/chat/ChatInput';
 import { MODELS, OPENAI_CHAT_URL } from '../../lib/aiConfig';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 // GPT 응답 텍스트의 단일 줄바꿈(\n)을 마크다운 문단 구분(\n\n)으로 변환하는 전처리 함수
 // 이유: react-markdown은 단일 \n을 공백으로 처리하는 CommonMark 스펙을 따르기 때문
@@ -74,6 +75,9 @@ const ChatView = ({ teacher, repo, concept, onComplete, onBack }) => {
   const splitContainerRef = useRef(null);
   const [splitRatio, setSplitRatio] = useState(0.45); // 코드 패널 비율 (0~1)
   const isDraggingRef = useRef(false);
+  const isMobile = useIsMobile();
+  // 모바일에서는 splitRatio를 0으로 강제 → 코드 패널이 width:0% 가 되어 탭 전환으로만 보임
+  const effectiveSplitRatio = isMobile ? 0 : splitRatio;
 
   // 코드 토큰 Ctrl+Click → Monaco 에디터에서 해당 위치 하이라이트
   const highlightCodeToken = (token) => {
@@ -760,7 +764,7 @@ OPTIONS_END
     return (
       // 투표된 상태면 항상 보이고, 아니면 hover 시에만 보임
       <div
-        className={`flex items-center justify-end gap-2 mt-1.5 transition-opacity duration-200 ${voted ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+        className={`flex items-center justify-end gap-2 mt-1.5 transition-opacity duration-200 ${voted || isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <button
@@ -891,7 +895,7 @@ OPTIONS_END
       <div className="flex gap-2 md:hidden mb-4">
         <button
           onClick={() => setActiveTab('code')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+          className={`flex-1 min-h-[44px] py-2.5 rounded-lg text-sm font-medium transition ${
             activeTab === 'code'
               ? 'bg-cyan-400 text-black'
               : 'bg-gray-800 text-gray-400'
@@ -901,7 +905,7 @@ OPTIONS_END
         </button>
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+          className={`flex-1 min-h-[44px] py-2.5 rounded-lg text-sm font-medium transition ${
             activeTab === 'chat'
               ? 'bg-cyan-400 text-black'
               : 'bg-gray-800 text-gray-400'
@@ -915,7 +919,7 @@ OPTIONS_END
       <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
         {/* 코드 패널 */}
         <div
-          style={{ width: `${splitRatio * 100}%` }}
+          style={{ width: `${effectiveSplitRatio * 100}%` }}
           className={`flex flex-col bg-[#1e1e1e] rounded-lg overflow-hidden border border-[#333333] shadow-lg shrink-0 ${
             activeTab !== 'code' ? 'hidden md:flex' : ''
           }`}
@@ -1037,7 +1041,9 @@ OPTIONS_END
             {isTypingMode ? (
               <button
                 onClick={() => setIsTypingMode(false)}
-                className="text-[11px] px-3 py-1.5 rounded-lg font-bold bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222] transition-all"
+                className={`rounded-lg font-bold bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222] transition-all ${
+                  isMobile ? 'text-xs min-h-[44px] px-3' : 'text-[11px] px-3 py-1.5'
+                }`}
               >
                 채팅으로 돌아가기
               </button>
@@ -1047,7 +1053,9 @@ OPTIONS_END
                   const xp = XP_WEIGHTS.quizComplete + (correctCount * XP_WEIGHTS.quizCorrect);
                   onComplete({ level: quizCount, earnedXP: xp, correctCount });
                 }}
-                className={`text-[10px] px-2 py-[3px] rounded-md font-bold transition-all shadow-sm flex items-center gap-1 ${
+                className={`rounded-md font-bold transition-all shadow-sm flex items-center gap-1 ${
+                  isMobile ? 'text-xs min-h-[44px] px-3' : 'text-[10px] px-2 py-[3px]'
+                } ${
                   learningPhase === 'completed'
                     ? 'bg-cyan-400 text-black hover:bg-cyan-300 shadow-[0_0_10px_rgba(78,201,176,0.4)] animate-pulse-glow'
                     : 'bg-[#111111] border border-[#333333] text-gray-400 hover:text-gray-200 hover:bg-[#222222]'
@@ -1175,7 +1183,7 @@ OPTIONS_END
           </div>
 
           {/* 입력창 + 퀴즈 버튼 */}
-          <div className="border-t border-[#333333] p-2 md:p-3 flex flex-col gap-2 bg-[#050505]">
+          <div className="border-t border-[#333333] p-2 md:p-3 pb-safe flex flex-col gap-2 bg-[#050505]">
 
             {/* 퀴즈 통합 카드 - 문제 + 힌트 토글 + 선택지 */}
             {quizOptions.length > 0 && learningPhase === 'quiz' && (
@@ -1190,7 +1198,9 @@ OPTIONS_END
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#222] bg-[#0a0a0a]">
                   <span className="text-[10px] text-gray-500 font-bold tracking-widest">QUIZ {quizCount} / 5</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-600">카드 클릭 후 키보드 1~4 선택 가능</span>
+                    {!isMobile && (
+                      <span className="text-[10px] text-gray-600">카드 클릭 후 키보드 1~4 선택 가능</span>
+                    )}
                     <button
                       onClick={() => setShowHint(v => !v)}
                       className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border transition-all ${
@@ -1209,7 +1219,7 @@ OPTIONS_END
 
                 {/* 힌트 영역 (토글) */}
                 {showHint && functionalAnalysis && (
-                  <div className="px-3 py-2 border-b border-[#222] bg-yellow-500/5 text-yellow-300/80 text-xs leading-relaxed">
+                  <div className={`px-3 py-2 border-b border-[#222] bg-yellow-500/5 text-yellow-300/80 leading-relaxed break-words ${isMobile ? 'text-[11px] overflow-hidden' : 'text-xs'}`}>
                     {functionalAnalysis.replace(/^###\s*🧩\s*기능적\s*해석\s*/i, '').trim()}
                   </div>
                 )}
@@ -1308,7 +1318,7 @@ OPTIONS_END
             ) : (
             <>
             {/* 모델 토글 */}
-            <div className="flex items-center gap-1 mb-1 px-0.5">
+            <div className={`flex items-center gap-1 mb-1 px-0.5 ${isMobile ? 'flex-wrap gap-y-1' : ''}`}>
               {[
                 { value: MODELS.TUTOR, label: 'GPT-4o', sub: '고품질' },
                 { value: MODELS.MINI,  label: 'GPT-4o mini', sub: '빠름' },
@@ -1341,7 +1351,9 @@ OPTIONS_END
               placeholder={
                 learningPhase === 'analyzing' || learningPhase === 'metaphor'
                   ? 'AI가 분석 중입니다...'
-                  : '질문이나 정답을 입력하세요... (퀴즈시 1,2,3,4 키보드 입력 가능)'
+                  : isMobile
+                    ? '질문이나 정답을 입력하세요...'
+                    : '질문이나 정답을 입력하세요... (퀴즈시 1,2,3,4 키보드 입력 가능)'
               }
             />
             </>
