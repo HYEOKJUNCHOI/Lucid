@@ -354,17 +354,23 @@ export const addDailyXPFS = async (uid, category, amount) => {
  */
 export const claimLoginXPFS = async (uid, state) => {
   const today = todayStr();
-  if (state?.loginXPClaimed?.[today]) return 0;
+  const alreadyClaimed = !!state?.loginXPClaimed?.[today];
+  const alreadyAttended = (state?.attendedDates || []).includes(today);
+
+  // 출석은 XP 지급 여부와 무관하게 항상 기록 (접속 = 출석)
+  if (!alreadyAttended) {
+    await updateUserState(uid, { attendedDates: arrayUnion(today) });
+    await syncStreakFromDates(uid);
+  }
+
+  // XP는 하루 1회만
+  if (alreadyClaimed) return 0;
   const XP = 50;
-  // 접속 = 출석 → attendedDates 에 오늘 날짜 추가 (arrayUnion: 중복 무시)
   await updateUserState(uid, {
     [`loginXPClaimed.${today}`]: true,
     [`dailyXP.${today}.login`]: increment(XP),
     totalXP: increment(XP),
-    attendedDates: arrayUnion(today),
   });
-  // 출석 배열 변경 → streak/bestStreak 동기화
-  await syncStreakFromDates(uid);
   return XP;
 };
 
