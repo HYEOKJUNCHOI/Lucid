@@ -618,7 +618,7 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   };
 
   return (
-    <div className="flex h-svh md:h-svh min-h-dvh bg-theme-bg text-white overflow-hidden">
+    <div className="flex h-[100dvh] md:h-svh bg-theme-bg text-white overflow-hidden">
 
       {/* 챕터 호버 미리보기 (fixed) */}
       {chapterHover && chapterHover.files.length > 0 && (
