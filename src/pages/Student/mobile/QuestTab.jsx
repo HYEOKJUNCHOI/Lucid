@@ -1,6 +1,6 @@
 import { useState, useContext, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { StudentContext } from '@/pages/Student/MobileStudentRoot';
+import { StudentContext } from '@/pages/Student/mobile/MobileStudentPage';
 import Screen from '@/components/common/mobile/Screen';
 import MobileTopBar from '@/components/common/mobile/MobileTopBar';
 import SegmentedControl from '@/components/common/mobile/SegmentedControl';

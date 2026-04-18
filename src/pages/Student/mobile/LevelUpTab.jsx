@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import Screen from '@/components/common/mobile/Screen';
 import MobileTopBar from '@/components/common/mobile/MobileTopBar';
 import HapticButton from '@/components/common/mobile/HapticButton';
-import { StudentContext } from '@/pages/Student/MobileStudentRoot';
+import { StudentContext } from '@/pages/Student/mobile/MobileStudentPage';
 import haptic from '@/lib/haptic';
 import { TIERS_MOBILE as TIERS } from '@/constants/tiers';
 

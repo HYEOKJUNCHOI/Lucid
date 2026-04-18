@@ -3,15 +3,14 @@ import { useAuth } from './hooks/useAuth';
 import Landing from './pages/Landing/Landing';
 import Login from './pages/Login/Login';
 import StudentPage from './pages/Student/StudentPage';
-import MobileStudentRoot from './pages/Student/MobileStudentRoot';
+import MobileStudentPage from './pages/Student/mobile/MobileStudentPage';
 import AdminPage from './pages/Admin/AdminPage';
 import DictionaryPopup from './components/common/DictionaryPopup';
-import { EditModeProvider } from './components/common/mobile/EditModeProvider';
 import { useIsMobile } from './hooks/useMediaQuery';
 
 /**
  * StudentRoot — 뷰포트 기반 분기 래퍼.
- * - 모바일(<768px): <MobileStudentRoot initialMode={...} />
+ * - 모바일(<768px): <MobileStudentPage initialMode={...} />
  * - 데스크탑      : <StudentPage forcedMode={...} /> (기존 로직 유지)
  *
  * URL 체계는 기존과 동일하게 유지(북마크/딥링크 호환). 내부 렌더만 분기.
@@ -20,7 +19,7 @@ function StudentRoot({ mode, user, userData, onLogout }) {
   const isMobile = useIsMobile();
   if (isMobile) {
     return (
-      <MobileStudentRoot
+      <MobileStudentPage
         initialMode={mode}
         user={user}
         userData={userData}
@@ -103,7 +102,6 @@ function App() {
 
   return (
     <BrowserRouter>
-      <EditModeProvider>
       <DictionaryPopup />
       <Routes>
         {/* 로그인 페이지: 이미 로그인된 유저는 홈으로 */}
@@ -149,7 +147,6 @@ function App() {
         {/* 그 외 모든 경로 → 루트로 (루트가 다시 로그인 상태별로 분기) */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </EditModeProvider>
     </BrowserRouter>
   );
 }

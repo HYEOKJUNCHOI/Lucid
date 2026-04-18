@@ -10,7 +10,7 @@ import { syncUserStatus } from '@/services/learningService';
 /**
  * 학생 세션 초기화 훅.
  *
- * StudentPage(데스크탑)와 MobileStudentRoot(모바일) 양쪽에서 동일하게 사용한다.
+ * StudentPage(데스크탑)와 MobileStudentPage(모바일) 양쪽에서 동일하게 사용한다.
  * 중복 로직을 없애기 위해 분리 — 두 곳 모두 "로그인 직후 스트릭 계산 + 접속 XP 지급"이 필요.
  *
  * userData는 App.jsx의 onSnapshot이 이미 구독 중이므로

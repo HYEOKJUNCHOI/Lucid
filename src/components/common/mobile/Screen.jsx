@@ -46,8 +46,13 @@ export default function Screen({
       )}
       style={{ height: '100dvh' }}
     >
-      {/* AppBar placeholder — fixed이므로 동일 높이 spacer 필요 */}
-      {appBar && <div className="h-appbar-h shrink-0" />}
+      {/* AppBar placeholder — fixed이므로 동일 높이 spacer 필요.
+          largeTitle 모드는 96px, 일반 모드는 56px. appBar의 props를 직접 읽어 판단. */}
+      {appBar && (
+        <div
+          className={appBar?.props?.largeTitle ? 'h-appbar-large-h shrink-0' : 'h-appbar-h shrink-0'}
+        />
+      )}
 
       {/* AppBar 실제 렌더 */}
       {appBar}

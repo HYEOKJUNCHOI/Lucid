@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { StudentContext } from '@/pages/Student/MobileStudentRoot';
+import { StudentContext } from '@/pages/Student/mobile/MobileStudentPage';
 import Screen from '@/components/common/mobile/Screen';
 import MobileTopBar from '@/components/common/mobile/MobileTopBar';
 import ListRow from '@/components/common/mobile/ListRow';

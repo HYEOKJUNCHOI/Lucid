@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/cn';
-import { useStudentContext } from '@/pages/Student/MobileStudentRoot';
+import { useStudentContext } from '@/pages/Student/mobile/MobileStudentPage';
 import { DAILY_XP_CAP } from '@/services/learningService';
 
 // ─── 스트릭 상태 배너 ────────────────────────────────────────────────
@@ -180,8 +180,8 @@ export default function HomeTab() {
   };
 
   return (
-    // h-full: MobileAppShell content 영역 꽉 채움. overflow-hidden으로 스크롤 방지.
-    <div className="relative flex h-full flex-col overflow-hidden px-4 pb-4 pt-3">
+    // h-full: 부모 100dvh 꽉 채움. pb-[72px] = BottomNav(56px) + 여유(16px) 확보.
+    <div className="relative flex h-full flex-col overflow-hidden px-4 pb-[72px] pt-3">
 
       {/* ── 퀘스트 개발중 오버레이 ────────────────────────────────── */}
       {questDevNotice && (
