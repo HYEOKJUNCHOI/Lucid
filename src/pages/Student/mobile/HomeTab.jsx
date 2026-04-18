@@ -1,207 +1,258 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 import { useStudentContext } from '@/pages/Student/MobileStudentRoot';
-import { calcLevel, LEVEL_TABLE, DAILY_XP_CAP } from '@/services/learningService';
+import { DAILY_XP_CAP } from '@/services/learningService';
 
-// ─── 스탯 배지 ────────────────────────────────────────────────────────────────
-// 상단 한 줄에 수치를 요약해서 보여주는 작은 칩.
-// 모바일은 공간이 좁으므로 아이콘 + 숫자만 표시하고 라벨은 툴팁으로 처리.
-function StatChip({ icon, value, label, color }) {
-  return (
-    <div
-      title={label}
-      className={cn(
-        'flex items-center gap-1 px-2.5 py-1.5 rounded-pill',
-        'border bg-white/[0.03] select-none'
-      )}
-      style={{ borderColor: `${color}30` }}
-    >
-      <span className="text-sm leading-none">{icon}</span>
-      <span className="text-xs font-black leading-none" style={{ color }}>
-        {value}
-      </span>
-    </div>
-  );
+// ─── 스트릭 상태 배너 ────────────────────────────────────────────────
+// 데스크탑과 동일한 색/메시지. 모바일은 패딩만 더 줄임.
+function StreakBanner({ streakStatus, streak, repairCount }) {
+  if (streakStatus === 'grace2') {
+    return (
+      <div className="mb-3 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+        <span>⚠️</span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-amber-400">내일이 마지막 기회예요</p>
+          <p className="text-[10px] text-gray-400">오늘 퀘스트 안 하면 {streak}일 연속이 사라져요</p>
+        </div>
+      </div>
+    );
+  }
+  if (streakStatus === 'broken') {
+    return (
+      <div className="mb-3 flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5">
+        <span>💔</span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-red-400">연속 퀘스트가 초기화됐어요</p>
+          <p className="text-[10px] text-gray-400">3일 연속 퀘스트 완료 시 복구 가능해요!</p>
+        </div>
+      </div>
+    );
+  }
+  if (streakStatus === 'repair') {
+    return (
+      <div className="mb-3 flex items-center gap-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2.5">
+        <span>🔧</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold text-purple-400">연속출석 복구 퀘스트 진행 중</p>
+          <p className="text-[10px] text-gray-400">
+            퀘스트 3연속 완료 시 복구! 현재{' '}
+            <span className="font-bold text-purple-400">{repairCount}/3</span> 완료
+          </p>
+        </div>
+        {/* 진행 도트 */}
+        <div className="flex shrink-0 gap-1">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className={cn('h-2 w-2 rounded-full', i < repairCount ? 'bg-purple-500' : 'bg-white/10')}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+  return null;
 }
 
-// ─── 모드 카드 ────────────────────────────────────────────────────────────────
-// 홈의 핵심 — 탭/모드 진입 카드. 2×2 그리드 배치.
-// accent 색은 데스크탑 사이드바의 모드 카드 색과 동일하게 맞춤.
-function ModeCard({ icon, title, desc, accent, onClick, badge }) {
+// ─── 오늘의 퀘스트 카드 ──────────────────────────────────────────────
+// 데스크탑과 동일한 amber 그라디언트. 모바일은 아이콘/패딩 축소.
+function QuestCard({ dailyXP, onClick }) {
+  const xpPercent = Math.min((dailyXP.total / DAILY_XP_CAP) * 100, 100);
+
   return (
     <button
       onClick={onClick}
       className={cn(
-        'relative flex flex-col items-start gap-1.5 p-4 rounded-card',
-        'border text-left transition-all duration-fast active:scale-[0.97]',
-        'bg-white/[0.02] hover:bg-white/[0.04]'
+        'group relative w-full rounded-2xl px-4 py-3.5 text-left',
+        'border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.12] to-orange-500/[0.06]',
+        'shadow-[0_4px_24px_rgba(245,158,11,0.10)] transition-all duration-base',
+        'active:scale-[0.98] hover:border-amber-500/60 hover:from-amber-500/20',
       )}
+    >
+      <div className="flex items-center gap-3">
+        {/* 아이콘 */}
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 ring-1 ring-amber-500/20">
+          <svg className="h-5 w-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+
+        {/* 타이틀 + 설명 */}
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-bold text-amber-400">오늘의 퀘스트</h3>
+          <p className="text-[11px] text-gray-400">오늘 배운 코드를 한 바퀴 훑어보세요.</p>
+        </div>
+
+        {/* XP 바 (우측) */}
+        <div className="w-24 shrink-0">
+          <div className="mb-1 flex justify-between text-[9px] text-gray-500">
+            <span>오늘의 XP</span>
+            <span>{dailyXP.total}/{DAILY_XP_CAP}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-pill bg-white/[0.06]">
+            <div
+              className="h-full rounded-pill bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-slow"
+              style={{ width: `${xpPercent}%` }}
+            />
+          </div>
+        </div>
+
+        {/* 시작 화살표 */}
+        <div className="flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-amber-400">
+          <span>시작</span>
+          <svg className="h-3 w-3 transition-transform group-active:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── 하단 2카드 (마스터노트 / 문제지옥) ─────────────────────────────
+// 데스크탑과 동일한 디자인. 모바일은 패딩 줄이고 설명 텍스트 압축.
+function BottomCard({ accent, icon, title, desc, sub, cta, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative flex flex-1 flex-col rounded-2xl p-4 text-left transition-all duration-base active:scale-[0.97]"
       style={{
-        borderColor: `${accent}25`,
-        boxShadow: `0 0 0 0 ${accent}00`,
-      }}
-      // 손가락으로 누를 때 살짝 빛나는 느낌
-      onTouchStart={(e) => {
-        e.currentTarget.style.boxShadow = `0 0 16px ${accent}30`;
-        e.currentTarget.style.borderColor = `${accent}55`;
-      }}
-      onTouchEnd={(e) => {
-        e.currentTarget.style.boxShadow = `0 0 0 0 ${accent}00`;
-        e.currentTarget.style.borderColor = `${accent}25`;
+        background: `linear-gradient(135deg, ${accent}1a 0%, ${accent}0a 100%)`,
+        border: `1px solid ${accent}40`,
+        boxShadow: `0 4px 24px ${accent}1a`,
       }}
     >
       {/* 아이콘 */}
       <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
-        style={{ background: `${accent}15` }}
+        className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl ring-1 transition-transform duration-fast group-active:scale-110"
+        style={{
+          background: `linear-gradient(135deg, ${accent}40 0%, ${accent}26 100%)`,
+          ringColor: `${accent}33`,
+          boxShadow: `0 0 15px ${accent}20`,
+        }}
       >
         {icon}
       </div>
 
       {/* 텍스트 */}
-      <div className="min-w-0">
-        <p className="text-[13px] font-black text-white leading-tight">{title}</p>
-        <p className="text-[11px] text-gray-500 leading-tight mt-0.5 truncate">{desc}</p>
-      </div>
+      <h3 className="mb-1 text-sm font-bold" style={{ color: accent }}>{title}</h3>
+      <p className="mb-1 text-[11px] leading-snug text-gray-400">{desc}</p>
+      {sub && <p className="text-[10px] text-gray-600">{sub}</p>}
 
-      {/* 뱃지 (예: "NEW", 완료 수 등) */}
-      {badge && (
-        <span
-          className="absolute top-2.5 right-2.5 text-[9px] font-black px-1.5 py-0.5 rounded-pill"
-          style={{ background: `${accent}25`, color: accent }}
-        >
-          {badge}
-        </span>
-      )}
+      {/* CTA */}
+      <div
+        className="mt-auto flex items-center gap-1 pt-2 text-[11px] font-bold transition-all duration-fast group-active:gap-2"
+        style={{ color: accent }}
+      >
+        <span>{cta}</span>
+        <svg className="h-3 w-3 transition-transform group-active:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
     </button>
   );
 }
 
-// ─── XP 프로그레스 바 ─────────────────────────────────────────────────────────
-// 다음 레벨까지 XP를 시각화. 좁은 화면에서도 한 줄로 표현.
-function XpBar({ totalXP }) {
-  const level = calcLevel(totalXP);
-  const curRow  = LEVEL_TABLE.find((r) => r.level === level);
-  const nextRow = LEVEL_TABLE.find((r) => r.level === level + 1);
-
-  const curBase  = curRow?.xp  ?? 0;
-  const nextBase = nextRow?.xp ?? curBase + 1;
-  const progress = Math.min(((totalXP - curBase) / (nextBase - curBase)) * 100, 100);
-
-  return (
-    <div className="flex items-center gap-2">
-      {/* 레벨 뱃지 */}
-      <span className="text-[11px] font-black text-theme-primary shrink-0">Lv.{level}</span>
-
-      {/* 바 */}
-      <div className="flex-1 h-1.5 rounded-pill bg-white/[0.06] overflow-hidden">
-        <div
-          className="h-full rounded-pill bg-theme-primary transition-all duration-slow"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-
-      {/* 다음 레벨까지 남은 XP */}
-      <span className="text-[10px] text-gray-500 shrink-0">
-        {nextBase - totalXP} XP
-      </span>
-    </div>
-  );
-}
-
-// ─── HomeTab ──────────────────────────────────────────────────────────────────
+// ─── HomeTab ──────────────────────────────────────────────────────────
 export default function HomeTab() {
-  const { userData, streak, dailyXP, freezeCount, beanCount, handleTabChange } =
+  const navigate = useNavigate();
+  const { userData, streak, streakStatus, repairCount, dailyXP, handleTabChange } =
     useStudentContext();
 
-  const totalXP    = userData?.totalXP    ?? 0;
-  const displayName = userData?.displayName ?? '학생';
+  const [questDevNotice, setQuestDevNotice] = useState(false);
 
-  // 오늘 XP 진행 (일일 캡 대비)
-  const todayXPPercent = Math.min((dailyXP.total / DAILY_XP_CAP) * 100, 100);
+  const name = userData?.displayName || '학생';
 
-  // ─── 모드 카드 정의 ────────────────────────────────────────────────────
-  // accent 색은 데스크탑 사이드바 모드 색과 동일하게 맞춤 (디자인 통일성)
-  const MODE_CARDS = [
-    {
-      id: 'learn',
-      icon: '📖',
-      title: '챕터 학습',
-      desc: '코드 읽고 AI와 대화',
-      accent: '#4ec9b0', // theme-primary (teal)
-    },
-    {
-      id: 'quest',
-      icon: '🎯',
-      title: '오늘의 퀘스트',
-      desc: '추천 파일 학습',
-      accent: '#f59e0b', // amber
-    },
-    {
-      id: 'levelup',
-      icon: '⚡',
-      title: '레벨업',
-      desc: '문제 풀고 레벨 확인',
-      accent: '#a78bfa', // violet
-    },
-    {
-      id: 'levelup', // 마스터노트는 레벨업 탭 내부에서 진입
-      icon: '📝',
-      title: '마스터노트',
-      desc: '자유 복습 & 예습',
-      accent: '#569cd6', // blue
-    },
-  ];
+  // 스트릭 수에 따른 응원 문구 — 데스크탑과 동일
+  const cheer =
+    streak >= 30 ? `${streak}일 연속 — 전설이 되고 있어요` :
+    streak >= 14 ? `${streak}일 연속 — 이건 진짜 루틴이에요` :
+    streak >= 7  ? `${streak}일 연속 — 한 주가 쌓였어요` :
+    streak >= 3  ? `${streak}일 연속 — 습관이 만들어지고 있어요` :
+    streak >= 1  ? `${streak}일 연속 — 넌 이미 다름` :
+    '오늘 시작하면 1일째가 돼요';
+
+  const handleQuestClick = () => {
+    // TODO: 퀘스트 기능 개발 완료 후 handleTabChange('quest')로 교체
+    setQuestDevNotice(true);
+    setTimeout(() => setQuestDevNotice(false), 2500);
+  };
 
   return (
-    // h-full: MobileAppShell의 content 영역을 꽉 채움 (overflow 없음)
-    <div className="flex h-full flex-col px-4 pb-4 pt-3">
+    // h-full: MobileAppShell content 영역 꽉 채움. overflow-hidden으로 스크롤 방지.
+    <div className="relative flex h-full flex-col overflow-hidden px-4 pb-4 pt-3">
 
-      {/* ── 인사 + 이름 ──────────────────────────────────────────────── */}
-      <div className="mb-3 shrink-0">
-        <p className="text-[11px] text-gray-500">
-          {new Date().getHours() < 12 ? '좋은 아침이에요 ☀️' : '안녕하세요 👋'}
-        </p>
-        <h2 className="text-lg font-black text-white leading-tight">{displayName}</h2>
-      </div>
-
-      {/* ── 스탯 칩 행 ───────────────────────────────────────────────── */}
-      <div className="mb-3 flex flex-wrap gap-1.5 shrink-0">
-        <StatChip icon="🔥" value={`${streak}일`}  label={`연속 출석 ${streak}일`}  color="#f97316" />
-        <StatChip icon="⚡" value={`${dailyXP.total}XP`} label={`오늘 ${dailyXP.total}/${DAILY_XP_CAP}XP`} color="#f59e0b" />
-        <StatChip icon="🧊" value={freezeCount}    label={`얼리기 ${freezeCount}개 남음`} color="#60a5fa" />
-        <StatChip icon="☕" value={beanCount}       label={`원두 ${beanCount}개`}     color="#d97706" />
-      </div>
-
-      {/* ── XP 프로그레스 ─────────────────────────────────────────────── */}
-      <div className="mb-4 shrink-0">
-        <XpBar totalXP={totalXP} />
-        {/* 오늘 XP 캡 진행 */}
-        <div className="mt-1.5 flex items-center gap-2">
-          <span className="text-[10px] text-gray-600 shrink-0">오늘</span>
-          <div className="flex-1 h-1 rounded-pill bg-white/[0.04] overflow-hidden">
-            <div
-              className="h-full rounded-pill bg-amber-400/60 transition-all duration-slow"
-              style={{ width: `${todayXPPercent}%` }}
-            />
+      {/* ── 퀘스트 개발중 오버레이 ────────────────────────────────── */}
+      {questDevNotice && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div
+            className="flex items-center gap-4 rounded-2xl px-7 py-5"
+            style={{ background: '#0c0c0c', border: '1px solid rgba(245,158,11,0.4)', boxShadow: '0 0 40px rgba(245,158,11,0.25)' }}
+          >
+            <span className="text-4xl">🛠️</span>
+            <div>
+              <p className="text-base font-black tracking-widest uppercase text-amber-400">퀘스트 조합 개발중</p>
+              <p className="text-sm text-gray-500">곧 만나요!</p>
+            </div>
           </div>
-          <span className="text-[10px] text-gray-600 shrink-0">{dailyXP.total}/{DAILY_XP_CAP}</span>
         </div>
+      )}
+
+      {/* ── 인사 + 응원 문구 ─────────────────────────────────────── */}
+      <div className="mb-3 shrink-0 text-center">
+        <h2 className="text-xl font-black text-white">{name}님, 오늘도 한 판 해볼까요?</h2>
+        <p className="text-xs" style={{ color: '#4ec9b0' }}>{cheer}</p>
       </div>
 
-      {/* ── 모드 카드 2×2 그리드 ─────────────────────────────────────── */}
-      {/* flex-1로 남은 공간을 카드가 꽉 채움 — 스크롤 없이 화면에 딱 맞음 */}
-      <div className="grid flex-1 grid-cols-2 gap-2.5 overflow-hidden">
-        {MODE_CARDS.map((card, idx) => (
-          <ModeCard
-            key={idx}
-            icon={card.icon}
-            title={card.title}
-            desc={card.desc}
-            accent={card.accent}
-            badge={card.badge}
-            onClick={() => handleTabChange(card.id)}
-          />
-        ))}
+      {/* ── 스트릭 상태 배너 ─────────────────────────────────────── */}
+      <div className="shrink-0">
+        <StreakBanner streakStatus={streakStatus} streak={streak} repairCount={repairCount} />
+      </div>
+
+      {/* ── "눌러서 시작" 힌트 ───────────────────────────────────── */}
+      <div className="mb-2 flex shrink-0 items-center gap-1.5">
+        <svg className="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+        <span className="text-[11px] font-semibold text-gray-300">눌러서 시작해보세요</span>
+      </div>
+
+      {/* ── 오늘의 퀘스트 카드 ───────────────────────────────────── */}
+      <div className="mb-3 shrink-0">
+        <QuestCard dailyXP={dailyXP} onClick={handleQuestClick} />
+      </div>
+
+      {/* ── 하단 2카드 (마스터노트 / 문제지옥) ──────────────────── */}
+      {/* flex-1로 남은 세로 공간을 꽉 채움 → 스크롤 없이 화면에 딱 맞음 */}
+      <div className="flex flex-1 gap-3 overflow-hidden">
+        <BottomCard
+          accent="#38bdf8"
+          icon={
+            <svg className="h-6 w-6 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+          }
+          title="마스터노트"
+          desc="코드노트, AI코드생성, 용어번역, 메모, AI문제출제, GitHub코드불러오기"
+          sub="각종툴로 편하게 공부에만 집중하세요."
+          cta="시작하기"
+          onClick={() => { handleTabChange('levelup'); navigate('/study'); }}
+        />
+        <BottomCard
+          accent="#a855f7"
+          icon={
+            <svg className="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
+            </svg>
+          }
+          title="문제지옥"
+          desc="과목별 문제를 풀며 티어를 올립니다."
+          sub="Java, React, Python, GitHub... 뭐든 OK"
+          cta="도전하기"
+          onClick={() => { handleTabChange('levelup'); navigate('/home/levelup'); }}
+        />
       </div>
 
     </div>
