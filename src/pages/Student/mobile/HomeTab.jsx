@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 import { useStudentContext } from '@/pages/Student/mobile/MobileStudentPage';
 import { DAILY_XP_CAP } from '@/services/learningService';
+import MobileProblemHellOverlay from '@/pages/Student/mobile/levelup/MobileProblemHellOverlay';
 
 // ─── 스트릭 상태 배너 ────────────────────────────────────────────────
 // 데스크탑과 동일한 색/메시지. 모바일은 패딩만 더 줄임.
@@ -161,6 +162,7 @@ export default function HomeTab() {
     useStudentContext();
 
   const [questDevNotice, setQuestDevNotice] = useState(false);
+  const [problemHellOpen, setProblemHellOpen] = useState(false);
 
   const name = userData?.displayName || '학생';
 
@@ -251,9 +253,15 @@ export default function HomeTab() {
           desc="과목별 문제를 풀며 티어를 올립니다."
           sub="Java, React, Python, GitHub... 뭐든 OK"
           cta="도전하기"
-          onClick={() => { handleTabChange('levelup'); navigate('/home/levelup'); }}
+          onClick={() => setProblemHellOpen(true)}
         />
       </div>
+
+      {/* 문제지옥 오버레이 — 데스크탑 LevelUpView를 모바일 풀스크린으로 */}
+      <MobileProblemHellOverlay
+        isOpen={problemHellOpen}
+        onClose={() => setProblemHellOpen(false)}
+      />
 
     </div>
   );
