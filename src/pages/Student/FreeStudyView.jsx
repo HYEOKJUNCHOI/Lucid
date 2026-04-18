@@ -657,14 +657,13 @@ ${mainCode.slice(0, 3000)}`;
   // 모바일 레이아웃 — 단일 탭바 통합 (6개 풀스크린 탭)
   // ════════════════════════════════════════════════
   if (isMobile) {
-    // 5개 탭: main / ai / tutor / quiz / memo (타자연습 제외 — 모바일 미지원)
-    // + 뒤로가기는 별도 처리 (학습 종료 모달)
+    // 5개 탭: main / ai / tutor / quiz / memo
     const MOBILE_TABS = [
-      { id: 'main',  label: '코드노트',    emoji: '💻' },
-      { id: 'ai',    label: 'AI코드',      emoji: '🤖' },
-      { id: 'tutor', label: 'Lucid Tutor', emoji: '💬' },
-      { id: 'quiz',  label: '문제풀기',    emoji: '🎯' },
-      { id: 'memo',  label: '학습메모',    emoji: '📝' },
+      { id: 'main',  label: '💻 코드노트' },
+      { id: 'ai',    label: '🤖 AI 생성코드' },
+      { id: 'tutor', label: '💬 Lucid Tutor' },
+      { id: 'quiz',  label: '🎯 문제풀기' },
+      { id: 'memo',  label: '📝 학습메모' },
     ];
 
     const handleMobileTabChange = (nextId) => {
@@ -722,21 +721,37 @@ ${mainCode.slice(0, 3000)}`;
           </div>
         )}
 
-        {/* ── 모바일: 상단 헤더 (현재 탭 라벨 + ⋯ 메뉴) ── */}
-        {/* 탭 전환은 하단 MobileBottomNav 스타일 바로 이동 */}
-        <div className="relative shrink-0 flex items-center justify-between border-b border-white/[0.06] bg-[var(--free-editor-bg)] px-4 h-12">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-base shrink-0">
-              {MOBILE_TABS.find(t => t.id === activeTab)?.emoji ?? '📚'}
-            </span>
-            <p className="text-sm font-bold text-white truncate">
-              {MOBILE_TABS.find(t => t.id === activeTab)?.label ?? '마스터노트'}
-            </p>
+        {/* ── 모바일: 통합 탭바 (가로 스크롤) + ⋯ 메뉴 ── */}
+        <div className="relative shrink-0 flex items-stretch border-b border-white/[0.06] bg-[var(--free-editor-bg)]">
+          <div
+            className="flex-1 flex items-stretch overflow-x-auto scrollbar-thin snap-x"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            {MOBILE_TABS.map(tab => {
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleMobileTabChange(tab.id)}
+                  className="shrink-0 snap-start flex items-center justify-center px-3 text-[12px] font-bold transition-colors"
+                  style={{
+                    minWidth: 80,
+                    minHeight: 44,
+                    color: active ? '#4ec9b0' : '#9ca3af',
+                    background: active ? 'rgba(78,201,176,0.08)' : 'transparent',
+                    borderBottom: active ? '2px solid #4ec9b0' : '2px solid transparent',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
           {/* ⋯ 더보기 버튼 */}
           <button
             onClick={() => setMobileMenuOpen(v => !v)}
-            className="shrink-0 flex items-center justify-center text-gray-400 text-lg w-11 h-11"
+            className="shrink-0 flex items-center justify-center text-gray-400 text-lg"
+            style={{ minWidth: 44, minHeight: 44, borderLeft: '1px solid rgba(255,255,255,0.06)' }}
             aria-label="더보기"
           >
             ⋯
@@ -902,44 +917,8 @@ ${mainCode.slice(0, 3000)}`;
 
         </div>
 
-        {/* ── 모바일: 하단 탭바 (MobileBottomNav 스타일, 6개: 5탭 + 뒤로가기) ── */}
-        <nav
-          className="shrink-0 border-t border-white/[0.06] bg-[var(--free-editor-bg)]/95 backdrop-blur"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-        >
-          <ul className="h-[56px] flex items-stretch">
-            {MOBILE_TABS.map(tab => {
-              const active = activeTab === tab.id;
-              return (
-                <li key={tab.id} className="flex-1">
-                  <button
-                    type="button"
-                    onClick={() => handleMobileTabChange(tab.id)}
-                    className="w-full h-full flex flex-col items-center justify-center gap-0.5 transition-all duration-150"
-                    style={{
-                      color: active ? '#4ec9b0' : '#9ca3af',
-                      opacity: active ? 1 : 0.55,
-                    }}
-                  >
-                    <span className="text-base leading-none">{tab.emoji}</span>
-                    <span className="text-[10px] font-semibold leading-none mt-0.5">{tab.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-            {/* 뒤로가기: 학습 종료 모달 호출 */}
-            <li className="flex-1">
-              <button
-                type="button"
-                onClick={() => setShowExitConfirm(true)}
-                className="w-full h-full flex flex-col items-center justify-center gap-0.5 text-red-400 opacity-70 hover:opacity-100 transition-all duration-150"
-              >
-                <span className="text-base leading-none">↩️</span>
-                <span className="text-[10px] font-semibold leading-none mt-0.5">뒤로가기</span>
-              </button>
-            </li>
-          </ul>
-        </nav>
+        {/* safe-area 여백 */}
+        <div style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} />
 
         {/* 학습 종료 확인 모달 */}
         {showExitConfirm && (

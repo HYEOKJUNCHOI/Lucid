@@ -7,12 +7,12 @@
  *  3. 마스터노트 읽기전용 진입 카드
  */
 import { useContext, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import Screen from '@/components/common/mobile/Screen';
 import MobileTopBar from '@/components/common/mobile/MobileTopBar';
 import HapticButton from '@/components/common/mobile/HapticButton';
-import { StudentContext } from '@/pages/Student/mobile/MobileStudentPage';
-import MobileProblemHellOverlay from '@/pages/Student/mobile/levelup/MobileProblemHellOverlay';
+import { StudentContext } from '@/pages/Student/MobileStudentRoot';
 import haptic from '@/lib/haptic';
 import { TIERS_MOBILE as TIERS } from '@/constants/tiers';
 
@@ -244,7 +244,7 @@ function MasterNoteCard({ onPress }) {
 // ─── 메인 컴포넌트 ───────────────────────────────────
 export default function LevelUpTab() {
   const ctx = useContext(StudentContext);
-  const [problemHellOpen, setProblemHellOpen] = useState(false);
+  const navigate = useNavigate();
 
   // userData에서 XP 계산: subjectTiers 전체 합산
   const userData = ctx?.userData ?? {};
@@ -257,20 +257,18 @@ export default function LevelUpTab() {
 
   const handleChallengePress = (challenge, tierDef) => {
     haptic.tap();
-    // 챌린지 진입 → 문제지옥 오버레이로 (LevelUpView 모바일 래퍼)
-    setProblemHellOpen(true);
+    // 챌린지 진입: LevelUpView(데스크탑 원본)로 연결
+    navigate('/home/levelup');
   };
 
   const handleMasterNotePress = () => {
-    // 마스터노트: 학습 탭으로 이동 (챕터 선택 → 파일 진입 흐름)
-    ctx?.handleTabChange?.('learn');
+    navigate('/freestudy');
   };
 
   return (
-    <>
     <Screen
       bottomTab
-      appBar={<MobileTopBar title="문제지옥" largeTitle blurBg />}
+      appBar={<MobileTopBar title="레벨업" largeTitle blurBg />}
       animate="fade"
     >
       <div className="pt-2 pb-6">
@@ -308,12 +306,5 @@ export default function LevelUpTab() {
         <div className="h-4" />
       </div>
     </Screen>
-
-    {/* 챌린지 클릭 시 문제지옥 풀스크린 오버레이 */}
-    <MobileProblemHellOverlay
-      isOpen={problemHellOpen}
-      onClose={() => setProblemHellOpen(false)}
-    />
-    </>
   );
 }
