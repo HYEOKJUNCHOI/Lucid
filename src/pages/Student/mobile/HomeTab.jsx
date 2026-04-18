@@ -32,11 +32,11 @@ function StreakBanner({ streakStatus, streak, repairCount }) {
   }
   if (streakStatus === 'repair') {
     return (
-      <div className="mb-3 flex items-center gap-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-3 py-2.5">
-        <span>🔧</span>
+      <div className="mb-3 flex items-center gap-3 rounded-2xl border border-purple-500/30 bg-purple-500/10 px-4 py-4">
+        <span className="text-xl">🔧</span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold text-purple-400">연속출석 복구 퀘스트 진행 중</p>
-          <p className="text-[10px] text-gray-400">
+          <p className="text-sm font-bold text-purple-400">연속출석 복구 퀘스트 진행 중</p>
+          <p className="text-xs text-gray-400 mt-0.5">
             퀘스트 3연속 완료 시 복구! 현재{' '}
             <span className="font-bold text-purple-400">{repairCount}/3</span> 완료
           </p>
@@ -46,7 +46,7 @@ function StreakBanner({ streakStatus, streak, repairCount }) {
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className={cn('h-2 w-2 rounded-full', i < repairCount ? 'bg-purple-500' : 'bg-white/10')}
+              className={cn('h-2.5 w-2.5 rounded-full', i < repairCount ? 'bg-purple-500' : 'bg-white/10')}
             />
           ))}
         </div>
@@ -65,33 +65,33 @@ function QuestCard({ dailyXP, onClick }) {
     <button
       onClick={onClick}
       className={cn(
-        'group relative w-full rounded-2xl px-4 py-3.5 text-left',
+        'group relative w-full rounded-2xl px-5 py-5 text-left',
         'border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.12] to-orange-500/[0.06]',
         'shadow-[0_4px_24px_rgba(245,158,11,0.10)] transition-all duration-base',
         'active:scale-[0.98] hover:border-amber-500/60 hover:from-amber-500/20',
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         {/* 아이콘 */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 ring-1 ring-amber-500/20">
-          <svg className="h-5 w-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-500/20 ring-1 ring-amber-500/20">
+          <svg className="h-7 w-7 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
 
         {/* 타이틀 + 설명 */}
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold text-amber-400">오늘의 퀘스트</h3>
-          <p className="text-[11px] text-gray-400">오늘 배운 코드를 한 바퀴 훑어보세요.</p>
+          <h3 className="text-base font-bold text-amber-400">오늘의 퀘스트</h3>
+          <p className="text-xs text-gray-400 mt-0.5">오늘 배운 코드를 한 바퀴 훑어보세요.</p>
         </div>
 
         {/* XP 바 (우측) */}
-        <div className="w-24 shrink-0">
-          <div className="mb-1 flex justify-between text-[9px] text-gray-500">
+        <div className="w-28 shrink-0">
+          <div className="mb-1 flex justify-between text-[10px] text-gray-500">
             <span>오늘의 XP</span>
             <span>{dailyXP.total}/{DAILY_XP_CAP}</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-pill bg-white/[0.06]">
+          <div className="h-2 overflow-hidden rounded-pill bg-white/[0.06]">
             <div
               className="h-full rounded-pill bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-slow"
               style={{ width: `${xpPercent}%` }}
@@ -100,9 +100,9 @@ function QuestCard({ dailyXP, onClick }) {
         </div>
 
         {/* 시작 화살표 */}
-        <div className="flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-amber-400">
+        <div className="flex shrink-0 items-center gap-0.5 text-sm font-bold text-amber-400">
           <span>시작</span>
-          <svg className="h-3 w-3 transition-transform group-active:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-4 w-4 transition-transform group-active:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </div>
@@ -117,7 +117,7 @@ function BottomCard({ accent, icon, title, desc, sub, cta, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="group relative flex flex-1 flex-col rounded-2xl p-4 text-left transition-all duration-base active:scale-[0.97]"
+      className="group relative flex flex-1 flex-col rounded-3xl p-6 text-left transition-all duration-base active:scale-[0.97]"
       style={{
         background: `linear-gradient(135deg, ${accent}1a 0%, ${accent}0a 100%)`,
         border: `1px solid ${accent}40`,
@@ -126,28 +126,28 @@ function BottomCard({ accent, icon, title, desc, sub, cta, onClick }) {
     >
       {/* 아이콘 */}
       <div
-        className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl ring-1 transition-transform duration-fast group-active:scale-110"
+        className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl ring-1 transition-transform duration-fast group-active:scale-110"
         style={{
           background: `linear-gradient(135deg, ${accent}40 0%, ${accent}26 100%)`,
           ringColor: `${accent}33`,
-          boxShadow: `0 0 15px ${accent}20`,
+          boxShadow: `0 0 20px ${accent}25`,
         }}
       >
         {icon}
       </div>
 
       {/* 텍스트 */}
-      <h3 className="mb-1 text-sm font-bold" style={{ color: accent }}>{title}</h3>
-      <p className="mb-1 text-[11px] leading-snug text-gray-400">{desc}</p>
-      {sub && <p className="text-[10px] text-gray-600">{sub}</p>}
+      <h3 className="mb-2 text-xl font-bold" style={{ color: accent }}>{title}</h3>
+      <p className="mb-2 text-sm leading-snug text-gray-400">{desc}</p>
+      {sub && <p className="text-xs text-gray-600 leading-snug">{sub}</p>}
 
       {/* CTA */}
       <div
-        className="mt-auto flex items-center gap-1 pt-2 text-[11px] font-bold transition-all duration-fast group-active:gap-2"
+        className="mt-auto flex items-center gap-1 pt-3 text-sm font-bold transition-all duration-fast group-active:gap-2"
         style={{ color: accent }}
       >
         <span>{cta}</span>
-        <svg className="h-3 w-3 transition-transform group-active:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-4 w-4 transition-transform group-active:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </div>
@@ -202,9 +202,9 @@ export default function HomeTab() {
       )}
 
       {/* ── 인사 + 응원 문구 ─────────────────────────────────────── */}
-      <div className="mb-3 shrink-0 text-center">
-        <h2 className="text-xl font-black text-white">{name}님, 오늘도 한 판 해볼까요?</h2>
-        <p className="text-xs" style={{ color: '#4ec9b0' }}>{cheer}</p>
+      <div className="mb-5 shrink-0 text-center pt-2">
+        <h2 className="text-2xl font-black text-white leading-tight">{name}님, 오늘도 한 판 해볼까요?</h2>
+        <p className="text-sm mt-1.5" style={{ color: '#4ec9b0' }}>{cheer}</p>
       </div>
 
       {/* ── 스트릭 상태 배너 ─────────────────────────────────────── */}
@@ -213,11 +213,11 @@ export default function HomeTab() {
       </div>
 
       {/* ── "눌러서 시작" 힌트 ───────────────────────────────────── */}
-      <div className="mb-2 flex shrink-0 items-center gap-1.5">
-        <svg className="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <div className="mb-3 flex shrink-0 items-center justify-center gap-1.5">
+        <svg className="h-5 w-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
-        <span className="text-[11px] font-semibold text-gray-300">눌러서 시작해보세요</span>
+        <span className="text-sm font-semibold text-gray-300">눌러서 시작해보세요</span>
       </div>
 
       {/* ── 오늘의 퀘스트 카드 ───────────────────────────────────── */}
@@ -231,7 +231,7 @@ export default function HomeTab() {
         <BottomCard
           accent="#38bdf8"
           icon={
-            <svg className="h-6 w-6 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="h-8 w-8 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
             </svg>
           }
@@ -244,7 +244,7 @@ export default function HomeTab() {
         <BottomCard
           accent="#a855f7"
           icon={
-            <svg className="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="h-8 w-8 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 18a3.75 3.75 0 00.495-7.467 5.99 5.99 0 00-1.925 3.546 5.974 5.974 0 01-2.133-1A3.75 3.75 0 0012 18z" />
             </svg>
