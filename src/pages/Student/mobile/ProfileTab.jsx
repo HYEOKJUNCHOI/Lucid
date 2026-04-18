@@ -23,27 +23,35 @@ function Section({ title, children }) {
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────
 export default function ProfileTab() {
-  const { user, userData, onLogout } = useContext(StudentContext) ?? {};
+  // StudentContext에서 계산된 값 사용 (streak/beanCount는 useStudentSession이 정확히 계산)
+  const { user, userData, onLogout, streak, beanCount } = useContext(StudentContext) ?? {};
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // ── 사용자 정보 ──
   const displayName = user?.displayName ?? userData?.name ?? '게스트';
   const email = user?.email ?? '';
   const photoURL = user?.photoURL;
-  const tier = userData?.tier ?? 'bronze';
-  const xp = userData?.xp ?? 0;
-  const streak = userData?.streak ?? 0;
-  const beans = userData?.beans ?? 0;
+
+  // 티어: subjectTiers 합산 XP → getTier 로 계산 (userData.tier 필드 없는 경우 대응)
+  const subjectTiers = userData?.subjectTiers ?? {};
+  const totalXP = userData?.totalXP
+    ?? Object.values(subjectTiers).reduce((s, t) => s + (t?.xp ?? 0), 0);
+  const xp = totalXP;
+
+  // streak/beanCount는 context 계산값 우선 (onSnapshot 실시간 반영)
+  const beans = beanCount ?? userData?.beanCount ?? 0;
   const chaptersCompleted = userData?.chaptersCompleted ?? 0;
 
-  // 티어 한글 + 색상
-  const TIER_MAP = {
-    bronze:   { label: '브론즈',   color: 'orange' },
-    silver:   { label: '실버',     color: 'teal'   },
-    gold:     { label: '골드',     color: 'yellow' },
-    platinum: { label: '플래티넘', color: 'blue'   },
-  };
-  const { label: tierLabel } = TIER_MAP[tier] ?? TIER_MAP.bronze;
+  // XP → 티어
+  const TIERS_XP = [
+    { id: 'bronze',   label: '브론즈',   minXP: 0    },
+    { id: 'silver',   label: '실버',     minXP: 500  },
+    { id: 'gold',     label: '골드',     minXP: 1500 },
+    { id: 'platinum', label: '플래티넘', minXP: 3500 },
+    { id: 'diamond',  label: '다이아',   minXP: 7000 },
+  ];
+  const currentTier = TIERS_XP.reduce((best, t) => (xp >= t.minXP ? t : best), TIERS_XP[0]);
+  const { id: tierId, label: tierLabel } = currentTier;
 
   // ── 로그아웃 ──
   const handleLogout = () => {
@@ -92,10 +100,11 @@ export default function ProfileTab() {
           {/* 티어 뱃지 */}
           <span
             className={`mt-1 px-3 py-0.5 rounded-full text-xs font-semibold
-              ${tier === 'platinum' ? 'bg-blue-400/20 text-blue-300' :
-                tier === 'gold'    ? 'bg-yellow-400/20 text-yellow-300' :
-                tier === 'silver'  ? 'bg-teal-400/20 text-teal-300' :
-                                     'bg-orange-400/20 text-orange-300'}`}
+              ${tierId === 'diamond'  ? 'bg-purple-400/20 text-purple-300' :
+                tierId === 'platinum' ? 'bg-blue-400/20 text-blue-300' :
+                tierId === 'gold'     ? 'bg-yellow-400/20 text-yellow-300' :
+                tierId === 'silver'   ? 'bg-teal-400/20 text-teal-300' :
+                                        'bg-orange-400/20 text-orange-300'}`}
           >
             {tierLabel} 티어
           </span>
