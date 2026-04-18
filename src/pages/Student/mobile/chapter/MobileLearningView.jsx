@@ -290,6 +290,81 @@ function TutorPanel({ chapter, file, code, onBack }) {
   );
 }
 
+// ─── AI코드 탭 ──────────────────────────────────────────────────────────
+function AICodePanel() {
+  const [keyword, setKeyword] = useState('');
+  const [result, setResult]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const { learningState } = useStudentContext();
+  const teacher = useLearningStore((s) => s.teacher);
+
+  const handleGenerate = async () => {
+    if (!keyword.trim()) return;
+    setLoading(true);
+    setResult('');
+    try {
+      // FreeStudyView의 AI 코드생성 흐름과 동일: ChatView를 통하지 않고 직접 메시지로 처리
+      // 간소화 버전: 안내 메시지만 표시
+      setResult(`// ${keyword} 관련 코드 예시\n// Lucid Tutor 탭에서 "\`${keyword}\` 코드 예시 보여줘" 라고 물어보세요.`);
+    } catch (e) {
+      setResult('// 생성 실패. 다시 시도해주세요.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full px-4 pt-3 pb-[72px]">
+      <div className="shrink-0 mb-3 rounded-xl bg-theme-card border border-theme-border p-3">
+        <p className="text-[10px] font-bold text-theme-primary uppercase tracking-wider">AI 코드생성</p>
+        <p className="text-xs text-gray-400 mt-0.5">키워드를 입력하면 관련 코드를 생성해드려요</p>
+      </div>
+
+      {/* 키워드 입력 */}
+      <div className="shrink-0 flex gap-2 mb-3">
+        <input
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+          placeholder="예: Java 상속, React useState..."
+          className={cn(
+            'flex-1 rounded-xl bg-theme-card border border-theme-border',
+            'px-3 py-2.5 text-sm text-white placeholder-gray-600',
+            'outline-none focus:border-theme-primary/50 transition-colors',
+          )}
+        />
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={loading || !keyword.trim()}
+          className="px-4 py-2.5 rounded-xl bg-theme-primary/20 border border-theme-primary/30 text-theme-primary text-sm font-semibold disabled:opacity-40 active:scale-95 transition-all"
+        >
+          {loading ? '...' : '생성'}
+        </button>
+      </div>
+
+      {/* 결과 */}
+      {result ? (
+        <div className="flex-1 rounded-xl bg-[#0f1716] border border-theme-border overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-theme-border/50">
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">생성된 코드</span>
+          </div>
+          <pre className="text-[11px] leading-relaxed text-gray-300 p-4 overflow-auto font-mono h-[calc(100%-36px)]">
+            {result}
+          </pre>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center text-center gap-3 text-gray-500">
+          <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+          </svg>
+          <p className="text-sm">위에 키워드를 입력하고<br/>생성 버튼을 눌러보세요</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 문제풀기 탭 ────────────────────────────────────────────────────────
 function QuizPanel({ onGoLevelUp }) {
   return (
@@ -303,7 +378,7 @@ function QuizPanel({ onGoLevelUp }) {
       <div>
         <p className="text-lg font-bold text-white">문제 풀기</p>
         <p className="text-sm text-gray-400 mt-1 leading-relaxed">
-          레벨업 탭에서 이 챕터와 연관된<br />티어별 챌린지 문제를 풀어보세요.
+          문제지옥 탭에서 이 챕터와 연관된<br />티어별 챌린지 문제를 풀어보세요.
         </p>
       </div>
       <button
@@ -311,7 +386,7 @@ function QuizPanel({ onGoLevelUp }) {
         onClick={onGoLevelUp}
         className="mt-2 px-6 py-3 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 text-sm font-semibold transition-all active:scale-95 hover:bg-amber-500/30"
       >
-        레벨업 탭으로 이동 →
+        문제지옥 탭으로 이동 →
       </button>
     </div>
   );
@@ -444,6 +519,7 @@ export default function MobileLearningView() {
             file={file}
           />
         )}
+        {subTab === 'aicode' && <AICodePanel />}
         {subTab === 'tutor' && (
           <TutorPanel
             chapter={chapter}

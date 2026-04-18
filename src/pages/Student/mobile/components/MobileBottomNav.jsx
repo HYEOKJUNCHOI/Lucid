@@ -87,6 +87,15 @@ function NoteIcon({ active }) {
   );
 }
 
+function AICodeIcon({ active }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round"
+        d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+    </svg>
+  );
+}
+
 function BackIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -101,17 +110,18 @@ const BASE_TABS = [
   { key: 'home',    label: '홈',     Icon: HomeIcon },
   { key: 'learn',   label: '학습',   Icon: BookIcon },
   { key: 'quest',   label: '퀘스트', Icon: QuestIcon },
-  { key: 'levelup', label: '레벨업', Icon: LevelUpIcon },
+  { key: 'levelup', label: '문제지옥', Icon: LevelUpIcon },
   { key: 'profile', label: '프로필', Icon: ProfileIcon },
 ];
 
-/** 학습 모드 동적 서브탭 */
+/** 학습 모드 동적 서브탭 — 데스크탑 FreeStudyView 탭과 동일 */
 const LEARNING_TABS = [
-  { key: 'codenote', label: '코드노트', Icon: CodeNoteIcon },
-  { key: 'tutor',    label: '튜터',     Icon: TutorIcon },
-  { key: 'quiz',     label: '문제풀기', Icon: QuizIcon },
-  { key: 'note',     label: '노트',     Icon: NoteIcon },
-  { key: 'back',     label: '나가기',   Icon: BackIcon },
+  { key: 'codenote', label: '코드노트',    Icon: CodeNoteIcon },
+  { key: 'aicode',   label: 'AI코드',      Icon: AICodeIcon },
+  { key: 'tutor',    label: 'Lucid Tutor', Icon: TutorIcon },
+  { key: 'quiz',     label: '문제풀기',    Icon: QuizIcon },
+  { key: 'note',     label: '학습메모',    Icon: NoteIcon },
+  { key: 'back',     label: '뒤로가기',    Icon: BackIcon },
 ];
 
 // ─── MobileBottomNav ─────────────────────────────────────────────────────────

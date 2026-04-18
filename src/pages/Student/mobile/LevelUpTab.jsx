@@ -270,7 +270,7 @@ export default function LevelUpTab() {
     <>
     <Screen
       bottomTab
-      appBar={<MobileTopBar title="레벨업" largeTitle blurBg />}
+      appBar={<MobileTopBar title="문제지옥" largeTitle blurBg />}
       animate="fade"
     >
       <div className="pt-2 pb-6">

@@ -183,7 +183,7 @@ export default function HomeTab() {
 
   return (
     // h-full: 부모 100dvh 꽉 채움. pb-[72px] = BottomNav(56px) + 여유(16px) 확보.
-    <div className="relative flex h-full flex-col overflow-hidden px-4 pb-[72px] pt-3">
+    <div className="relative flex flex-col overflow-y-auto px-4 pb-[72px] pt-3" style={{ height: '100dvh' }}>
 
       {/* ── 퀘스트 개발중 오버레이 ────────────────────────────────── */}
       {questDevNotice && (
