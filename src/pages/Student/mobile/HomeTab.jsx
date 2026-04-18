@@ -1,322 +1,209 @@
-import { useContext, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { StudentContext } from '@/pages/Student/MobileStudentRoot';
-import Screen from '@/components/common/mobile/Screen';
-import MobileTopBar from '@/components/common/mobile/MobileTopBar';
-import StatBadge from '@/components/common/mobile/StatBadge';
-import HapticButton from '@/components/common/mobile/HapticButton';
-import PullToRefresh from '@/components/common/mobile/PullToRefresh';
-import ListRow from '@/components/common/mobile/ListRow';
+import { cn } from '@/lib/cn';
+import { useStudentContext } from '@/pages/Student/MobileStudentRoot';
+import { calcLevel, LEVEL_TABLE, DAILY_XP_CAP } from '@/services/learningService';
 
-// ─── 주간 학습 바 차트 ─────────────────────────────────────────────
-function WeeklyBar({ values = [] }) {
-  const max = Math.max(...values, 1);
-  const days = ['월', '화', '수', '목', '금', '토', '일'];
-  return (
-    <div className="flex items-end gap-1.5 h-16 w-full">
-      {values.map((v, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-          <div
-            className="w-full rounded-sm bg-theme-primary/30 relative overflow-hidden"
-            style={{ height: '44px' }}
-          >
-            <div
-              className="absolute bottom-0 left-0 right-0 bg-theme-primary rounded-sm transition-all duration-500"
-              style={{ height: `${Math.round((v / max) * 100)}%` }}
-            />
-          </div>
-          <span className="text-[9px] text-gray-500">{days[i]}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── 스트릭 7일 도트 ──────────────────────────────────────────────
-function StreakDots({ streak = 0 }) {
-  const todayIdx = new Date().getDay();
-  // 일(0)~토(6) → 월(0)~일(6) 인덱스 변환
-  const todayMon = (todayIdx + 6) % 7;
-
-  return (
-    <div className="flex gap-2 items-center">
-      {Array.from({ length: 7 }).map((_, i) => {
-        const isToday = i === todayMon;
-        const isPast = i < todayMon && streak > (todayMon - i);
-        return (
-          <div
-            key={i}
-            className={[
-              'w-7 h-7 rounded-full flex items-center justify-center text-sm',
-              isToday
-                ? 'bg-orange-500/20 border border-orange-400/50 animate-pulse'
-                : isPast
-                ? 'bg-theme-primary/20 border border-theme-primary/40'
-                : 'bg-white/5 border border-white/10',
-            ].join(' ')}
-          >
-            {isToday ? '🔥' : isPast ? '✓' : ''}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── 이어하기 카드 ─────────────────────────────────────────────────
-function ContinueCard({ chapters = [], onPress }) {
-  const lastChapter = chapters[0] ?? null;
-  if (!lastChapter) return null;
-
+// ─── 스탯 배지 ────────────────────────────────────────────────────────────────
+// 상단 한 줄에 수치를 요약해서 보여주는 작은 칩.
+// 모바일은 공간이 좁으므로 아이콘 + 숫자만 표시하고 라벨은 툴팁으로 처리.
+function StatChip({ icon, value, label, color }) {
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onPress}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onPress?.(); }}
-      className="pressable bg-theme-card border border-theme-border rounded-card p-4 shadow-e2 cursor-pointer active:scale-[0.98] transition-transform"
-    >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-theme-primary font-semibold tracking-wide">이어하기</span>
-        <span className="text-xs text-gray-500">›</span>
-      </div>
-      <div className="font-bold text-white text-base leading-snug truncate">
-        {lastChapter.name ?? '챕터'}
-      </div>
-      {lastChapter.description && (
-        <div className="text-xs text-gray-400 mt-0.5 truncate">{lastChapter.description}</div>
+      title={label}
+      className={cn(
+        'flex items-center gap-1 px-2.5 py-1.5 rounded-pill',
+        'border bg-white/[0.03] select-none'
       )}
-      <div className="mt-3 h-1.5 bg-white/10 rounded-full overflow-hidden">
+      style={{ borderColor: `${color}30` }}
+    >
+      <span className="text-sm leading-none">{icon}</span>
+      <span className="text-xs font-black leading-none" style={{ color }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ─── 모드 카드 ────────────────────────────────────────────────────────────────
+// 홈의 핵심 — 탭/모드 진입 카드. 2×2 그리드 배치.
+// accent 색은 데스크탑 사이드바의 모드 카드 색과 동일하게 맞춤.
+function ModeCard({ icon, title, desc, accent, onClick, badge }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'relative flex flex-col items-start gap-1.5 p-4 rounded-card',
+        'border text-left transition-all duration-fast active:scale-[0.97]',
+        'bg-white/[0.02] hover:bg-white/[0.04]'
+      )}
+      style={{
+        borderColor: `${accent}25`,
+        boxShadow: `0 0 0 0 ${accent}00`,
+      }}
+      // 손가락으로 누를 때 살짝 빛나는 느낌
+      onTouchStart={(e) => {
+        e.currentTarget.style.boxShadow = `0 0 16px ${accent}30`;
+        e.currentTarget.style.borderColor = `${accent}55`;
+      }}
+      onTouchEnd={(e) => {
+        e.currentTarget.style.boxShadow = `0 0 0 0 ${accent}00`;
+        e.currentTarget.style.borderColor = `${accent}25`;
+      }}
+    >
+      {/* 아이콘 */}
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
+        style={{ background: `${accent}15` }}
+      >
+        {icon}
+      </div>
+
+      {/* 텍스트 */}
+      <div className="min-w-0">
+        <p className="text-[13px] font-black text-white leading-tight">{title}</p>
+        <p className="text-[11px] text-gray-500 leading-tight mt-0.5 truncate">{desc}</p>
+      </div>
+
+      {/* 뱃지 (예: "NEW", 완료 수 등) */}
+      {badge && (
+        <span
+          className="absolute top-2.5 right-2.5 text-[9px] font-black px-1.5 py-0.5 rounded-pill"
+          style={{ background: `${accent}25`, color: accent }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ─── XP 프로그레스 바 ─────────────────────────────────────────────────────────
+// 다음 레벨까지 XP를 시각화. 좁은 화면에서도 한 줄로 표현.
+function XpBar({ totalXP }) {
+  const level = calcLevel(totalXP);
+  const curRow  = LEVEL_TABLE.find((r) => r.level === level);
+  const nextRow = LEVEL_TABLE.find((r) => r.level === level + 1);
+
+  const curBase  = curRow?.xp  ?? 0;
+  const nextBase = nextRow?.xp ?? curBase + 1;
+  const progress = Math.min(((totalXP - curBase) / (nextBase - curBase)) * 100, 100);
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* 레벨 뱃지 */}
+      <span className="text-[11px] font-black text-theme-primary shrink-0">Lv.{level}</span>
+
+      {/* 바 */}
+      <div className="flex-1 h-1.5 rounded-pill bg-white/[0.06] overflow-hidden">
         <div
-          className="h-full bg-theme-primary rounded-full transition-all duration-700"
-          style={{ width: `${lastChapter.progress ?? 0}%` }}
+          className="h-full rounded-pill bg-theme-primary transition-all duration-slow"
+          style={{ width: `${progress}%` }}
         />
       </div>
-      <div className="text-[10px] text-gray-500 mt-1">{lastChapter.progress ?? 0}% 완료</div>
+
+      {/* 다음 레벨까지 남은 XP */}
+      <span className="text-[10px] text-gray-500 shrink-0">
+        {nextBase - totalXP} XP
+      </span>
     </div>
   );
 }
 
-// ─── 추천 카드 리스트 ─────────────────────────────────────────────
-function RecommendSection({ chapters = [], onPress }) {
-  const items = chapters.slice(0, 3);
-  if (items.length === 0) return null;
-
-  return (
-    <div className="rounded-card border border-theme-border overflow-hidden shadow-e2">
-      {items.map((ch, idx) => (
-        <ListRow
-          key={ch.id ?? idx}
-          icon="📖"
-          label={ch.name ?? '챕터'}
-          sublabel={ch.description ?? undefined}
-          value={ch.progress != null ? `${ch.progress}%` : undefined}
-          chevron
-          onPress={() => onPress?.(ch)}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─── HomeTab ──────────────────────────────────────────────────────
+// ─── HomeTab ──────────────────────────────────────────────────────────────────
 export default function HomeTab() {
-  const navigate = useNavigate();
-  const { user, userData } = useContext(StudentContext) ?? {};
+  const { userData, streak, dailyXP, freezeCount, beanCount, handleTabChange } =
+    useStudentContext();
 
-  // userData 필드 안전 추출
-  const displayName = userData?.displayName ?? user?.displayName ?? '학생';
-  const streak      = userData?.streak ?? 0;
-  const bestStreak  = userData?.bestStreak ?? 0;
-  // 스트릭 뱃지 = 역대 최고 기록. 현재 streak가 bestStreak를 넘어서면 같이 상승.
-  const badgeValue  = Math.max(streak, bestStreak);
-  const isBeatingRecord = streak > 0 && streak >= bestStreak && bestStreak > 0;
-  const totalXP     = userData?.totalXP ?? 0;
-  const beanCount   = userData?.beanCount ?? 0;
+  const totalXP    = userData?.totalXP    ?? 0;
+  const displayName = userData?.displayName ?? '학생';
 
-  // 주간 학습 XP — userData.weeklyXP 배열(7개) or 더미 0 배열
-  const weeklyValues = useMemo(() => {
-    if (Array.isArray(userData?.weeklyXP) && userData.weeklyXP.length === 7) {
-      return userData.weeklyXP;
-    }
-    return Array(7).fill(0);
-  }, [userData?.weeklyXP]);
+  // 오늘 XP 진행 (일일 캡 대비)
+  const todayXPPercent = Math.min((dailyXP.total / DAILY_XP_CAP) * 100, 100);
 
-  // chapters — context 에 없으면 빈 배열 (StudentContext 에 전달 시 확장 가능)
-  const chapters = useMemo(() => userData?.chapters ?? [], [userData?.chapters]);
-
-  const handleContinue = () => {
-    navigate('/chapter');
-  };
-
-  const handleRefresh = async () => {
-    // context 는 App.jsx onSnapshot 으로 자동 갱신 — 명시적 리패치 없음
-    await new Promise((r) => setTimeout(r, 400));
-  };
-
-  const topBar = (
-    <MobileTopBar
-      leading={null}
-      title="루시드"
-      largeTitle
-      blurBg
-      actions={
-        <div className="flex items-center gap-1">
-          <StatBadge
-            icon={streak > 0 ? "🔥" : "🌱"}
-            value={streak > 0 ? streak : "시작!"}
-            label="스트릭"
-            detail={
-              bestStreak === 0
-                ? "오늘 첫 퀘스트를 끝내면 스트릭이 시작돼요."
-                : streak === 0
-                  ? `🏅 최고 기록 ${bestStreak}일 — 오늘부터 다시 시작!`
-                  : isBeatingRecord
-                    ? `🎉 최고 기록 갱신 중! ${streak}일 연속.`
-                    : `현재 ${streak}일 연속 / 🏅 최고 ${bestStreak}일.`
-            }
-            color={streak > 0 ? "orange" : "green"}
-            popoverSide="bottom"
-          />
-          <StatBadge
-            icon="☕"
-            value={beanCount}
-            label="원두"
-            detail="원두는 학습 리워드로 쌓여요."
-            color="yellow"
-            popoverSide="bottom"
-          />
-        </div>
-      }
-    />
-  );
+  // ─── 모드 카드 정의 ────────────────────────────────────────────────────
+  // accent 색은 데스크탑 사이드바 모드 색과 동일하게 맞춤 (디자인 통일성)
+  const MODE_CARDS = [
+    {
+      id: 'learn',
+      icon: '📖',
+      title: '챕터 학습',
+      desc: '코드 읽고 AI와 대화',
+      accent: '#4ec9b0', // theme-primary (teal)
+    },
+    {
+      id: 'quest',
+      icon: '🎯',
+      title: '오늘의 퀘스트',
+      desc: '추천 파일 학습',
+      accent: '#f59e0b', // amber
+    },
+    {
+      id: 'levelup',
+      icon: '⚡',
+      title: '레벨업',
+      desc: '문제 풀고 레벨 확인',
+      accent: '#a78bfa', // violet
+    },
+    {
+      id: 'levelup', // 마스터노트는 레벨업 탭 내부에서 진입
+      icon: '📝',
+      title: '마스터노트',
+      desc: '자유 복습 & 예습',
+      accent: '#569cd6', // blue
+    },
+  ];
 
   return (
-    <Screen
-      bottomTab
-      appBar={topBar}
-      animate="fade"
-    >
-      <PullToRefresh onRefresh={handleRefresh} className="h-full overflow-y-auto">
-        <div className="space-y-6 px-4 py-4">
+    // h-full: MobileAppShell의 content 영역을 꽉 채움 (overflow 없음)
+    <div className="flex h-full flex-col px-4 pb-4 pt-3">
 
-          {/* ── 인사 섹션 ─────────────────────────────────────── */}
-          <section>
-            <h1 className="text-xl font-bold text-white leading-tight">
-              👋 안녕하세요, {displayName}님
-            </h1>
-            <p className="text-sm text-gray-400 mt-1">오늘도 한 걸음씩 가볼까요?</p>
-          </section>
+      {/* ── 인사 + 이름 ──────────────────────────────────────────────── */}
+      <div className="mb-3 shrink-0">
+        <p className="text-[11px] text-gray-500">
+          {new Date().getHours() < 12 ? '좋은 아침이에요 ☀️' : '안녕하세요 👋'}
+        </p>
+        <h2 className="text-lg font-black text-white leading-tight">{displayName}</h2>
+      </div>
 
-          {/* ── 스탯 뱃지 가로 스크롤 ──────────────────────────── */}
-          <section>
-            <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar">
-              <div className="relative bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
-                <span className="text-xl">{streak > 0 ? "🔥" : "🌱"}</span>
-                {streak > 0 ? (
-                  <span className="text-base font-black text-orange-400 leading-none">{streak}</span>
-                ) : (
-                  <span className="text-[11px] font-bold text-emerald-400 leading-none">시작!</span>
-                )}
-                <span className="text-[10px] text-gray-500">스트릭</span>
-                {/* 역대 최고 뱃지 (보조 — 기록 있을 때만) */}
-                {bestStreak > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 text-[9px] font-bold bg-amber-500/90 text-black rounded-pill px-1.5 py-0.5 shadow-e1 leading-none">
-                    🏅{bestStreak}
-                  </span>
-                )}
-              </div>
-              <div className="bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
-                <span className="text-xl">⚡</span>
-                <span className="text-base font-black text-yellow-400 leading-none">{totalXP.toLocaleString()}</span>
-                <span className="text-[10px] text-gray-500">총 XP</span>
-              </div>
-              <div className="bg-theme-card border border-theme-border rounded-card px-4 py-3 flex flex-col items-center gap-1 shrink-0 min-w-[80px]">
-                <span className="text-xl">☕</span>
-                <span className="text-base font-black text-amber-400 leading-none">{beanCount}</span>
-                <span className="text-[10px] text-gray-500">원두</span>
-              </div>
-            </div>
-          </section>
+      {/* ── 스탯 칩 행 ───────────────────────────────────────────────── */}
+      <div className="mb-3 flex flex-wrap gap-1.5 shrink-0">
+        <StatChip icon="🔥" value={`${streak}일`}  label={`연속 출석 ${streak}일`}  color="#f97316" />
+        <StatChip icon="⚡" value={`${dailyXP.total}XP`} label={`오늘 ${dailyXP.total}/${DAILY_XP_CAP}XP`} color="#f59e0b" />
+        <StatChip icon="🧊" value={freezeCount}    label={`얼리기 ${freezeCount}개 남음`} color="#60a5fa" />
+        <StatChip icon="☕" value={beanCount}       label={`원두 ${beanCount}개`}     color="#d97706" />
+      </div>
 
-          {/* ── 이어하기 ──────────────────────────────────────── */}
-          {chapters.length > 0 && (
-            <section>
-              <h2 className="text-base font-bold text-white mb-2">📖 이어하기</h2>
-              <ContinueCard chapters={chapters} onPress={handleContinue} />
-              <HapticButton
-                variant="primary"
-                size="lg"
-                hapticType="success"
-                onClick={handleContinue}
-                className="w-full mt-3"
-              >
-                학습 계속하기
-              </HapticButton>
-            </section>
-          )}
-
-          {/* 챕터 없을 때 CTA */}
-          {chapters.length === 0 && (
-            <section>
-              <div className="bg-theme-card border border-theme-border rounded-card p-6 flex flex-col items-center gap-3 shadow-e2">
-                <span className="text-5xl">🌱</span>
-                <p className="text-sm font-bold text-white">아직 학습 기록이 없어요</p>
-                <p className="text-xs text-gray-400 text-center">첫 챕터를 시작하면<br />여기에 이어하기 카드가 생겨요.</p>
-                <HapticButton
-                  variant="primary"
-                  size="md"
-                  hapticType="success"
-                  onClick={handleContinue}
-                >
-                  첫 챕터 시작하기
-                </HapticButton>
-              </div>
-            </section>
-          )}
-
-          {/* ── 오늘의 추천 ────────────────────────────────────── */}
-          {chapters.length > 0 && (
-            <section>
-              <h2 className="text-base font-bold text-white mb-2">🎯 오늘의 추천</h2>
-              <RecommendSection
-                chapters={chapters}
-                onPress={() => navigate('/chapter')}
-              />
-            </section>
-          )}
-
-          {/* ── 스트릭 캘린더 ─────────────────────────────────── */}
-          <section>
-            <h2 className="text-base font-bold text-white mb-2">🗓 이번 주 출석</h2>
-            <div className="bg-theme-card border border-theme-border rounded-card p-4 shadow-e2">
-              <StreakDots streak={streak} />
-              <p className="text-xs text-gray-500 mt-3">
-                {streak === 0 && bestStreak === 0 ? (
-                  <>오늘 퀘스트를 끝내면 <span className="text-emerald-400 font-bold">첫 스트릭</span>이 시작돼요 🌱</>
-                ) : streak === 0 ? (
-                  <>🏅 최고 기록 <span className="text-orange-400 font-bold">{bestStreak}일</span> — 오늘 다시 시작!</>
-                ) : isBeatingRecord ? (
-                  <>🎉 최고 기록 갱신 중 — <span className="text-orange-400 font-bold">{streak}일</span> 연속!</>
-                ) : (
-                  <>현재 <span className="text-orange-400 font-bold">{streak}일</span> 연속 / 최고 {bestStreak}일</>
-                )}
-              </p>
-            </div>
-          </section>
-
-          {/* ── 주간 학습 차트 ─────────────────────────────────── */}
-          <section>
-            <h2 className="text-base font-bold text-white mb-2">📊 주간 학습</h2>
-            <div className="bg-theme-card border border-theme-border rounded-card p-4 shadow-e2">
-              <WeeklyBar values={weeklyValues} />
-            </div>
-          </section>
-
-          {/* safe-area bottom 여백 */}
-          <div className="h-2" />
+      {/* ── XP 프로그레스 ─────────────────────────────────────────────── */}
+      <div className="mb-4 shrink-0">
+        <XpBar totalXP={totalXP} />
+        {/* 오늘 XP 캡 진행 */}
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="text-[10px] text-gray-600 shrink-0">오늘</span>
+          <div className="flex-1 h-1 rounded-pill bg-white/[0.04] overflow-hidden">
+            <div
+              className="h-full rounded-pill bg-amber-400/60 transition-all duration-slow"
+              style={{ width: `${todayXPPercent}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-gray-600 shrink-0">{dailyXP.total}/{DAILY_XP_CAP}</span>
         </div>
-      </PullToRefresh>
-    </Screen>
+      </div>
+
+      {/* ── 모드 카드 2×2 그리드 ─────────────────────────────────────── */}
+      {/* flex-1로 남은 공간을 카드가 꽉 채움 — 스크롤 없이 화면에 딱 맞음 */}
+      <div className="grid flex-1 grid-cols-2 gap-2.5 overflow-hidden">
+        {MODE_CARDS.map((card, idx) => (
+          <ModeCard
+            key={idx}
+            icon={card.icon}
+            title={card.title}
+            desc={card.desc}
+            accent={card.accent}
+            badge={card.badge}
+            onClick={() => handleTabChange(card.id)}
+          />
+        ))}
+      </div>
+
+    </div>
   );
 }
