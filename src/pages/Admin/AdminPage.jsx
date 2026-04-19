@@ -26,7 +26,6 @@ const AdminPage = ({ user, userData, onLogout }) => {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
       ),
     },
-    // 디버그 패널: AdminPage 진입 자체가 super-admin(email) 가드되어 있으므로 여기선 항상 노출
     {
       tab: 'debug',
       label: '⚠️ 디버그 패널',

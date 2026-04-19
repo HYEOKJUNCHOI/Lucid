@@ -51,9 +51,6 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   // 📱 모바일 전용 배지 툴팁 탭 토글
   const [showStreakTip, setShowStreakTip] = useState(false);
   const [showWeekTip, setShowWeekTip] = useState(false);
-  // 출석 달력 뷰 월 (null = 현재 달)
-  const [calViewYear, setCalViewYear]   = useState(null);
-  const [calViewMon, setCalViewMon]     = useState(null);
   // 📱 모바일 반응형 상태
   const isMobile = useIsMobile();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -618,7 +615,7 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   };
 
   return (
-    <div className="flex h-[100dvh] md:h-svh bg-theme-bg text-white overflow-hidden">
+    <div className="flex h-svh md:h-svh min-h-dvh bg-theme-bg text-white overflow-hidden">
 
       {/* 챕터 호버 미리보기 (fixed) */}
       {chapterHover && chapterHover.files.length > 0 && (
@@ -1203,19 +1200,11 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                   {/* 연속 출석 — 한달 달력 */}
                   {(() => {
                     const dayLabels = ['일','월','화','수','목','금','토'];
-                    // 뷰 달 (state 없으면 현재 달)
-                    const year = calViewYear ?? now.getFullYear();
-                    const mon  = calViewMon  ?? now.getMonth();
-                    const isCurrentMonth = year === now.getFullYear() && mon === now.getMonth();
-                    const todayDate = isCurrentMonth ? now.getDate() : -1;
-                    const firstDow = new Date(year, mon, 1).getDay();
+                    const year = now.getFullYear();
+                    const mon = now.getMonth();
+                    const todayDate = now.getDate();
+                    const firstDow = new Date(year, mon, 1).getDay(); // 1일의 요일
                     const daysInMonth = new Date(year, mon + 1, 0).getDate();
-
-                    const moveMon = (delta) => {
-                      const base = new Date(year, mon + delta, 1);
-                      setCalViewYear(base.getFullYear());
-                      setCalViewMon(base.getMonth());
-                    };
 
                     // Firestore userData의 실제 출석 날짜 사용
                     const yearStr = String(year);
@@ -1226,29 +1215,22 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                         .map(s => parseInt(s.slice(8), 10))
                     );
 
-                    // 출석 OR 얼음 = "연결" — 오늘 기준 거꾸로 걸어가며 체인 카운트
+                    // attendedDates 전체 배열에서 오늘 기준 연속 출석일 계산
                     const calcLiveStreak = () => {
-                      const attendedSet = new Set(userData?.attendedDates || []);
-                      const frozenSet = new Set(userData?.frozenDates || []);
-                      if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
-                      // 로컬 날짜 기준 (UTC 아님 — 한국 오전 9시 이전 오작동 방지)
-                      const _d = new Date();
-                      const todayIso = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
-                      const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
-                      // 오늘 또는 어제가 커버되어 있어야 연속 인정
-                      const yday = new Date();
-                      yday.setDate(yday.getDate() - 1);
-                      const ydayIso = `${yday.getFullYear()}-${String(yday.getMonth()+1).padStart(2,'0')}-${String(yday.getDate()).padStart(2,'0')}`;
-                      if (!isCovered(todayIso) && !isCovered(ydayIso)) return 0;
-                      let count = 0;
-                      const cursor = new Date(todayIso);
-                      // 오늘이 비었으면 어제부터 시작
-                      if (!isCovered(todayIso)) cursor.setDate(cursor.getDate() - 1);
-                      while (true) {
-                        const iso = cursor.toISOString().slice(0, 10);
-                        if (!isCovered(iso)) break;
-                        count++;
-                        cursor.setDate(cursor.getDate() - 1);
+                      const all = (userData?.attendedDates || []).slice().sort().reverse(); // 최신순
+                      if (all.length === 0) return 0;
+                      const todayMs = new Date(new Date().toISOString().slice(0,10)).getTime();
+                      const day0 = all[0];
+                      const day0Ms = new Date(day0).getTime();
+                      // 마지막 출석이 오늘 또는 어제여야 연속으로 인정
+                      const diff0 = (todayMs - day0Ms) / 86400000;
+                      if (diff0 > 1) return 0;
+                      let count = 1;
+                      for (let i = 1; i < all.length; i++) {
+                        const prev = new Date(all[i - 1]).getTime();
+                        const curr = new Date(all[i]).getTime();
+                        if ((prev - curr) / 86400000 === 1) count++;
+                        else break;
                       }
                       return count;
                     };
@@ -1271,35 +1253,12 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                     return (
                       <div className="mb-2 p-2 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(245,158,11,0.04) 100%)', border: '1px solid rgba(251,191,36,0.22)' }}>
                         <div className="flex items-center justify-between mb-2 px-0.5">
-                          {/* 월 네비게이션 */}
-                          <div className="flex items-center gap-1">
-                            <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{mon + 1}월 출석</span>
-                            <div className="flex flex-col" style={{ gap: '1px' }}>
-                              <button
-                                onClick={() => moveMon(1)}
-                                disabled={isCurrentMonth}
-                                className="flex items-center justify-center w-3 h-3 text-gray-500 hover:text-white transition-colors disabled:opacity-20"
-                                style={{ fontSize: '6px', lineHeight: 1 }}
-                              >▲</button>
-                              <button
-                                onClick={() => moveMon(-1)}
-                                className="flex items-center justify-center w-3 h-3 text-gray-500 hover:text-white transition-colors"
-                                style={{ fontSize: '6px', lineHeight: 1 }}
-                              >▼</button>
-                            </div>
-                          </div>
+                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(251,191,36,0.6)' }}>{month}월 출석</span>
                           <div
                             className="relative group cursor-default"
                             onClick={isMobile ? (e) => { e.stopPropagation(); setShowWeekTip(v => !v); } : undefined}
                           >
-                            <span
-  className="text-[8px] font-bold tracking-wide"
-  style={
-    liveStreak >= 7
-      ? { color: '#fbbf24', textShadow: '0 0 6px rgba(251,191,36,0.6)' }
-      : { color: 'rgba(107,114,128,1)' }
-  }
->{liveStreak > 0 ? `${liveStreak}일 연속 🔥` : '시작! 🌱'}</span>
+                            <span className="text-[11px] font-black" style={{ color: '#fbbf24', textShadow: '0 0 8px rgba(251,191,36,0.7)' }}>{liveStreak}일 연속 🔥</span>
                             {/* 7일 뱃지 안내 팝업 */}
                             <div className={`absolute right-0 bottom-full mb-2 pointer-events-none transition-opacity duration-150 z-50 w-[190px] ${showWeekTip ? 'opacity-100' : 'opacity-0'} md:opacity-0 md:group-hover:opacity-100`}>
                               <div className="rounded-xl px-3.5 py-3 shadow-2xl" style={{ background: '#1a1f2e', border: '1px solid rgba(251,191,36,0.35)' }}>
@@ -1337,9 +1296,9 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
                             if (!d) return (
                               <div key={i} className="aspect-square rounded" style={{ border: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.01)' }} />
                             );
-                            const isToday = isCurrentMonth && d === todayDate;
+                            const isToday = d === todayDate;
                             const attended = attendedDates.has(d);
-                            const isFuture = isCurrentMonth && d > todayDate;
+                            const isFuture = d > todayDate;
                             const col = i % 7;
                             const isWeekend = col === 0 || col === 6; // 일=0, 토=6
                             const isFrozen = frozenDates.has(d) && !attended;

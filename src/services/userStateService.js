@@ -54,11 +54,7 @@ import { db } from '../lib/firebase';
  */
 export const BADGE_THRESHOLD = 7;
 
-/** 오늘 날짜를 로컬 시간 기준 YYYY-MM-DD 로 반환 (UTC 아님 — 한국 오전 9시 이전 오작동 방지) */
-export const todayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+export const todayStr = () => new Date().toISOString().slice(0, 10);
 
 /**
  * 최근 7일(baseDate 포함 & 6일 전까지) 달력 창이 모두 실제 출석인지 판정.
@@ -358,17 +354,7 @@ export const addDailyXPFS = async (uid, category, amount) => {
  */
 export const claimLoginXPFS = async (uid, state) => {
   const today = todayStr();
-  const alreadyClaimed = !!state?.loginXPClaimed?.[today];
-  const alreadyAttended = (state?.attendedDates || []).includes(today);
-
-  // 출석은 XP 지급 여부와 무관하게 항상 기록 (접속 = 출석)
-  if (!alreadyAttended) {
-    await updateUserState(uid, { attendedDates: arrayUnion(today) });
-    await syncStreakFromDates(uid);
-  }
-
-  // XP는 하루 1회만
-  if (alreadyClaimed) return 0;
+  if (state?.loginXPClaimed?.[today]) return 0;
   const XP = 50;
   await updateUserState(uid, {
     [`loginXPClaimed.${today}`]: true,
@@ -435,64 +421,14 @@ export const debugSetUserFields = async (uid, fields) => {
   await updateUserState(uid, fields);
 };
 
-/**
- * attendedDates + frozenDates 배열에서 "오늘 기준 실제 연속일" 을 계산.
- * 관리자 패널 수정 후 streak/bestStreak 자동 동기화용.
- *
- * 규칙:
- *  - 출석 OR 얼음이면 체인 연결 (사용자 메모: "얼음쓰면 무조건연결")
- *  - 오늘 또는 어제가 커버되어 있어야 체인 인정 (그 이상 공백이면 0)
- *  - 오늘부터 거꾸로 걸으며 처음 비는 날까지 카운트
- */
-export const computeStreakFromDates = (attendedDates = [], frozenDates = []) => {
-  const attendedSet = new Set(attendedDates || []);
-  const frozenSet = new Set(frozenDates || []);
-  if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
-  const today = todayStr(); // 로컬 날짜 기준
-  const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
-  const y = new Date();
-  y.setDate(y.getDate() - 1);
-  const yday = `${y.getFullYear()}-${String(y.getMonth()+1).padStart(2,'0')}-${String(y.getDate()).padStart(2,'0')}`;
-  if (!isCovered(today) && !isCovered(yday)) return 0;
-  let count = 0;
-  const cursor = new Date(today);
-  if (!isCovered(today)) cursor.setDate(cursor.getDate() - 1);
-  while (true) {
-    const iso = cursor.toISOString().slice(0, 10);
-    if (!isCovered(iso)) break;
-    count++;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return count;
-};
-
-/**
- * 관리자가 출석/얼음 배열을 수정한 뒤 streak/bestStreak 를 재계산해 반영.
- * - streak 는 항상 최신 배열 기준으로 덮어씀
- * - bestStreak 는 7일 이상이고 기존 최고보다 클 때만 상향 (하향 금지)
- */
-export const syncStreakFromDates = async (uid) => {
-  const state = await getUserState(uid);
-  if (!state) return;
-  const newStreak = computeStreakFromDates(state.attendedDates, state.frozenDates);
-  const curBest = state.bestStreak || 0;
-  const updates = { streak: newStreak };
-  if (newStreak >= BADGE_THRESHOLD && newStreak > curBest) {
-    updates.bestStreak = newStreak;
-  }
-  await updateDoc(doc(db, 'users', uid), updates);
-};
-
-/** 출석 날짜 추가 (YYYY-MM-DD) — 후속 streak 자동 동기화 */
+/** 출석 날짜 추가 (YYYY-MM-DD) */
 export const debugAddAttendedDate = async (uid, dateStr) => {
   await updateDoc(doc(db, 'users', uid), { attendedDates: arrayUnion(dateStr) });
-  await syncStreakFromDates(uid);
 };
 
-/** 출석 날짜 제거 (YYYY-MM-DD) — 후속 streak 자동 동기화 */
+/** 출석 날짜 제거 (YYYY-MM-DD) */
 export const debugRemoveAttendedDate = async (uid, dateStr) => {
   await updateDoc(doc(db, 'users', uid), { attendedDates: arrayRemove(dateStr) });
-  await syncStreakFromDates(uid);
 };
 
 /** 사용자 상태 초기화 (디버그용) */

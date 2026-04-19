@@ -3,40 +3,8 @@ import { useAuth } from './hooks/useAuth';
 import Landing from './pages/Landing/Landing';
 import Login from './pages/Login/Login';
 import StudentPage from './pages/Student/StudentPage';
-import MobileStudentRoot from './pages/Student/MobileStudentRoot';
 import AdminPage from './pages/Admin/AdminPage';
 import DictionaryPopup from './components/common/DictionaryPopup';
-import { EditModeProvider } from './components/common/mobile/EditModeProvider';
-import { useIsMobile } from './hooks/useMediaQuery';
-
-/**
- * StudentRoot — 뷰포트 기반 분기 래퍼.
- * - 모바일(<768px): <MobileStudentRoot initialMode={...} />
- * - 데스크탑      : <StudentPage forcedMode={...} /> (기존 로직 유지)
- *
- * URL 체계는 기존과 동일하게 유지(북마크/딥링크 호환). 내부 렌더만 분기.
- */
-function StudentRoot({ mode, user, userData, onLogout }) {
-  const isMobile = useIsMobile();
-  if (isMobile) {
-    return (
-      <MobileStudentRoot
-        initialMode={mode}
-        user={user}
-        userData={userData}
-        onLogout={onLogout}
-      />
-    );
-  }
-  return (
-    <StudentPage
-      user={user}
-      userData={userData}
-      onLogout={onLogout}
-      forcedMode={mode}
-    />
-  );
-}
 
 function App() {
   const { user, userData, role, loading, loginLoading, loginError, loginWithGoogle, loginWithGithub, loginWithAdmin, loginOrSignupWithEmail, logout } = useAuth();
@@ -97,13 +65,13 @@ function App() {
 
   // 보호 라우트 헬퍼 — 로그인 없으면 /login으로 리다이렉트
   const requireAuth = (el) => (user ? el : <Navigate to="/login" replace />);
+  // 학생 페이지 — 모드는 forcedMode로 라우트별 주입
   const studentRoot = (mode) => (
-    <StudentRoot mode={mode} user={user} userData={userData} onLogout={logout} />
+    <StudentPage user={user} userData={userData} onLogout={logout} forcedMode={mode} />
   );
 
   return (
     <BrowserRouter>
-      <EditModeProvider>
       <DictionaryPopup />
       <Routes>
         {/* 로그인 페이지: 이미 로그인된 유저는 홈으로 */}
@@ -149,7 +117,6 @@ function App() {
         {/* 그 외 모든 경로 → 루트로 (루트가 다시 로그인 상태별로 분기) */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </EditModeProvider>
     </BrowserRouter>
   );
 }

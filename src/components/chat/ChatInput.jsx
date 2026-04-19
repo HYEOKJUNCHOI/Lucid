@@ -3,10 +3,7 @@
  * - 둥근 필 컨테이너 + 투명 input + SVG 전송 버튼
  * - Enter 전송 (한글 조합 중에는 무시)
  * - 로딩/비어있음 상태면 전송 비활성
- * - 모바일: 포커스 시 자동 스크롤 (키보드가 입력창 가리는 문제 방지)
  */
-import { useRef } from 'react';
-
 export default function ChatInput({
   value,
   onChange,
@@ -14,24 +11,13 @@ export default function ChatInput({
   disabled = false,
   placeholder = '메시지를 입력하세요',
 }) {
-  const inputRef = useRef(null);
   const canSend = !disabled && !!value?.trim();
-
-  const handleFocus = () => {
-    // iOS Safari: 키보드가 올라온 뒤 살짝 딜레이 후 scrollIntoView
-    setTimeout(() => {
-      inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 300);
-  };
-
   return (
     <div className="flex items-center gap-1 rounded-2xl border-2 border-white/25 bg-chat-input-bg pl-4 pr-1.5 py-1 focus-within:border-amber-400/70 focus-within:ring-2 focus-within:ring-amber-400/30 transition-all">
       <input
-        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={handleFocus}
         onKeyDown={(e) => {
           if (
             e.key === 'Enter' &&
