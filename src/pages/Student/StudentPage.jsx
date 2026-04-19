@@ -54,6 +54,7 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   // 📱 모바일 반응형 상태
   const isMobile = useIsMobile();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [mobileStatusOpen, setMobileStatusOpen] = useState(false);
   const [streak, setStreak] = useState(0);
   const [streakStatus, setStreakStatus] = useState('ok'); // 'ok'|'grace1'|'grace2'|'broken'|'repair'
   const [repairCount, setRepairCount] = useState(-1);
@@ -1549,33 +1550,51 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
         </div>
       </aside>
 
-      {/* 📱 모바일 상단바 — 햄버거 + 타이틀 + 관리자/로그아웃 */}
+      {/* 📱 모바일 상단바 — freeStudy: 뒤로가기 | 일반: LV배지(상태모달) */}
       <MobileTopBar
-        leading="menu"
-        onLeadingClick={() => setMobileDrawerOpen(true)}
+        leading={mode === 'freeStudy' ? 'back' : (
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-lg select-none"
+            style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.3), rgba(139,92,246,0.2))', border: '1px solid rgba(167,139,250,0.5)' }}
+          >
+            <span className="text-[11px] font-black" style={{ color: '#d8b4fe' }}>Lv{calcLevel(userData?.totalXP || 0)}</span>
+          </div>
+        )}
+        onLeadingClick={() => {
+          if (mode === 'freeStudy') {
+            setMode(null);
+            navigate('/home');
+          } else {
+            setMobileStatusOpen(true);
+          }
+        }}
         title={
-          <span className="inline-flex items-center gap-2">
-            <span className="p-1 bg-gradient-to-br from-theme-primary/20 to-theme-icon/20 rounded-md border border-white/10 ring-1 ring-theme-primary/30">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="url(#mob-grad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <defs>
-                  <linearGradient id="mob-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#4ec9b0" />
-                    <stop offset="100%" stopColor="#569cd6" />
-                  </linearGradient>
-                </defs>
-                <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
-              </svg>
+          mode === 'freeStudy' ? '📓 마스터노트' : (
+            <span className="inline-flex items-center gap-2">
+              <span className="p-1 bg-gradient-to-br from-theme-primary/20 to-theme-icon/20 rounded-md border border-white/10 ring-1 ring-theme-primary/30">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="url(#mob-grad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <defs>
+                    <linearGradient id="mob-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#4ec9b0" />
+                      <stop offset="100%" stopColor="#569cd6" />
+                    </linearGradient>
+                  </defs>
+                  <path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>
+                </svg>
+              </span>
+              Lucid
             </span>
-            Lucid
-          </span>
+          )
         }
         right={
-          <button
-            onClick={onLogout}
-            className="touch-target px-2 text-theme-secondary text-xs font-semibold active:text-white"
-          >
-            로그아웃
-          </button>
+          mode === 'freeStudy' ? null : (
+            <button
+              onClick={onLogout}
+              className="touch-target px-2 text-theme-secondary text-xs font-semibold active:text-white"
+            >
+              로그아웃
+            </button>
+          )
         }
       />
 
@@ -1639,8 +1658,287 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
         </nav>
       </SidebarDrawer>
 
-      {/* 📱 모바일 하단 탭 — 홈/챕터/복습/프로필 */}
-      <MobileBottomTab
+      {/* 📱 모바일 상태 모달 — LV/XP/달력/스트릭/얼리기/원두 */}
+      {mobileStatusOpen && (
+        <div
+          className="fixed inset-0 z-[1000] flex flex-col justify-end"
+          onClick={() => setMobileStatusOpen(false)}
+        >
+          {/* 배경 오버레이 */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+          {/* 바텀 시트 본체 */}
+          <div
+            className="relative w-full rounded-t-3xl overflow-y-auto max-h-[85dvh]"
+            style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.08)', borderBottom: 'none' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 핸들 바 */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+
+            <div className="px-4 pb-6 pt-2 flex flex-col gap-3">
+
+              {/* ── 프로필 + LV + XP 바 ── */}
+              {(() => {
+                const totalXP = userData?.totalXP || 0;
+                const level = calcLevel(totalXP);
+                const currentLevelXP = LEVEL_TABLE.find(r => r.level === level)?.xp || 0;
+                const nextLevelXP = LEVEL_TABLE.find(r => r.level === level + 1)?.xp || currentLevelXP;
+                const xpInLevel = totalXP - currentLevelXP;
+                const xpForNext = nextLevelXP - currentLevelXP;
+                const xpPercent = Math.min((xpInLevel / xpForNext) * 100, 100);
+                return (
+                  <div className="p-3 rounded-2xl" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.12) 0%, rgba(139,92,246,0.06) 100%)', border: '1px solid rgba(167,139,250,0.3)' }}>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-12 h-12 rounded-full flex flex-col items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, rgba(167,139,250,0.3), rgba(139,92,246,0.2))', border: '2px solid rgba(167,139,250,0.6)', boxShadow: '0 0 12px rgba(139,92,246,0.4)' }}>
+                        <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(216,180,254,0.7)' }}>LV</span>
+                        <span className="text-lg font-black leading-none" style={{ color: '#d8b4fe' }}>{level}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[18px] font-black text-white truncate">{userData?.displayName || user?.displayName || '학생'}</div>
+                        <div className="text-[11px] text-gray-500">총 {totalXP.toLocaleString()} XP</div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-[9px] mb-1 px-0.5" style={{ color: 'rgba(216,180,254,0.5)' }}>
+                      <span>{xpInLevel} XP</span>
+                      <span>다음 레벨까지 {xpForNext - xpInLevel} XP</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${xpPercent}%`, background: 'linear-gradient(90deg, #a78bfa, #7c3aed)', boxShadow: '0 0 8px rgba(139,92,246,0.6)' }} />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── 스탯 그리드 (날짜 / 연속 / 얼리기) ── */}
+              {(() => {
+                const now = new Date();
+                const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+                const month = now.getMonth() + 1;
+                const date = now.getDate();
+                const dayName = dayNames[now.getDay()];
+
+                // liveStreak 계산 (attendedDates + frozenDates 합산)
+                const calcLiveStreak = () => {
+                  const attendedSet = new Set(userData?.attendedDates || []);
+                  const frozenSet = new Set(userData?.frozenDates || []);
+                  if (attendedSet.size === 0 && frozenSet.size === 0) return 0;
+                  const todayIso = new Date().toISOString().slice(0, 10);
+                  const isCovered = (iso) => attendedSet.has(iso) || frozenSet.has(iso);
+                  const yday = new Date();
+                  yday.setDate(yday.getDate() - 1);
+                  const ydayIso = yday.toISOString().slice(0, 10);
+                  if (!isCovered(todayIso) && !isCovered(ydayIso)) return 0;
+                  let count = 0;
+                  const cursor = new Date(todayIso);
+                  if (!isCovered(todayIso)) cursor.setDate(cursor.getDate() - 1);
+                  while (true) {
+                    const iso = cursor.toISOString().slice(0, 10);
+                    if (!isCovered(iso)) break;
+                    count++;
+                    cursor.setDate(cursor.getDate() - 1);
+                  }
+                  return count;
+                };
+                const liveStreak = calcLiveStreak();
+
+                return (
+                  <>
+                    <div className="grid grid-cols-3 gap-2">
+                      {/* 날짜 */}
+                      <div className="flex flex-col items-center p-2.5 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(78,201,176,0.12), rgba(78,201,176,0.05))', border: '1px solid rgba(78,201,176,0.2)' }}>
+                        <div className="text-[8px] font-bold text-gray-500 tracking-widest mb-0.5">{now.getFullYear()}.{String(month).padStart(2,'0')}</div>
+                        <div className="text-xl font-black text-white leading-none">{date}</div>
+                        <div className="text-[9px] font-bold mt-0.5" style={{ color: now.getDay() === 0 ? 'rgba(248,113,113,0.9)' : now.getDay() === 6 ? 'rgba(96,165,250,0.9)' : 'rgba(255,255,255,0.5)' }}>{dayName}요일</div>
+                      </div>
+                      {/* 연속 출석 */}
+                      <div className="flex flex-col items-center p-2.5 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.12), rgba(245,158,11,0.05))', border: '1px solid rgba(251,191,36,0.2)' }}>
+                        <div className="text-[8px] font-bold text-gray-500 tracking-widest mb-0.5">연속출석</div>
+                        <div className="text-xl font-black leading-none" style={{ color: '#fbbf24' }}>{liveStreak}</div>
+                        <div className="text-[9px] font-bold mt-0.5 text-gray-500">일 🔥</div>
+                      </div>
+                      {/* 얼리기 */}
+                      <div className="flex flex-col items-center p-2.5 rounded-xl" style={{ background: 'rgba(147,197,253,0.06)', border: '1px solid rgba(147,197,253,0.2)' }}>
+                        <div className="text-[8px] font-bold text-gray-500 tracking-widest mb-0.5">얼리기</div>
+                        <div className="text-xl font-black leading-none" style={{ color: '#93c5fd' }}>{freezeCount}</div>
+                        <div className="text-[9px] font-bold mt-0.5 text-gray-500">개 🧊</div>
+                      </div>
+                    </div>
+
+                    {/* ── 미니 달력 ── */}
+                    {(() => {
+                      const year = now.getFullYear();
+                      const mon = now.getMonth();
+                      const todayDate = now.getDate();
+                      const dayLabels = ['일','월','화','수','목','금','토'];
+                      const firstDow = new Date(year, mon, 1).getDay();
+                      const daysInMonth = new Date(year, mon + 1, 0).getDate();
+                      const yearStr = String(year);
+                      const monStr = String(mon + 1).padStart(2, '0');
+                      const attendedSet = new Set(
+                        (userData?.attendedDates || []).filter(s => s.startsWith(`${yearStr}-${monStr}-`))
+                      );
+                      const frozenSet = new Set(
+                        (userData?.frozenDates || []).filter(s => s.startsWith(`${yearStr}-${monStr}-`))
+                      );
+                      const cells = [];
+                      for (let i = 0; i < firstDow; i++) cells.push(null);
+                      for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                      const rem = cells.length % 7;
+                      if (rem > 0) for (let i = 0; i < 7 - rem; i++) cells.push(null);
+
+                      return (
+                        <div className="p-3 rounded-xl" style={{ background: 'linear-gradient(135deg, rgba(251,191,36,0.05) 0%, rgba(245,158,11,0.03) 100%)', border: '1px solid rgba(251,191,36,0.15)' }}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-black text-white">{year}년 {mon + 1}월</span>
+                            <span className="text-[9px]" style={{ color: 'rgba(251,191,36,0.7)' }}>{attendedSet.size}일 출석</span>
+                          </div>
+                          <div className="grid grid-cols-7 mb-1">
+                            {dayLabels.map((d, idx) => (
+                              <div key={d} className="text-center text-[8px] font-bold"
+                                style={{ color: idx === 0 ? 'rgba(248,113,113,0.8)' : idx === 6 ? 'rgba(96,165,250,0.8)' : 'rgba(255,255,255,0.3)' }}>
+                                {d}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-0.5">
+                            {cells.map((d, i) => {
+                              if (!d) return <div key={i} className="aspect-square" />;
+                              const dateStr = `${yearStr}-${monStr}-${String(d).padStart(2, '0')}`;
+                              const attended = attendedSet.has(dateStr);
+                              const frozen = frozenSet.has(dateStr);
+                              const isToday = d === todayDate;
+                              const col = i % 7;
+                              const cellStyle = isToday ? {
+                                background: 'linear-gradient(135deg, rgba(34,197,94,0.5), rgba(16,185,129,0.3))',
+                                border: '1px solid rgba(34,197,94,0.7)',
+                                color: '#4ade80',
+                              } : frozen ? {
+                                background: 'linear-gradient(135deg, rgba(96,165,250,0.4), rgba(59,130,246,0.25))',
+                                border: '1px solid rgba(96,165,250,0.6)',
+                                color: '#60a5fa',
+                              } : attended ? {
+                                background: 'linear-gradient(135deg, rgba(251,191,36,0.5), rgba(245,158,11,0.3))',
+                                border: '1px solid rgba(251,191,36,0.7)',
+                                color: '#fbbf24',
+                              } : {
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(255,255,255,0.04)',
+                                color: col === 0 ? 'rgba(248,113,113,0.6)' : col === 6 ? 'rgba(96,165,250,0.6)' : 'rgba(255,255,255,0.4)',
+                              };
+                              return (
+                                <div key={i}
+                                  className="aspect-square flex items-center justify-center rounded text-[9px] font-bold select-none"
+                                  style={cellStyle}>
+                                  {d}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                );
+              })()}
+
+              {/* ── 일일 XP ── */}
+              <div className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[11px] font-bold text-white">오늘의 XP</span>
+                  <span className="text-[11px] font-black" style={{ color: '#fbbf24' }}>{dailyXP.total} / 500</span>
+                </div>
+                <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min((dailyXP.total / 500) * 100, 100)}%`, background: 'linear-gradient(90deg, #fbbf24, #f97316)', boxShadow: '0 0 6px rgba(251,191,36,0.5)' }} />
+                </div>
+                <div className="flex justify-between text-[9px]">
+                  <span style={dailyXP.login > 0 ? { color: '#4ade80', fontWeight: 700 } : { color: 'rgba(107,114,128,0.6)' }}>접속 {dailyXP.login > 0 ? '✓' : '-'}</span>
+                  <span className="text-gray-600">퀘스트 {dailyXP.quest}/200</span>
+                  <span className="text-gray-600">문제 {dailyXP.levelup}/250</span>
+                </div>
+              </div>
+
+              {/* ── 원두 + 아메리카노 ── */}
+              {(() => {
+                const americanoCount = userData?.americanoCount || 0;
+                const canExchange = beanCount >= 5;
+                const handleExchange = async () => {
+                  if (!canExchange) return;
+                  await updateUserState(user.uid, { beanCount: 0, americanoCount: americanoCount + 1 });
+                  setAmericanoPopup(true);
+                };
+                return (
+                  <div className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div className="flex items-center gap-1 justify-around">
+                      {/* 아메리카노 */}
+                      <div className="flex flex-col items-center gap-0.5 py-1">
+                        <span className="text-xl leading-none">☕</span>
+                        <span className="text-base font-black leading-none" style={{ color: '#d97706' }}>{americanoCount}</span>
+                        <span className="text-[9px] font-semibold text-gray-500">아메리카노</span>
+                      </div>
+                      {/* 교환 버튼 */}
+                      <button
+                        onClick={handleExchange}
+                        disabled={!canExchange}
+                        className="flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all"
+                        style={canExchange ? {
+                          background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(217,119,6,0.12))',
+                          border: '1px solid rgba(245,158,11,0.5)',
+                          boxShadow: '0 0 10px rgba(245,158,11,0.25)',
+                        } : {
+                          background: 'rgba(255,255,255,0.02)',
+                          border: '1px solid rgba(255,255,255,0.06)',
+                          opacity: 0.4,
+                        }}
+                      >
+                        <span className="text-[11px]" style={{ color: canExchange ? '#f59e0b' : 'rgba(255,255,255,0.2)' }}>교환</span>
+                        <span className="text-[9px]" style={{ color: canExchange ? 'rgba(245,158,11,0.7)' : 'rgba(255,255,255,0.1)' }}>원두 5개</span>
+                      </button>
+                      {/* 원두 */}
+                      <div className="flex flex-col items-center gap-0.5 py-1">
+                        <span className="text-xl leading-none" style={canExchange ? { filter: 'drop-shadow(0 0 6px rgba(245,158,11,0.8))' } : {}}>🫘</span>
+                        <span className="text-base font-black leading-none" style={{ color: canExchange ? '#fbbf24' : '#f59e0b', textShadow: canExchange ? '0 0 8px rgba(251,191,36,0.7)' : 'none' }}>{beanCount}</span>
+                        <span className="text-[9px] font-semibold" style={{ color: canExchange ? 'rgba(251,191,36,0.6)' : 'rgba(255,255,255,0.3)' }}>원두</span>
+                      </div>
+                    </div>
+                    {/* 원두 진행 바 */}
+                    <div className="flex gap-1 mt-2 justify-center">
+                      {[...Array(5)].map((_, i) => (
+                        <div key={i} className="flex-1 h-1 rounded-full"
+                          style={{ background: i < beanCount ? 'linear-gradient(90deg, #f59e0b, #ef4444)' : 'rgba(255,255,255,0.06)', boxShadow: i < beanCount ? '0 0 3px rgba(245,158,11,0.4)' : 'none' }} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── 학습메모 + 로그아웃 ── */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setMobileStatusOpen(false); setMemoInventoryOpen(true); }}
+                  className="flex-1 py-3 rounded-xl text-[13px] font-bold"
+                  style={{ background: 'rgba(78,201,176,0.08)', border: '1px solid rgba(78,201,176,0.2)', color: '#4ec9b0' }}
+                >
+                  🗒️ 학습메모
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="flex-1 py-3 rounded-xl text-[13px] font-bold"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171' }}
+                >
+                  🚪 로그아웃
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📱 모바일 하단 탭 — 홈/챕터/복습/프로필 (freeStudy 모드에서는 숨김) */}
+      {!(mode === 'freeStudy' && isMobile) && <MobileBottomTab
         items={[
           {
             key: 'home',
@@ -1688,11 +1986,16 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
             ),
           },
         ]}
-      />
+      />}
 
       {/* 메인 콘텐츠 — 모바일: 상단바(48)+하단탭(56) 여백 확보, 데스크탑: 기존 유지 */}
+      {/* freeStudy 모바일에서는 하단탭 없으므로 bottom padding 제거, 좌우 padding도 제거 */}
       <main
-        className="flex-1 overflow-y-auto md:overflow-hidden flex justify-center bg-theme-bg pt-[calc(env(safe-area-inset-top)+48px)] pb-[calc(env(safe-area-inset-bottom)+56px)] px-3 md:px-2 md:pt-2 md:pb-2"
+        className={`flex-1 overflow-y-auto md:overflow-hidden flex justify-center bg-theme-bg pt-[calc(env(safe-area-inset-top)+48px)] md:pt-2 md:pb-2 ${
+          mode === 'freeStudy' && isMobile
+            ? 'pb-0 px-0'
+            : 'pb-[calc(env(safe-area-inset-bottom)+56px)] px-3'
+        } md:px-2`}
       >
         <div className="w-full max-w-[100%] md:max-w-[95%] xl:max-w-[1400px] h-full flex flex-col md:justify-center pb-2">
 

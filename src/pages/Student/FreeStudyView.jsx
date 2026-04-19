@@ -900,8 +900,8 @@ ${mainCode.slice(0, 3000)}`;
             </div>
           )}
 
-          {/* ──── 모바일 전용: 홀드 투 피크 코드 미리보기 (quiz 탭에서만) ──── */}
-          {activeTab === 'quiz' && (
+          {/* ──── 모바일 전용: 홀드 투 피크 코드 미리보기 (quiz/tutor/memo 탭에서) ──── */}
+          {(activeTab === 'quiz' || activeTab === 'tutor' || activeTab === 'memo') && (
             <CodePeekButton
               code={tabContents.main || tabContents.ai || ''}
               language="java"
