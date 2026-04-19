@@ -537,14 +537,14 @@ ${curQ.type === 'fill_blank'
       : <><span className="text-pink-300">코드노트</span><span className="text-gray-400">의 개념을 </span><span className="text-amber-300">AI</span><span className="text-gray-400">가 파악해서</span></>;
 
     return (
-      <div className="flex-1 flex flex-col items-center select-none pt-10 pb-14">
+      <div className="flex-1 flex flex-col items-center select-none pt-4 md:pt-10 pb-6 md:pb-14">
         {errorMsg && (
           <div className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2 text-center">
             {errorMsg}
           </div>
         )}
         {/* 플로우 일러스트 */}
-        <div className="flex flex-col items-center gap-4 mt-[100px] mb-[50px]">
+        <div className="flex flex-col items-center gap-4 mt-6 md:mt-[100px] mb-4 md:mb-[50px]">
           <div className="flex items-center gap-2">
             <div className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.07]">
               <span className="text-[22px]">{srcEmoji}</span>

@@ -908,9 +908,9 @@ ${mainCode.slice(0, 3000)}`;
             />
           )}
 
-          {/* ──── memo 탭 ──── */}
+          {/* ──── memo 탭 — flex-col으로 MemoPanel의 flex-1 동작 보장 ──── */}
           {activeTab === 'memo' && (
-            <div className="absolute inset-0 overflow-y-auto">
+            <div className="absolute inset-0 flex flex-col overflow-hidden">
               <MemoPanel />
             </div>
           )}
