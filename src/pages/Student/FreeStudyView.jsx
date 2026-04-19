@@ -773,9 +773,15 @@ ${mainCode.slice(0, 3000)}`;
                   minWidth: 200,
                 }}
               >
-                <div className="px-4 py-2.5 text-[11px] text-amber-400 font-semibold border-b border-white/[0.06]">
-                  🔒 모바일은 읽기 전용
+                <div className="px-4 py-2.5 text-[11px] text-emerald-400 font-semibold border-b border-white/[0.06]">
+                  ✏️ 코드노트 입력 가능
                 </div>
+                <button
+                  onClick={() => { setMobileMenuOpen(false); setTabContents(prev => ({ ...prev, main: '' })); }}
+                  className="w-full px-4 py-3 text-left text-[13px] font-bold text-gray-400 hover:bg-white/[0.04]"
+                >
+                  🗑 코드 초기화
+                </button>
                 <button
                   onClick={() => { setMobileMenuOpen(false); setShowExitConfirm(true); }}
                   className="w-full px-4 py-3 text-left text-[13px] font-bold text-red-300 hover:bg-white/[0.04]"
@@ -837,6 +843,11 @@ ${mainCode.slice(0, 3000)}`;
               path={monacoTab}
               value={tabContents[monacoTab]}
               onMount={handleEditorMount}
+              onChange={(v) => {
+                // ai 탭은 AI가 생성하는 코드라 수정 불가, main 탭만 편집 허용
+                if (monacoTab === 'ai') return;
+                setTabContents(prev => ({ ...prev, [monacoTab]: v ?? '' }));
+              }}
               options={{
                 fontSize: editorFontSize,
                 lineHeight: 1.7,
@@ -852,8 +863,9 @@ ${mainCode.slice(0, 3000)}`;
                 stickyScroll: { enabled: false },
                 smoothScrolling: true,
                 'semanticHighlighting.enabled': false,
-                readOnly: true,
-                readOnlyMessage: { value: '모바일에서는 읽기 전용입니다. 편집은 데스크탑에서 하세요.' },
+                // main 탭: 입력 가능 / ai 탭: 읽기 전용 (AI 생성 코드)
+                readOnly: monacoTab === 'ai',
+                readOnlyMessage: { value: 'AI 생성 코드는 수정할 수 없어요.' },
                 contextmenu: false,
               }}
             />
