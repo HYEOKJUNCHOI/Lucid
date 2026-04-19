@@ -407,6 +407,7 @@ export default function DebugPanel() {
             <div className="px-4 py-3">
               <AttendanceCalendar
                 attendedDates={userState?.attendedDates || []}
+                frozenDates={userState?.frozenDates || []}
                 onAdd={async (dateStr) => {
                   await debugAddAttendedDate(selectedUid, dateStr);
                   const fresh = await getUserState(selectedUid);

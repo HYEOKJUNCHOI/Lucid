@@ -6,7 +6,7 @@ import { useState } from 'react';
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
-export default function AttendanceCalendar({ attendedDates = [], onAdd, onRemove }) {
+export default function AttendanceCalendar({ attendedDates = [], frozenDates = [], onAdd, onRemove }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth()); // 0-indexed
@@ -20,6 +20,9 @@ export default function AttendanceCalendar({ attendedDates = [], onAdd, onRemove
 
   const attendedSet = new Set(
     attendedDates.filter(s => s.startsWith(`${yearStr}-${monStr}-`))
+  );
+  const frozenSet = new Set(
+    frozenDates.filter(s => s.startsWith(`${yearStr}-${monStr}-`))
   );
 
   const firstDow = new Date(year, month, 1).getDay();
@@ -76,37 +79,50 @@ export default function AttendanceCalendar({ attendedDates = [], onAdd, onRemove
 
           const dateStr = `${yearStr}-${monStr}-${String(d).padStart(2, '0')}`;
           const attended = attendedSet.has(dateStr);
+          const frozen = frozenSet.has(dateStr);
           const isToday = year === todayYear && month === todayMonth && d === todayDate;
           const col = i % 7;
           const isSun = col === 0;
           const isSat = col === 6;
+
+          // 우선순위: 오늘 > 얼림 > 출석 > 기본
+          const cellStyle = isToday ? {
+            background: 'linear-gradient(135deg, rgba(34,197,94,0.55), rgba(16,185,129,0.35))',
+            border: '1px solid rgba(34,197,94,0.8)',
+            color: '#4ade80',
+            boxShadow: '0 0 8px rgba(34,197,94,0.45)',
+          } : frozen ? {
+            // 얼린 날 — 파란/하늘색 그라데이션 (학생 뷰와 동일 톤)
+            background: 'linear-gradient(135deg, rgba(96,165,250,0.45), rgba(59,130,246,0.28))',
+            border: '1px solid rgba(96,165,250,0.75)',
+            color: '#60a5fa',
+            boxShadow: '0 0 6px rgba(96,165,250,0.4)',
+          } : attended ? {
+            background: 'linear-gradient(135deg, rgba(251,191,36,0.55), rgba(245,158,11,0.35))',
+            border: '1px solid rgba(251,191,36,0.8)',
+            color: '#fbbf24',
+            boxShadow: '0 0 6px rgba(251,191,36,0.4)',
+          } : {
+            background: isSun || isSat ? 'rgba(167,139,250,0.04)' : 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.05)',
+            color: isSun ? 'rgba(248,113,113,0.7)' : isSat ? 'rgba(96,165,250,0.7)' : 'rgba(255,255,255,0.45)',
+          };
 
           return (
             <div
               key={i}
               onClick={() => toggle(d)}
               className="aspect-square flex flex-col items-center justify-center rounded cursor-pointer text-[9px] font-bold transition-all hover:scale-105 select-none relative"
-              style={
-                isToday ? {
-                  background: 'linear-gradient(135deg, rgba(34,197,94,0.55), rgba(16,185,129,0.35))',
-                  border: '1px solid rgba(34,197,94,0.8)',
-                  color: '#4ade80',
-                  boxShadow: '0 0 8px rgba(34,197,94,0.45)',
-                } : attended ? {
-                  background: 'linear-gradient(135deg, rgba(251,191,36,0.55), rgba(245,158,11,0.35))',
-                  border: '1px solid rgba(251,191,36,0.8)',
-                  color: '#fbbf24',
-                  boxShadow: '0 0 6px rgba(251,191,36,0.4)',
-                } : {
-                  background: isSun || isSat ? 'rgba(167,139,250,0.04)' : 'rgba(255,255,255,0.02)',
-                  border: '1px solid rgba(255,255,255,0.05)',
-                  color: isSun ? 'rgba(248,113,113,0.7)' : isSat ? 'rgba(96,165,250,0.7)' : 'rgba(255,255,255,0.45)',
-                }
-              }
+              style={cellStyle}
             >
-              {(isToday || attended) && (
-                <span className="absolute top-0.5 right-1 text-[7px] leading-none" style={{ color: isToday ? '#4ade80' : '#fbbf24' }}>✓</span>
-              )}
+              {/* 마커: 오늘·출석=체크, 얼림=아이스큐브 */}
+              {isToday ? (
+                <span className="absolute top-0.5 right-1 text-[7px] leading-none" style={{ color: '#4ade80' }}>✓</span>
+              ) : frozen ? (
+                <span className="absolute top-0.5 right-1 text-[8px] leading-none">🧊</span>
+              ) : attended ? (
+                <span className="absolute top-0.5 right-1 text-[7px] leading-none" style={{ color: '#fbbf24' }}>✓</span>
+              ) : null}
               {d}
             </div>
           );
