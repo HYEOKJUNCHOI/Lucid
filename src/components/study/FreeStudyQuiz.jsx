@@ -599,8 +599,8 @@ ${curQ.type === 'fill_blank'
             }}
           />
         </div>
-        {/* 버튼 — 아래 공간 중앙 */}
-        <div className="flex-1 flex items-center justify-center">
+        {/* 버튼 */}
+        <div className="mt-8">
           <button
             onClick={startQuiz}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm bg-violet-500/20 border border-violet-400/40 text-violet-300 hover:bg-violet-500/30 hover:text-violet-100 transition-all"
