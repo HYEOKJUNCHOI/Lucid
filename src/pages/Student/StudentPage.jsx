@@ -2832,15 +2832,4 @@ const StudentPage = ({ user, userData, onLogout, forcedMode }) => {
   );
 };
 
-/**
- * 모바일 뷰포트에서는 MobileStudentRoot 가 렌더 담당 → 래퍼 레벨에서 조기 반환.
- * StudentPage 내부 훅(useLearningStore, useState 등) 은 항상 일관된 순서로 호출되도록
- * 래퍼를 분리해 Rules of Hooks 위반을 원천 차단한다.
- */
-const StudentPageWithMobileGate = (props) => {
-  const isMobileGate = useIsMobile();
-  if (isMobileGate) return null;
-  return <StudentPage {...props} />;
-};
-
-export default StudentPageWithMobileGate;
+export default StudentPage;
